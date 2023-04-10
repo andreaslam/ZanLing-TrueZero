@@ -2,7 +2,7 @@
 A python chess engine that starts from Zero. This project is still very much work-in-progress.
 
 ## About the Engine
-The name of the Engine Zan1Ling4, which is taken from 真零, which is Chinese for "True Zero" and romanised using [Jyutping](https://en.wikipedia.org/wiki/Jyutping) for Cantonese. 
+The name of the Engine is Zan1Ling4, which is taken from 真零, which is Chinese for "True Zero" and romanised using [Jyutping](https://en.wikipedia.org/wiki/Jyutping) for Cantonese. 
 
 Instead of being hard-coded by humans, this AI learns how to play through playing games from itself and learning from randomly generated games. 
 
