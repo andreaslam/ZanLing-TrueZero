@@ -1,5 +1,5 @@
 # ZanLing-TrueZero
-A Python 🐍 chess ♟️ engine that starts 🆕 from Zero. 0️⃣ This project is still very much work-in-progress.
+A Python 🐍 chess ♟️ engine that starts 🆕 from Zero 0️⃣.  This project is still very much work-in-progress.
 
 ## About the Engine 
 The name of the Engine is Zan1Ling4, which is taken from 真零, which is Chinese for  "True Zero" and romanised using [Jyutping](https://en.wikipedia.org/wiki/Jyutping) for Cantonese.
