@@ -22,13 +22,13 @@ Beta Pruning, giving an evaluation for each position.
 - TrueZero V1 (ETA - End 🔚 of August)
 
 ## What each file 📁 does
-- `ai5.pyx` - used 🇻🇮 for  internal testing, 🧪📝 not a UCI compliant way of running the Engine
+- `ai5.pyx` - used for internal testing, 🧪📝 not a UCI compliant way of running the Engine
 - `aiuci.py` - UCI compliant, contains the logic for handling UCI commands
 - `main.py` - run this file 📁 for the "work-in-progress" 🏗️ experience of the UCI Engine 
 - `aiucieval.py` - UCI compliant version of the code that handles move search 🔍 and evaluation
 - `aieval6.pyx` - used 🇻🇮 for  training the evaluation AI. Handles SQL data accessing and one-hot encoding as well
 
-## Libraries/technologies used 🇻🇮
+## Libraries/technologies used 🔨
 This Python 🐍 Engine uses the following:
 - **Pytorch** - used for creating 🔨 NN
 - **Numpy** - used for processing data (chess board representation after 🇦🇫 one-hot encoding, handling final outcome and final game 👾 result
