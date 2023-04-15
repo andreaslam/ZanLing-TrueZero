@@ -37,5 +37,6 @@ This Python 🐍 Engine uses the following:
 - **Cython** - used🇮 for running files at faster speeds 🚅 instead of running on Vanilla Python 🐍
 - **Setuptools** - used in tandem with Cython to Cythonise the Python 🐍 code
 - **SQLite3** - used for writing/accessing data to the SQL database
+- **tqdm** - used as progress bar
 
 *database not uploaded to this GitHub repository
