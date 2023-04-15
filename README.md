@@ -15,7 +15,7 @@ The Evaluation AI is trained on a SQL database* containing games 🎮 that were 
 Beta Pruning, giving an evaluation for each position.
 
 ## Current todo and goals 
-- Train V1 Evaluation Engine (with at least 2+ million games 🎮 analysed) (ETA - End 🔚 of May)
+- Train V1 Evaluation Engine (with at least 3+ million games 🎮 analysed) (ETA - End 🔚 of May)
 - Have fully functional UCI compliance (ETA - End 🔚 of June/start of July)
 - Implement Move Ordering (ETA - mid-July)
 - Implement Transposition tables, killer moves 🚶 (ETA - August)
