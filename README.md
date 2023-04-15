@@ -13,6 +13,13 @@ The chess Engine will then play games against itself using the evaluation to eva
 ## How all this works in more detail
 The Evaluation AI is trained on a SQL database* containing games that were previously played by humans on [Lichess](lichess.com) (taken [here](https://database.lichess.org/)). The AI is then trained on 20 randomly selected board states of each game, given nothing (no prerequisite knowledge) but the board state (after one-hot encoding) and turn to move (and nothing else) to predict final outcome, with 1,0 and -1 denoting a winning, an equal outcome (draw) and a losing game for relative to side to move. This regression model is then fed to the Engine, where it looks for optimal moves using Negamax with Alpha Beta Pruning, giving an evaluation for each position.
 
+## Current todo and goals
+- Train V1 Evaluation Engine (with at least 2+ million games analysed) (ETA - End of May)
+- Have fully functional UCI compliance (ETA - End of June/start of July)
+- Implement Move Ordering (ETA - mid-July)
+- Implement Transposition tables, killer moves (ETA - August)
+- TrueZero V1 (ETA - End of August)
+
 ## What each file does
 - `ai5.pyx` - used for internal testing, not a UCI compliant way of running the Engine
 - `aiuci.py` - UCI compliant, contains the logic for handling UCI commands
