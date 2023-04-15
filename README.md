@@ -11,7 +11,7 @@ The evaluation learns 📕 from randomly generated games with outcomes and move 
 The chess ♟️ Engine will then play ▶️ games against itself using the evaluation to evalutate chess ♟️ positions, done using  [Negamax with Alpha Beta pruning](https://en.wikipedia.org/wiki/Negamax#Negamax_with_alpha_beta_pruning).
 
 ## How all this works in more detail 🔎
-The Evaluation AI is trained on a SQL database* containing games 🎮 that were previously played 👾 by humans on [Lichess](lichess.com) (taken [here](https://database.lichess.org/)). The AI is then trained  on 20 randomly selected board states 🇺🇸 of each game, given nothing (no prerequisite knowledge) but the board  state (after one-hot  encoding) and turn to move (and nothing else) to predict final outcome, with 1,0 and -1 denoting a winning, 🎖️ an equal outcome (draw) and a losing 🏳️ game for relative to side to move. This regression model is then fed to the Engine, 🚒 where it looks 👀 for optimal moves using 🇻🇮 Negamax with 
+The Evaluation AI is trained on a SQL database* containing games 🎮 that were previously played 👾 on [Lichess](lichess.com) (taken [here](https://database.lichess.org/)). The AI is then trained on 20 randomly selected board states 🇺🇸 of each game, given nothing (no prerequisite knowledge) but the board  state (after one-hot  encoding) and turn to move (and nothing else) to predict final outcome, with 1,0 and -1 denoting a winning, 🎖️ an equal outcome (draw) and a losing 🏳️ game for relative to side to move. This regression model is then fed to the Engine, 🚒 where it looks 👀 for optimal moves using 🇻🇮 Negamax with 
 Beta Pruning, giving an evaluation for each position.
 
 ## Current todo and goals 
@@ -26,12 +26,12 @@ Beta Pruning, giving an evaluation for each position.
 - `aiuci.py` - UCI compliant, contains the logic for handling UCI commands
 - `main.py` - run this file 📁 for the "work-in-progress" 🏗️ experience of the UCI Engine 
 - `aiucieval.py` - UCI compliant version of the code that handles move search 🔍 and evaluation
-- `aieval6.pyx` - used 🇻🇮 for  training the evaluation AI. Handles SQL data accessing and one-hot encoding as well
+- `aieval6.pyx` - used for training the evaluation AI. Handles SQL data accessing and one-hot encoding as well
 
 ## Libraries/technologies used 🔨
 This Python 🐍 Engine uses the following:
 - **Pytorch** - used for creating 🔨 NN
-- **Numpy** - used for processing data (chess board representation after 🇦🇫 one-hot encoding, handling final outcome and final game 👾 result
+- **Numpy** - used for processing data (chess board representation after one-hot encoding, handling final outcome and final game 👾 result
 - **Scikitlearn** - used minimally for splitting data into train/validation sets (will be replaced with Pytorch DataLoader in the future)
 - **Python Chess** - used for handling 🙋‍♂️ board-related code
 - **Cython** - used🇮 for running files at faster speeds 🚅 instead of running 🏃‍♂️ on Vanilla Python 🐍
