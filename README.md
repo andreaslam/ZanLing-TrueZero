@@ -18,6 +18,7 @@ The Evaluation AI is trained on a SQL database* containing games that were previ
 - `aiuci.py` - UCI compliant, contains the logic for handling UCI commands
 - `main.py` - run this file for the "work-in-progress" experience of the UCI Engine
 - `aiucieval.py` - UCI compliant version of the code that handles move search and evaluation
+- `aieval6.pyx` - used for training the evaluation AI. Handles SQL data accessing and one-hot encoding as well
 
 ## Libraries/technologies used
 This Python Engine uses the following:
@@ -25,6 +26,8 @@ This Python Engine uses the following:
 - **Numpy** - used for processing data (chess board representation after one-hot encoding, handling final outcome and final game result
 - **Scikitlearn** - used minimally for splitting data into train/validation sets (will be replaced with Pytorch DataLoader in the future)
 - **Python Chess** - used for handling board-related code
-- Cython - used for running files at faster speeds instead of running on Vanilla Python
+- **Cython** - used for running files at faster speeds instead of running on Vanilla Python
+- **Setuptools** - used in tandem with Cython to Cythonise the Python code
+- **SQLite3** - used for writing/accessing data to the SQL database
 
 *database not uploaded to this GitHub repository 
