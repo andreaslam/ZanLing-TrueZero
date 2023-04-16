@@ -35,9 +35,9 @@ cursor.execute("SELECT COUNT(*) FROM games")
 
 # # Fetch the result
 result = cursor.fetchone()[0]
-print(result)
+# print(result)
 conn.close()
-size = 2000
+size = 50000
 
 
 class DataManager:
@@ -47,7 +47,6 @@ class DataManager:
 
     def get_status(self, move_turn, result):
         status = 0
-        # logic for assigning W/D/L based on side to move
         if (move_turn == 0 and result == "1") or (move_turn == 1 and result == "-1"):
             status = 1
         elif (move_turn == 0 and result == "-1") or (move_turn == 1 and result == "1"):
@@ -57,7 +56,7 @@ class DataManager:
         return status
 
     def board_data(self, board):
-        board_array = np.zeros((8, 8, 13), dtype=np.int8)
+        board_array = np.zeros((8, 8, 13), dtype=np.float32)
         for i in range(64):
             piece = board.piece_at(i)
             if piece is not None:
@@ -83,7 +82,7 @@ class DataManager:
             game = g[2]
             MAX_MOMENTS = min(20, len(game))
             unsampled_idx = [
-                np.random.randint(1, len(game)) for _ in range(MAX_MOMENTS - 1)
+                np.random.randint(10, len(game)) for _ in range(MAX_MOMENTS - 1)
             ]
             game = game.split(" ")
             for move in range(MAX_MOMENTS - 1):
@@ -97,7 +96,9 @@ class DataManager:
                     [self.board_data(board).__next__()]
                 )  # game after one hot encoding
                 # Add move_turn as a feature to matrix_game
-                move_turn = counter % 2
+                move_turn = (
+                    counter % 2
+                )  # TODO: change this so that it outputs 1/-1, which is the same as the status instead of 0,1
                 matrix_game = np.concatenate(
                     (matrix_game, np.array([[move_turn]])), axis=1
                 )
@@ -130,16 +131,13 @@ class Train(Tanh200):
         self.y_train = y_train
         self.X_val = X_val
         self.y_val = y_val
-        
-    def cycle(self, X_train, y_train, X_val, y_val, l_r):
+
+    def cycle(self, X_train, y_train, X_val, y_val):
         model = nn.Sequential(
             nn.Linear(833, 512),
-            nn.Dropout(p=0.1),
-            nn.LeakyReLU(0.25),
-            nn.Linear(512, 128),
-            nn.Dropout(p=0.5),
-            nn.LeakyReLU(0.05),
-            nn.Linear(128, 1),
+            nn.Dropout(p=0.25),
+            nn.ReLU(),
+            nn.Linear(512, 1),
             nn.Dropout(p=0.25),
             Tanh200(),
         )
@@ -160,22 +158,12 @@ class Train(Tanh200):
 
         # loss function and optimizer
         loss_fn = nn.MSELoss()  # mean square error
-        optimizer = optim.AdamW(
-            model.parameters(),
-            lr=l_r,  # 1e-3
-            betas=(0.99, 0.999),
-            eps=1e-08,
-            weight_decay=0,
-            amsgrad=False,
-        )
+        optimizer = optim.AdamW(model.parameters(), lr=1.25e-3)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, factor=0.01, patience=10, verbose=True
+            optimizer, factor=0.9999999, patience=2, verbose=True
         )
-        scheduler2 = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=250, verbose=True
-        )
-        n_epochs = 25  # number of epochs to run optimal = 40, 220
-        batch_size = 64  # size of each batch
+        n_epochs = 200
+        batch_size = 256  # size of each batch
         batch_start = torch.arange(0, len(X_train), batch_size)
         # Hold the best model
         best_mse = np.inf  # initialise value as infinite
@@ -208,7 +196,6 @@ class Train(Tanh200):
             epoch_loss /= len(X_train)
             print(epoch_loss)
             scheduler.step(epoch_loss)
-            scheduler2.step()
             history.append(epoch_loss)
             if epoch_loss < best_mse:
                 best_mse = epoch_loss
@@ -244,20 +231,26 @@ completed = 0
 counter = 1
 all_completed = False
 while all_completed == False:
+    with open("progress.txt", "r+") as f:
+        contents = f.read()
+    contents = contents.split(" ")
+    completed, size = int(contents[0]), int(contents[1])
     not_done = result - completed
     if not_done == 0:
         all_completed = True
+        break
     if not_done < size:  # size is the number of chess games processed/cycle in total
         size = not_done  # this is for the final cycle if there are any remainders
         all_completed = True
+    print("SIZE", size)
+    print("COMPLETED", completed)
     d = DataManager(size, 0)
+    train_data, train_target = None, None # served for clearing variable in loops 
     train_data, train_target = zip(*d.load(completed, size))
     X_train, y_train, X_val, y_val = d.loading(train_data, train_target)
     t = Train(X_train, y_train, X_val, y_val)
-    if completed == 0:
-        t.cycle(X_train, y_train, X_val, y_val, 5e-3)
-    else:
-        lr = 7.5e-5
-        t.cycle(X_train, y_train, X_val, y_val, lr)
+    t.cycle(X_train, y_train, X_val, y_val)
     completed = counter * size
+    with open("progress.txt", "w") as f:  # overwrite file contents
+        f.write(str(completed) + " " + str(size))
     counter += 1
