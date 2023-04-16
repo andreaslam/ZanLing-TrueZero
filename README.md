@@ -23,7 +23,7 @@ Beta Pruning, giving an evaluation for each position.
 
 ## Long term goals and vision
 - Implement reinforcement learning 📘 (specifically genetic 🧬 algorithms) for the AI in order to allow for quicker realisation of chess ♟️ conepts through gameplay.
-- V2 will feature chess ♟️ games 🎮 that are randomly generated instead of taking from games that are played by humans before, to fully realise TrueZero.
+- V2 will feature chess ♟️ games 🎮 that are randomly generated instead of taking from games that are played by humans before, to fully achieve TrueZero.
 
 ## What each file 📁 does
 - `ai5.pyx` - used for internal testing, 🧪📝 not a UCI compliant way of running the Engine
