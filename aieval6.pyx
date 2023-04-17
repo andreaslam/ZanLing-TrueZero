@@ -37,7 +37,7 @@ cursor.execute("SELECT COUNT(*) FROM games")
 result = cursor.fetchone()[0]
 # print(result)
 conn.close()
-size = 50000
+size = 10000
 
 
 class DataManager:
@@ -80,7 +80,7 @@ class DataManager:
 
         for g in tqdm.tqdm(games, desc="each game"):
             game = g[2]
-            MAX_MOMENTS = min(20, len(game)-10)
+            MAX_MOMENTS = min(20, len(game) - 10)
             unsampled_idx = [
                 np.random.randint(10, len(game)) for _ in range(MAX_MOMENTS - 1)
             ]
@@ -103,8 +103,8 @@ class DataManager:
                     (matrix_game, np.array([[move_turn]])), axis=1
                 )
                 yield matrix_game.flatten(), self.get_status(move_turn, g[1])
-
         conn.close()
+        del games
 
     def loading(self, train_data, train_target):
         train_data, train_target = np.array(train_data), np.array(train_target)
@@ -124,42 +124,24 @@ class Tanh200(nn.Module):
         return torch.tanh(x / 200)
 
 
-class Train(Tanh200):
-    def __init__(self, X_train, y_train, X_val, y_val):
+class Train:
+    def __init__(self, X_train, y_train, X_val, y_val, model):
         self.X_train = X_train
         self.y_train = y_train
         self.X_val = X_val
         self.y_val = y_val
+        self.model = model
 
-    def cycle(self, X_train, y_train, X_val, y_val):
-        model = nn.Sequential(
-            nn.Linear(833, 512),
-            nn.Dropout(p=0.25),
-            nn.ReLU(),
-            nn.Linear(512, 1),
-            nn.Dropout(p=0.25),
-            Tanh200(),
-        )
-
+    def cycle(self, X_train, y_train, X_val, y_val, model):
         # Weight initialization
-        try:
-            weights_path = "./zlv6.pt"
-            state_dict = torch.load(weights_path)
-            model.load_state_dict(state_dict)
-        except FileNotFoundError:
-            for m in model.modules():
-                if isinstance(m, nn.Linear):
-                    nn.init.xavier_uniform_(m.weight)
-                    if m.bias is not None:
-                        init.constant_(m.bias, 0)
 
         # scaler = GradScaler()
 
         # loss function and optimizer
         loss_fn = nn.MSELoss()  # mean square error
-        optimizer = optim.AdamW(model.parameters(), lr=1e-2)
+        optimizer = optim.AdamW(model.parameters(), lr=7.5e-3)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, factor=0.75, patience=5, verbose=True
+            optimizer, factor=0.75, patience=3, verbose=True
         )
         n_epochs = 100
         batch_size = 2048  # size of each batch
@@ -202,7 +184,6 @@ class Train(Tanh200):
 
         # load the best weights into the model
         model.load_state_dict(best_weights)
-
         print("MSE: %.2f" % best_mse)
         print("RMSE: %.2f" % np.sqrt(best_mse))
         plt.plot(history)
@@ -227,12 +208,50 @@ class Train(Tanh200):
         del X_val
         del y_train
         del y_val
+        return history[-1]
 
 
 # Training loop
 completed = 0
 counter = 1
 all_completed = False
+
+# define important functions
+
+
+# define function for similarity
+def similarity(population):
+    for i in range(len(population)):
+        for j in range(i + 1, len(population)):
+            agent1 = population[i]
+            agent2 = population[j]
+            SIMILARITY_THRESHOLD = 0.85
+            cosine_similarity = nn.CosineSimilarity(dim=0)
+            euclidean_distance = nn.PairwiseDistance(p=2, keepdim=True)
+            weights1 = [param.data.flatten() for param in agent1.parameters()]
+            weights2 = [param.data.flatten() for param in agent2.parameters()]
+            for w1, w2 in zip(weights1, weights2):
+                distance = euclidean_distance(
+                    w1.clone().detach(), w2.clone().detach()
+                ).item()
+                similarity = cosine_similarity(w1, w2).item()
+                if similarity > SIMILARITY_THRESHOLD or distance > SIMILARITY_THRESHOLD:
+                    # Mutate one of the agents
+                    if np.random.rand() < 0.5:
+                        agent1 = mutate(agent1, np.random.rand())
+                    else:
+                        agent2 = mutate(agent2, np.random.rand())
+
+
+# define mutation
+def mutate(agent, mutation_rate):
+    # Calculate the new mutation rate based on the game score
+    # Mutate the agent's parameters
+    for param in agent.parameters():
+        if np.random.rand() < mutation_rate:
+            param.data += torch.randn(param.shape) * np.random.rand()
+    return agent
+
 
 # progress checking logic
 
@@ -249,6 +268,7 @@ except FileNotFoundError:
 while all_completed == False:
     with open("progress.txt", "r+") as f:
         contents = f.read()
+    NUM_AGENTS = 5
     contents = contents.split(" ")
     completed, size = int(contents[0]), int(contents[1])
     not_done = result - completed
@@ -264,16 +284,78 @@ while all_completed == False:
     train_data, train_target = None, None  # served for clearing variable in loops
     train_data, train_target = zip(*d.load(completed, size))
     X_train, y_train, X_val, y_val = d.loading(train_data, train_target)
-    t = Train(X_train, y_train, X_val, y_val)
-    t.cycle(X_train, y_train, X_val, y_val)
+    model = nn.Sequential(
+        nn.Linear(833, 512),
+        nn.Dropout(p=0.25),
+        nn.ReLU(),
+        nn.Linear(512, 1),
+        nn.Dropout(p=0.25),
+        Tanh200(),
+    )
+    population = [model for _ in range(0, NUM_AGENTS)]
+    try:
+        weights_paths = ["./zlparent1.pt", "./zlparent2.pt"]
+        idx = np.random.randint(0, 2)
+        # NOTE: weights_paths and weights_path are NOT the same!
+        weights_path = weights_paths[idx]
+        state_dict = torch.load(weights_path)
+        for model in population:
+            model.load_state_dict(state_dict)
+    except FileNotFoundError:
+        for mod in population:
+            for m in mod.modules():
+                if isinstance(m, nn.Linear):
+                    nn.init.xavier_uniform_(m.weight)
+                    if m.bias is not None:
+                        init.constant_(m.bias, 0)
+    # make sure every agent is unique
+    similarity(population)
+    results = {}
+    # training the population
+    c = 0
+    for agent in population:
+        t = Train(X_train, y_train, X_val, y_val, agent)
+        score = t.cycle(X_train, y_train, X_val, y_val, agent)
+        results[str(c)] = score
+        c += 1
+    # save the best Agents and breed them
+    results = {
+        k: v
+        for k, v in sorted(results.items(), key=lambda item: item[1], reverse=False)
+    }  # reverse=False to find agents with the lowest MSE score
+    p1 = list(results.values())[0]
+    p2 = list(results.values())[1]
+    # indexing the find the parent among the population
+    parent1 = population[int(p1)]
+    parent2 = population[int(p2)]
+    # save parents' weights
+    torch.save(parent1.state_dict(), "./zlparent1.pt")
+    torch.save(parent2.state_dict(), "./zlparent2.pt")
+    num_of_children = len(population) - 2
+    new_population = []
+    new_population.append(parent1)
+    new_population.append(parent2)
+    for _ in range(num_of_children):
+        child = model
+        for name, param in child.named_parameters():
+            if np.random.rand() > 0.5:
+                param.data.copy_(parent1.state_dict()[name].data)
+            else:
+                param.data.copy_(parent2.state_dict()[name].data)
+        # Perform mutation on the child
+        child = mutate(child, np.random.rand())
+        new_population.append(child)
+    population = new_population
     completed = completed + size
     with open("progress.txt", "w") as f:  # overwrite file contents
         f.write(str(completed) + " " + str(size))
     completed = counter * size
+    del c
     del d
-    del t
+    del new_population
     del X_train
     del y_train
     del X_val
     del y_val
+    del population
     counter += 1
