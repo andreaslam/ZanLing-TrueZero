@@ -158,18 +158,20 @@ class Train(Tanh200):
 
         # loss function and optimizer
         loss_fn = nn.MSELoss()  # mean square error
-        optimizer = optim.AdamW(model.parameters(), lr=1.25e-3)
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, factor=0.9999999, patience=2, verbose=True
+        optimizer = optim.AdamW(
+            model.parameters()
         )
-        n_epochs = 200
-        batch_size = 256  # size of each batch
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, factor=0.5, patience=5, verbose=True
+        )
+        n_epochs = 400  
+        batch_size = 64  # size of each batch
         batch_start = torch.arange(0, len(X_train), batch_size)
         # Hold the best model
         best_mse = np.inf  # initialise value as infinite
         best_weights = None
         history = []
-        accumulation_steps = 4  # accumulate gradients over 4 batches
+        accumulation_steps = 2  # accumulate gradients over 2 batches
         for epoch in tqdm.tqdm(range(n_epochs), desc="Epochs"):
             model.train()
             epoch_loss = 0.0
@@ -230,6 +232,19 @@ class Train(Tanh200):
 completed = 0
 counter = 1
 all_completed = False
+
+# progress checking logic
+
+with open("progress.txt", "w+") as f: # create a file if it doesn't exist already
+    pass
+
+with open("progress.txt", "r") as f:
+    contents = f.read()
+
+if contents == "":
+    with open("progress.txt", "w+") as f:
+        f.write("0 "+ str(size)) # 0 means 0 games processed; starting from scratch, size is number of games to process in one cycle
+
 while all_completed == False:
     with open("progress.txt", "r+") as f:
         contents = f.read()
@@ -250,7 +265,10 @@ while all_completed == False:
     X_train, y_train, X_val, y_val = d.loading(train_data, train_target)
     t = Train(X_train, y_train, X_val, y_val)
     t.cycle(X_train, y_train, X_val, y_val)
-    completed = counter * size
+    completed = completed + size
     with open("progress.txt", "w") as f:  # overwrite file contents
         f.write(str(completed) + " " + str(size))
+    completed = counter * size
+    del d
+    del t
     counter += 1
