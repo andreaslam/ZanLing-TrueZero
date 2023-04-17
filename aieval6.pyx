@@ -272,4 +272,8 @@ while all_completed == False:
     completed = counter * size
     del d
     del t
+    del X_train
+    del y_train
+    del X_val
+    del y_val
     counter += 1
