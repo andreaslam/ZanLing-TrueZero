@@ -80,7 +80,7 @@ class DataManager:
 
         for g in tqdm.tqdm(games, desc="each game"):
             game = g[2]
-            MAX_MOMENTS = min(20, len(game))
+            MAX_MOMENTS = min(20, len(game)-10)
             unsampled_idx = [
                 np.random.randint(10, len(game)) for _ in range(MAX_MOMENTS - 1)
             ]
@@ -108,7 +108,6 @@ class DataManager:
 
     def loading(self, train_data, train_target):
         train_data, train_target = np.array(train_data), np.array(train_target)
-
         X_train, X_val, y_train, y_val = train_test_split(
             train_data, train_target, test_size=0.2, shuffle=True
         )
@@ -158,14 +157,12 @@ class Train(Tanh200):
 
         # loss function and optimizer
         loss_fn = nn.MSELoss()  # mean square error
-        optimizer = optim.AdamW(
-            model.parameters()
-        )
+        optimizer = optim.AdamW(model.parameters())
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, factor=0.5, patience=5, verbose=True
         )
-        n_epochs = 400  
-        batch_size = 64  # size of each batch
+        n_epochs = 100
+        batch_size = 2048  # size of each batch
         batch_start = torch.arange(0, len(X_train), batch_size)
         # Hold the best model
         best_mse = np.inf  # initialise value as infinite
@@ -226,6 +223,10 @@ class Train(Tanh200):
         # return scheduler.optimizer.param_groups[0][
         #     "lr"
         # ]  # get learning rate of training
+        del X_train
+        del X_train
+        del y_train
+        del y_val
 
 
 # Training loop
@@ -235,15 +236,15 @@ all_completed = False
 
 # progress checking logic
 
-with open("progress.txt", "w+") as f: # create a file if it doesn't exist already
-    pass
 
-with open("progress.txt", "r") as f:
-    contents = f.read()
-
-if contents == "":
-    with open("progress.txt", "w+") as f:
-        f.write("0 "+ str(size)) # 0 means 0 games processed; starting from scratch, size is number of games to process in one cycle
+try:
+    with open("progress.txt", "r") as f:
+        contents = f.read()
+except FileNotFoundError:
+    with open("progress.txt", "w+") as f:  # create the file if it does not exist
+        f.write(
+            "0 " + str(size)
+        )  # 0 means 0 games processed; starting from scratch, size is number of games to process in one cycle
 
 while all_completed == False:
     with open("progress.txt", "r+") as f:
@@ -260,7 +261,7 @@ while all_completed == False:
     print("SIZE", size)
     print("COMPLETED", completed)
     d = DataManager(size, 0)
-    train_data, train_target = None, None # served for clearing variable in loops 
+    train_data, train_target = None, None  # served for clearing variable in loops
     train_data, train_target = zip(*d.load(completed, size))
     X_train, y_train, X_val, y_val = d.loading(train_data, train_target)
     t = Train(X_train, y_train, X_val, y_val)
