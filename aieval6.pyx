@@ -157,9 +157,9 @@ class Train(Tanh200):
 
         # loss function and optimizer
         loss_fn = nn.MSELoss()  # mean square error
-        optimizer = optim.AdamW(model.parameters())
+        optimizer = optim.AdamW(model.parameters(), lr=1e-2)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, factor=0.5, patience=5, verbose=True
+            optimizer, factor=0.75, patience=5, verbose=True
         )
         n_epochs = 100
         batch_size = 2048  # size of each batch
@@ -224,7 +224,7 @@ class Train(Tanh200):
         #     "lr"
         # ]  # get learning rate of training
         del X_train
-        del X_train
+        del X_val
         del y_train
         del y_val
 
