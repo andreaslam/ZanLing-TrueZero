@@ -36,6 +36,7 @@ The Evaluation AI is trained on a SQL database* containing games 🎮 that were 
 - `aigamesdb.pyx`- used for turning PGNs from Lichess to UCI notation and storing it to the SQL database (with parameterised inputs)
 - `aigamesrand.pyx` - turning random game PGNs to UCI notation and storing it to the SQL database (with parameterised inputs)
 - `randmovegen.pyx`- used for generating random games in PGN notation. Saves games as .pgn file
+- `fracchess.db` - a sample, smaller database that mirrors the actual database used in training containing a smaller number of games from Lichess
 
 ## Libraries/technologies used 🔨
 This Python 🐍 Engine uses the following:
