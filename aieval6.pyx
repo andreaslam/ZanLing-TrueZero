@@ -323,8 +323,8 @@ while all_completed == False:
         k: v
         for k, v in sorted(results.items(), key=lambda item: item[1], reverse=False)
     }  # reverse=False to find agents with the lowest MSE score
-    p1 = list(results.values())[0]
-    p2 = list(results.values())[1]
+    p1 = list(results.keys())[0]
+    p2 = list(results.keys())[1]
     # indexing the find the parent among the population
     parent1 = population[int(p1)]
     parent2 = population[int(p2)]
