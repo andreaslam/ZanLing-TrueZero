@@ -324,6 +324,7 @@ while all_completed == False:
         del y_train
         del X_val
         del y_val
+        counter += 1
         c += 1
     # save the best Agents and breed them
     results = {
