@@ -263,7 +263,7 @@ except FileNotFoundError:
             "0 " + str(size)
         )  # 0 means 0 games processed; starting from scratch, size is number of games to process in one cycle
 
-previous = 0
+previous = float("inf")
 while all_completed == False:
     model = nn.Sequential(
         nn.Linear(833, 512),
@@ -366,9 +366,5 @@ while all_completed == False:
     del c
     del d
     del new_population
-    del X_train
-    del y_train
-    del X_val
-    del y_val
     del population
     counter += 1
