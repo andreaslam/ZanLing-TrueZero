@@ -265,6 +265,7 @@ except FileNotFoundError:
             "0 " + str(size)
         )  # 0 means 0 games processed; starting from scratch, size is number of games to process in one cycle
 
+previous = 0
 while all_completed == False:
     with open("progress.txt", "r+") as f:
         contents = f.read()
@@ -329,8 +330,13 @@ while all_completed == False:
     parent1 = population[int(p1)]
     parent2 = population[int(p2)]
     # save parents' weights
-    torch.save(parent1.state_dict(), "./zlparent1.pt")
-    torch.save(parent2.state_dict(), "./zlparent2.pt")
+    # index best score
+    best_score = list(results.values())[0]
+    improvement = previous - float(best_score)
+    if improvement >= 0 or completed == 0:
+        torch.save(parent1.state_dict(), "./zlparent1.pt")
+        torch.save(parent2.state_dict(), "./zlparent2.pt")
+    previous = float(best_score)
     num_of_children = len(population) - 2
     new_population = []
     new_population.append(parent1)
