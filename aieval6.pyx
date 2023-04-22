@@ -21,11 +21,9 @@ import sqlite3
 board = chess.Board()
 completed = 0
 # find number of lines in a database
-
+DB_PATH = "./chess_games.db"
 # Connect to the database
-conn = sqlite3.connect(
-    "chess_games.db"
-)  # TODO: implement a variable to replace manually entering DB address
+conn = sqlite3.connect(DB_PATH)  # TODO: implement a variable to replace manually entering DB address
 
 # Create a cursor object
 cursor = conn.cursor()
@@ -70,7 +68,7 @@ class DataManager:
         yield board_array
 
     def load(self, completed, size):
-        conn = sqlite3.connect("chess_games.db")
+        conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         # select all rows from the table
         cursor.execute("SELECT * FROM games LIMIT ? OFFSET ?", (size, completed))
@@ -267,24 +265,6 @@ except FileNotFoundError:
 
 previous = 0
 while all_completed == False:
-    with open("progress.txt", "r+") as f:
-        contents = f.read()
-    NUM_AGENTS = 5
-    contents = contents.split(" ")
-    completed, size = int(contents[0]), int(contents[1])
-    not_done = result - completed
-    if not_done == 0:
-        all_completed = True
-        break
-    if not_done < size:  # size is the number of chess games processed/cycle in total
-        size = not_done  # this is for the final cycle if there are any remainders
-        all_completed = True
-    print("SIZE", size)
-    print("COMPLETED", completed)
-    d = DataManager(size, 0)
-    train_data, train_target = None, None  # served for clearing variable in loops
-    train_data, train_target = zip(*d.load(completed, size))
-    X_train, y_train, X_val, y_val = d.loading(train_data, train_target)
     model = nn.Sequential(
         nn.Linear(833, 512),
         nn.Dropout(p=0.25),
@@ -293,6 +273,7 @@ while all_completed == False:
         nn.Dropout(p=0.25),
         Tanh200(),
     )
+    NUM_AGENTS = 5
     population = [model for _ in range(0, NUM_AGENTS)]
     try:
         weights_paths = ["./zlparent1.pt", "./zlparent2.pt"]
@@ -315,9 +296,34 @@ while all_completed == False:
     # training the population
     c = 0
     for agent in population:
+        with open("progress.txt", "r+") as f:
+            contents = f.read()
+        contents = contents.split(" ")
+        completed, size = int(contents[0]), int(contents[1])
+        not_done = result - completed
+        if not_done == 0:
+            all_completed = True
+            break
+        if not_done < size:  # size is the number of chess games processed/cycle in total
+            size = not_done  # this is for the final cycle if there are any remainders
+            all_completed = True
+        print("SIZE", size)
+        print("COMPLETED", completed)
+        d = DataManager(size, 0)
+        train_data, train_target = None, None  # served for clearing variable in loops
+        train_data, train_target = zip(*d.load(completed, size))
+        X_train, y_train, X_val, y_val = d.loading(train_data, train_target)
         t = Train(X_train, y_train, X_val, y_val, agent)
         score = t.cycle(X_train, y_train, X_val, y_val, agent)
         results[str(c)] = score
+        completed = completed + size
+        with open("progress.txt", "w") as f:  # overwrite file contents
+            f.write(str(completed) + " " + str(size))
+        completed = counter * size
+        del X_train
+        del y_train
+        del X_val
+        del y_val
         c += 1
     # save the best Agents and breed them
     results = {
