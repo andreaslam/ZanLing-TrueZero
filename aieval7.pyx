@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.optim as optim
 from sklearn.model_selection import train_test_split
 import chess
-
+import torch.nn.functional as F
 # from torch.cuda.amp import autocast, GradScaler # NEED GPU
 from chess import Move
 import torch.nn.init as init
@@ -23,7 +23,7 @@ completed = 0
 # find number of lines in a database
 DB_PATH = "./chess_games.db"
 # Connect to the database
-conn = sqlite3.connect(DB_PATH)  # TODO: implement a variable to replace manually entering DB address
+conn = sqlite3.connect(DB_PATH)
 
 # Create a cursor object
 cursor = conn.cursor()
@@ -134,15 +134,16 @@ class Train:
         # Weight initialization
 
         # scaler = GradScaler()
-
+        n_epochs = 100
+        batch_size = 1024  # size of each batch
         # loss function and optimizer
         loss_fn = nn.MSELoss()  # mean square error
         optimizer = optim.AdamW(model.parameters(), lr=7.5e-3)
+        optimizer2 = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, factor=0.75, patience=3, verbose=True
+            optimizer, factor=0.9, patience=3, verbose=True
         )
-        n_epochs = 100
-        batch_size = 2048  # size of each batch
+        scheduler2 = optim.lr_scheduler.ExponentialLR(optimizer2, gamma=0.8,verbose=True)
         batch_start = torch.arange(0, len(X_train), batch_size)
         # Hold the best model
         best_mse = np.inf  # initialise value as infinite
@@ -158,6 +159,7 @@ class Train:
                     y_train[batch_idx : batch_idx + batch_size],
                 )
                 optimizer.zero_grad()
+                optimizer2.zero_grad()
                 y_pred = model(batch_X)
                 loss = loss_fn(y_pred, batch_y.view(-1, 1))
                 # scaler.scale(loss).backward() # NEED GPU
@@ -171,10 +173,12 @@ class Train:
                 loss = loss_fn(y_pred, batch_y.view(-1, 1))
                 loss.backward()
                 optimizer.step()
+                optimizer2.step()
                 epoch_loss += loss.item() * batch_X.shape[0]
             epoch_loss /= len(X_train)
             print(epoch_loss)
             scheduler.step(epoch_loss)
+            scheduler2.step()
             history.append(epoch_loss)
             if epoch_loss < best_mse:
                 best_mse = epoch_loss
@@ -264,25 +268,54 @@ except FileNotFoundError:
         )  # 0 means 0 games processed; starting from scratch, size is number of games to process in one cycle
 
 previous = float("inf")
+
+class ResidualBlock(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(ResidualBlock, self).__init__()
+        self.fc1 = nn.Linear(in_channels, out_channels)
+        self.fc2 = nn.Linear(out_channels, out_channels)
+        
+    def forward(self, x):
+        residual = x
+        x = F.dropout(F.relu(self.fc1(x)), p=0.25)
+        x = self.fc2(x)
+        x += residual
+        x = F.relu(x)
+        return x
+
+class Tanh200(nn.Module):
+    def __init__(self):
+        super(Tanh200, self).__init__()
+        
+    def forward(self, x):
+        return torch.tanh(x * 200)
+
+class ResidualRegressionModel(nn.Module):
+    def __init__(self):
+        super(ResidualRegressionModel, self).__init__()
+        self.fc1 = nn.Linear(833, 512)
+        self.residual_block = ResidualBlock(512, 512)
+        self.fc2 = nn.Linear(512, 1)
+        self.tanh200 = Tanh200()
+        
+    def forward(self, x):
+        x = F.dropout(F.relu(self.fc1(x)), p=0.25)
+        x = self.residual_block(x)
+        x = self.fc2(x)
+        x = self.tanh200(x)
+        return x
+
 while all_completed == False:
-    model = nn.Sequential(
-        nn.Linear(833, 512),
-        nn.Dropout(p=0.25),
-        nn.ReLU(),
-        nn.Linear(512, 1),
-        nn.Dropout(p=0.25),
-        Tanh200(),
-    )
     NUM_AGENTS = 5
-    population = [model for _ in range(0, NUM_AGENTS)]
+    population = [ResidualRegressionModel() for _ in range(0, NUM_AGENTS)]
+    weights_paths = ["./zlparent1.pt", "./zlparent2.pt"]
     try:
-        weights_paths = ["./zlparent1.pt", "./zlparent2.pt"]
         idx = np.random.randint(0, 2)
         # NOTE: weights_paths and weights_path are NOT the same!
         weights_path = weights_paths[idx]
         state_dict = torch.load(weights_path)
-        for model in population:
-            model.load_state_dict(state_dict)
+        for x in population:
+            x.load_state_dict(state_dict)
     except FileNotFoundError:
         for mod in population:
             for m in mod.modules():
@@ -292,6 +325,14 @@ while all_completed == False:
                         init.constant_(m.bias, 0)
     # make sure every agent is unique
     similarity(population)
+    if completed != 0:
+        population = population[2:]
+        # add parents in full form (unmutated elitism)
+        for parent in weights_paths:
+            model = ResidualRegressionModel()
+            population.append(model)
+            state_dict = torch.load(parent)
+            model.load_state_dict(state_dict)
     results = {}
     # training the population
     c = 0
@@ -304,7 +345,9 @@ while all_completed == False:
         if not_done == 0:
             all_completed = True
             break
-        if not_done < size:  # size is the number of chess games processed/cycle in total
+        if (
+            not_done < size
+        ):  # size is the number of chess games processed/cycle in total
             size = not_done  # this is for the final cycle if there are any remainders
             all_completed = True
         print("SIZE", size)
@@ -324,13 +367,13 @@ while all_completed == False:
         del y_train
         del X_val
         del y_val
-        counter += 1
         c += 1
     # save the best Agents and breed them
     results = {
         k: v
         for k, v in sorted(results.items(), key=lambda item: item[1], reverse=False)
     }  # reverse=False to find agents with the lowest MSE score
+    print(results)
     p1 = list(results.keys())[0]
     p2 = list(results.keys())[1]
     # indexing the find the parent among the population
@@ -340,6 +383,7 @@ while all_completed == False:
     # index best score
     best_score = list(results.values())[0]
     improvement = previous - float(best_score)
+    print(improvement)
     if improvement >= 0 or completed == 0:
         torch.save(parent1.state_dict(), "./zlparent1.pt")
         torch.save(parent2.state_dict(), "./zlparent2.pt")
@@ -349,7 +393,7 @@ while all_completed == False:
     new_population.append(parent1)
     new_population.append(parent2)
     for _ in range(num_of_children):
-        child = model
+        child = ResidualRegressionModel()
         for name, param in child.named_parameters():
             if np.random.rand() > 0.5:
                 param.data.copy_(parent1.state_dict()[name].data)
@@ -359,12 +403,6 @@ while all_completed == False:
         child = mutate(child, np.random.rand())
         new_population.append(child)
     population = new_population
-    completed = completed + size
-    with open("progress.txt", "w") as f:  # overwrite file contents
-        f.write(str(completed) + " " + str(size))
-    completed = counter * size
     del c
     del d
-    del new_population
-    del population
     counter += 1
