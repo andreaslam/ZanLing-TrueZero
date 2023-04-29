@@ -1,5 +1,5 @@
-# ACTUAL
-# zan1ling4 真零 | TrueZero
+# zan1ling4 | 真零 | (pronounced Jun Ling)
+# imports
 import numpy as np
 import chess
 import torch
@@ -9,14 +9,20 @@ import sqlite3
 import matplotlib.pyplot as plt
 import tqdm
 from chess import Move
+import torch.nn.init as init
+from sklearn.model_selection import train_test_split
+import copy
+
 # puzzle presets
 board = chess.Board()
 completed = 0
 # find number of lines in a database
 
+DB_LOCATION = "./chess_games.db"
+
 # Connect to the database
 conn = sqlite3.connect(
-    "chess_games.db"
+    DB_LOCATION
 )  # TODO: implement a variable to replace manually entering DB address
 
 # Create a cursor object
@@ -62,7 +68,7 @@ class DataManager:
         yield board_array
 
     def load(self, completed, size):
-        conn = sqlite3.connect("chess_games.db")
+        conn = sqlite3.connect(DB_LOCATION)
         cursor = conn.cursor()
         # select all rows from the table
         cursor.execute("SELECT * FROM games LIMIT ? OFFSET ?", (size, completed))
@@ -122,21 +128,22 @@ class Tanh200(nn.Module):
 class Agent(nn.Module):
     def __init__(self):
         super().__init__()
-        self.fc1 = nn.Linear(832, 512)
+        self.fc1 = nn.Linear(833, 512)
         self.dropout1 = nn.Dropout(p=0.25)
         self.relu = nn.ReLU()
         self.layer2 = nn.Linear(512, 1)
         self.dropout2 = nn.Dropout(p=0.25)
         self.tanh200 = Tanh200()
         self.hidden_layers = nn.ModuleList()
-        self.optimizer = optim.Adam(self.parameters(), lr=1e-3)
-        self.scheduler = optim.lr_scheduler.StepLR(
-            self.optimizer, step_size=10, gamma=0.5
-        )
+
+        # Initialize weights of Linear layers
+        init.uniform_(self.fc1.weight, -1, 1)
+        init.uniform_(self.layer2.weight, -1, 1)
+        
         self.loss = nn.MSELoss()
 
     def forward(self, x):
-        x = self.layer1(x)
+        x = self.fc1(x)
         x = self.dropout1(x)
         x = self.relu(x)
         x = self.layer2(x)
@@ -150,26 +157,25 @@ class Train:
         self.X_train = X_train
         self.y_train = y_train
         self.X_val = X_val
-        self.y_val = y_train
+        self.y_val = y_val
         self.model = model
 
     def cycle(self, X_train, y_train, X_val, y_val, model):
         # loss function and optimizer
         loss_fn = nn.MSELoss()  # mean square error
-        optimizer = optim.AdamW(model.parameters(), lr=1e-2)
+        optimizer = optim.AdamW(model.parameters(), lr=1e-3)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, factor=0.75, patience=5, verbose=True
         )
         n_epochs = 100
-        batch_size = 2048  # size of each batch
+        batch_size = 4096  # size of each batch
         batch_start = torch.arange(0, len(X_train), batch_size)
         # Hold the best model
         best_mse = np.inf  # initialise value as infinite
         best_weights = None
         history = []
         accumulation_steps = 2  # accumulate gradients over 2 batches
-        for epoch in tqdm.tqdm(range(n_epochs), desc="Epochs"):
-            model.train()
+        for _ in tqdm.tqdm(range(n_epochs), desc="Epochs"):
             epoch_loss = 0.0
             for i, batch_idx in enumerate(batch_start):
                 batch_X, batch_y = (
@@ -177,7 +183,7 @@ class Train:
                     y_train[batch_idx : batch_idx + batch_size],
                 )
                 optimizer.zero_grad()
-                y_pred = model.forward()
+                y_pred = model.forward(batch_X)
                 loss = loss_fn(y_pred, batch_y.view(-1, 1))
                 # scaler.scale(loss).backward() # NEED GPU
 
@@ -199,8 +205,8 @@ class Train:
                 best_mse = epoch_loss
                 best_weights = copy.deepcopy(model.state_dict())
 
-        # load the best weights into the model
-        model.load_state_dict(best_weights)
+            # load the best weights into the model
+            model.load_state_dict(best_weights)
 
         print("MSE: %.2f" % best_mse)
         print("RMSE: %.2f" % np.sqrt(best_mse))
@@ -210,13 +216,12 @@ class Train:
         plt.ylabel("Epoch Loss")
         plt.draw()
         plt.savefig("ai-eval-losses.jpg")
-        model.eval()
         with torch.no_grad():
             # Test out inference with 5 samples
             for i in range(5):
                 X_sample = X_val[i : i + 1]
                 X_sample = X_sample.clone().detach()
-                y_pred = model(X_sample)
+                y_pred = model.forward(X_sample)
                 print(y_pred)
         torch.save(best_weights, "zlv6.pt")
         # return scheduler.optimizer.param_groups[0][
@@ -250,17 +255,14 @@ counter = 1
 all_completed = False
 
 
-def mutate(agent, mutation_rate, score):
+def mutate(agent, mutation_rate):
     # Calculate the new mutation rate based on the game score
-    if score < 0:
-        mutation_rate = max(0.8, mutation_rate - 0.1)
-    elif score > 0:
-        mutation_rate = min(0.2, mutation_rate + 0.1)
     # Mutate the agent's parameters
     for param in agent.parameters():
         if np.random.rand() < mutation_rate:
             param.data += torch.randn(param.shape) * np.random.rand()
     return agent
+
 
 try:
     with open("progress.txt", "r") as f:
@@ -270,6 +272,29 @@ except FileNotFoundError:
         f.write(
             "0 " + str(size)
         )  # 0 means 0 games processed; starting from scratch, size is number of games to process in one cycle
+
+
+def similarity(population):
+    for i in range(len(population)):
+        for j in range(i + 1, len(population)):
+            agent1 = population[i]
+            agent2 = population[j]
+            SIMILARITY_THRESHOLD = 0.85
+            cosine_similarity = nn.CosineSimilarity(dim=0)
+            euclidean_distance = nn.PairwiseDistance(p=2, keepdim=True)
+            weights1 = [param.data.flatten() for param in agent1.parameters()]
+            weights2 = [param.data.flatten() for param in agent2.parameters()]
+            for w1, w2 in zip(weights1, weights2):
+                distance = euclidean_distance(
+                    w1.clone().detach(), w2.clone().detach()
+                ).item()
+                similarity = cosine_similarity(w1, w2).item()
+                if similarity > SIMILARITY_THRESHOLD or distance > SIMILARITY_THRESHOLD:
+                    # Mutate one of the agents
+                    if np.random.rand() < 0.5:
+                        agent1 = mutate(agent1, np.random.rand())
+                    else:
+                        agent2 = mutate(agent2, np.random.rand())
 
 
 # instantiate population
@@ -296,30 +321,35 @@ while all_completed == False:
     X_train, y_train, X_val, y_val = d.loading(train_data, train_target)
     # repeat the training process for all agents in population
     # load weights onto AI
+    results = {}
+    similarity(population)
     for agent in population:
         decider = np.random.rand()
-
         if decider > 0.5:
             weights_path = "./zlparent1.pt"
         else:
             weights_path = "./zlparent2.pt"
-        state_dict = torch.load(weights_path)
-        agent.load_state_dict(state_dict)
-    results = {}
-    agent = population[count]
-    t = Train(X_train, y_train, X_val, y_val, agent)
-    score = t.cycle(X_train, y_train, X_val, y_val, agent)
-    results[count] = score
-    completed = completed + size
-    count += 1
+
+        try:
+            state_dict = torch.load(weights_path)
+            agent.load_state_dict(state_dict)
+        except Exception:
+            pass
+        agent = population[count]
+        t = Train(X_train, y_train, X_val, y_val, agent)
+        score = t.cycle(X_train, y_train, X_val, y_val, agent)
+        results[count] = score
+        completed = completed + size
+        count += 1
     if count == POPULATION_SIZE:  # reached end of list index
         count = 0  # reset back to 0 for indexing
         results = {
             k: v
             for k, v in sorted(
-                results.items(), key=lambda item: item[1], reverse=True
+                results.items(), key=lambda item: item[1], reverse=False
             )  # reverse=False to find the best move with highest score
         }
+        print(results)
         p1 = list(results.keys())[0]
         p2 = list(results.keys())[1]
         parent1 = population[p1]
@@ -328,16 +358,12 @@ while all_completed == False:
         new_population.append(parent1)
         new_population.append(parent2)
         torch.save(
-            torch.save(
-                parent1.state_dict(),
-                "./zlparent1.pt",
-            )
+            parent1.state_dict(),
+            "./zlparent1.pt",
         )
         torch.save(
-            torch.save(
-                parent2.state_dict(),
-                "./zlparent2.pt",
-            )
+            parent2.state_dict(),
+            "./zlparent2.pt",
         )
         for _ in range(POPULATION_SIZE - 2):  # exclude parents, already included
             child = Agent()
@@ -346,9 +372,10 @@ while all_completed == False:
                     param.data.copy_(parent1.state_dict()[name].data)
                 else:
                     param.data.copy_(parent2.state_dict()[name].data)
-            child = mutate(child, np.random.rand(), np.random.rand())
+            child = mutate(child, np.random.rand())
             new_population.append(child)
-    population = new_population
+        population = new_population
+        del new_population
     with open("progress.txt", "w") as f:  # overwrite file contents
         f.write(str(completed) + " " + str(size))
     completed = counter * size
@@ -358,5 +385,4 @@ while all_completed == False:
     del y_train
     del X_val
     del y_val
-    del new_population
     counter += 1
