@@ -122,7 +122,7 @@ class Tanh200(nn.Module):
         super(Tanh200, self).__init__()
 
     def forward(self, x):
-        return torch.tanh(x) * 200
+        return torch.tanh(x/200)
 
 
 class Agent(nn.Module):
