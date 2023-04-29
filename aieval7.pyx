@@ -1,29 +1,23 @@
-# zan1ling4 | 真零 | (pronounced Jun Ling)
-# imports
+# ACTUAL
+# zan1ling4 真零 | TrueZero
 import numpy as np
-import torch
-import matplotlib.pyplot as plt
-import copy
-import tqdm
-import torch.nn as nn
-import torch.optim as optim
-from sklearn.model_selection import train_test_split
 import chess
-import torch.nn.functional as F
-# from torch.cuda.amp import autocast, GradScaler # NEED GPU
-from chess import Move
-import torch.nn.init as init
-
-# from memory_profiler import profile
+import torch
+from torch import nn
+from torch import optim
 import sqlite3
-
+import matplotlib.pyplot as plt
+import tqdm
+from chess import Move
 # puzzle presets
 board = chess.Board()
 completed = 0
 # find number of lines in a database
-DB_PATH = "./chess_games.db"
+
 # Connect to the database
-conn = sqlite3.connect(DB_PATH)
+conn = sqlite3.connect(
+    "chess_games.db"
+)  # TODO: implement a variable to replace manually entering DB address
 
 # Create a cursor object
 cursor = conn.cursor()
@@ -35,7 +29,7 @@ cursor.execute("SELECT COUNT(*) FROM games")
 result = cursor.fetchone()[0]
 # print(result)
 conn.close()
-size = 10000
+size = 50000
 
 
 class DataManager:
@@ -68,7 +62,7 @@ class DataManager:
         yield board_array
 
     def load(self, completed, size):
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect("chess_games.db")
         cursor = conn.cursor()
         # select all rows from the table
         cursor.execute("SELECT * FROM games LIMIT ? OFFSET ?", (size, completed))
@@ -101,8 +95,8 @@ class DataManager:
                     (matrix_game, np.array([[move_turn]])), axis=1
                 )
                 yield matrix_game.flatten(), self.get_status(move_turn, g[1])
+
         conn.close()
-        del games
 
     def loading(self, train_data, train_target):
         train_data, train_target = np.array(train_data), np.array(train_target)
@@ -118,8 +112,37 @@ class DataManager:
 
 
 class Tanh200(nn.Module):
+    def __init__(self):
+        super(Tanh200, self).__init__()
+
     def forward(self, x):
-        return torch.tanh(x / 200)
+        return torch.tanh(x) * 200
+
+
+class Agent(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc1 = nn.Linear(832, 512)
+        self.dropout1 = nn.Dropout(p=0.25)
+        self.relu = nn.ReLU()
+        self.layer2 = nn.Linear(512, 1)
+        self.dropout2 = nn.Dropout(p=0.25)
+        self.tanh200 = Tanh200()
+        self.hidden_layers = nn.ModuleList()
+        self.optimizer = optim.Adam(self.parameters(), lr=1e-3)
+        self.scheduler = optim.lr_scheduler.StepLR(
+            self.optimizer, step_size=10, gamma=0.5
+        )
+        self.loss = nn.MSELoss()
+
+    def forward(self, x):
+        x = self.layer1(x)
+        x = self.dropout1(x)
+        x = self.relu(x)
+        x = self.layer2(x)
+        x = self.dropout2(x)
+        x = self.tanh200(x)
+        return x
 
 
 class Train:
@@ -127,23 +150,18 @@ class Train:
         self.X_train = X_train
         self.y_train = y_train
         self.X_val = X_val
-        self.y_val = y_val
+        self.y_val = y_train
         self.model = model
 
     def cycle(self, X_train, y_train, X_val, y_val, model):
-        # Weight initialization
-
-        # scaler = GradScaler()
-        n_epochs = 100
-        batch_size = 1024  # size of each batch
         # loss function and optimizer
         loss_fn = nn.MSELoss()  # mean square error
-        optimizer = optim.AdamW(model.parameters(), lr=7.5e-3)
-        optimizer2 = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
+        optimizer = optim.AdamW(model.parameters(), lr=1e-2)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, factor=0.9, patience=3, verbose=True
+            optimizer, factor=0.75, patience=5, verbose=True
         )
-        scheduler2 = optim.lr_scheduler.ExponentialLR(optimizer2, gamma=0.8,verbose=True)
+        n_epochs = 100
+        batch_size = 2048  # size of each batch
         batch_start = torch.arange(0, len(X_train), batch_size)
         # Hold the best model
         best_mse = np.inf  # initialise value as infinite
@@ -159,8 +177,7 @@ class Train:
                     y_train[batch_idx : batch_idx + batch_size],
                 )
                 optimizer.zero_grad()
-                optimizer2.zero_grad()
-                y_pred = model(batch_X)
+                y_pred = model.forward()
                 loss = loss_fn(y_pred, batch_y.view(-1, 1))
                 # scaler.scale(loss).backward() # NEED GPU
 
@@ -173,12 +190,10 @@ class Train:
                 loss = loss_fn(y_pred, batch_y.view(-1, 1))
                 loss.backward()
                 optimizer.step()
-                optimizer2.step()
                 epoch_loss += loss.item() * batch_X.shape[0]
             epoch_loss /= len(X_train)
             print(epoch_loss)
             scheduler.step(epoch_loss)
-            scheduler2.step()
             history.append(epoch_loss)
             if epoch_loss < best_mse:
                 best_mse = epoch_loss
@@ -186,6 +201,7 @@ class Train:
 
         # load the best weights into the model
         model.load_state_dict(best_weights)
+
         print("MSE: %.2f" % best_mse)
         print("RMSE: %.2f" % np.sqrt(best_mse))
         plt.plot(history)
@@ -210,53 +226,41 @@ class Train:
         del X_val
         del y_train
         del y_val
-        return history[-1]
+        return best_mse
 
 
+def board_data(board):
+    board_array = np.zeros((8, 8, 13), dtype=np.int8)
+    for i in range(64):
+        piece = board.piece_at(i)
+        if piece is not None:
+            color = int(piece.color)
+            piece_type = piece.piece_type - 1
+            board_array[i // 8][i % 8][piece_type + 6 * color] = 1
+        else:
+            board_array[i // 8][i % 8][-1] = 1
+    board_array = board_array.flatten()
+    return board_array
+
+
+# Define genetic algorithm parameters
 # Training loop
 completed = 0
 counter = 1
 all_completed = False
 
-# define important functions
 
-
-# define function for similarity
-def similarity(population):
-    for i in range(len(population)):
-        for j in range(i + 1, len(population)):
-            agent1 = population[i]
-            agent2 = population[j]
-            SIMILARITY_THRESHOLD = 0.85
-            cosine_similarity = nn.CosineSimilarity(dim=0)
-            euclidean_distance = nn.PairwiseDistance(p=2, keepdim=True)
-            weights1 = [param.data.flatten() for param in agent1.parameters()]
-            weights2 = [param.data.flatten() for param in agent2.parameters()]
-            for w1, w2 in zip(weights1, weights2):
-                distance = euclidean_distance(
-                    w1.clone().detach(), w2.clone().detach()
-                ).item()
-                similarity = cosine_similarity(w1, w2).item()
-                if similarity > SIMILARITY_THRESHOLD or distance > SIMILARITY_THRESHOLD:
-                    # Mutate one of the agents
-                    if np.random.rand() < 0.5:
-                        agent1 = mutate(agent1, np.random.rand())
-                    else:
-                        agent2 = mutate(agent2, np.random.rand())
-
-
-# define mutation
-def mutate(agent, mutation_rate):
+def mutate(agent, mutation_rate, score):
     # Calculate the new mutation rate based on the game score
+    if score < 0:
+        mutation_rate = max(0.8, mutation_rate - 0.1)
+    elif score > 0:
+        mutation_rate = min(0.2, mutation_rate + 0.1)
     # Mutate the agent's parameters
     for param in agent.parameters():
         if np.random.rand() < mutation_rate:
             param.data += torch.randn(param.shape) * np.random.rand()
     return agent
-
-
-# progress checking logic
-
 
 try:
     with open("progress.txt", "r") as f:
@@ -267,142 +271,92 @@ except FileNotFoundError:
             "0 " + str(size)
         )  # 0 means 0 games processed; starting from scratch, size is number of games to process in one cycle
 
-previous = float("inf")
 
-class ResidualBlock(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(ResidualBlock, self).__init__()
-        self.fc1 = nn.Linear(in_channels, out_channels)
-        self.fc2 = nn.Linear(out_channels, out_channels)
-        
-    def forward(self, x):
-        residual = x
-        x = F.dropout(F.relu(self.fc1(x)), p=0.25)
-        x = self.fc2(x)
-        x += residual
-        x = F.relu(x)
-        return x
-
-class Tanh200(nn.Module):
-    def __init__(self):
-        super(Tanh200, self).__init__()
-        
-    def forward(self, x):
-        return torch.tanh(x * 200)
-
-class ResidualRegressionModel(nn.Module):
-    def __init__(self):
-        super(ResidualRegressionModel, self).__init__()
-        self.fc1 = nn.Linear(833, 512)
-        self.residual_block = ResidualBlock(512, 512)
-        self.fc2 = nn.Linear(512, 1)
-        self.tanh200 = Tanh200()
-        
-    def forward(self, x):
-        x = F.dropout(F.relu(self.fc1(x)), p=0.25)
-        x = self.residual_block(x)
-        x = self.fc2(x)
-        x = self.tanh200(x)
-        return x
-
+# instantiate population
+POPULATION_SIZE = 5
+population = [Agent() for _ in range(POPULATION_SIZE)]
+count = 0  # used for indexing which agent it is to train now
 while all_completed == False:
-    NUM_AGENTS = 5
-    population = [ResidualRegressionModel() for _ in range(0, NUM_AGENTS)]
-    weights_paths = ["./zlparent1.pt", "./zlparent2.pt"]
-    try:
-        idx = np.random.randint(0, 2)
-        # NOTE: weights_paths and weights_path are NOT the same!
-        weights_path = weights_paths[idx]
-        state_dict = torch.load(weights_path)
-        for x in population:
-            x.load_state_dict(state_dict)
-    except FileNotFoundError:
-        for mod in population:
-            for m in mod.modules():
-                if isinstance(m, nn.Linear):
-                    nn.init.xavier_uniform_(m.weight)
-                    if m.bias is not None:
-                        init.constant_(m.bias, 0)
-    # make sure every agent is unique
-    similarity(population)
-    if completed != 0:
-        population = population[2:]
-        # add parents in full form (unmutated elitism)
-        for parent in weights_paths:
-            model = ResidualRegressionModel()
-            population.append(model)
-            state_dict = torch.load(parent)
-            model.load_state_dict(state_dict)
-    results = {}
-    # training the population
-    c = 0
+    with open("progress.txt", "r+") as f:
+        contents = f.read()
+    contents = contents.split(" ")
+    completed, size = int(contents[0]), int(contents[1])
+    not_done = result - completed
+    if not_done == 0:
+        all_completed = True
+        break
+    if not_done < size:  # size is the number of chess games processed/cycle in total
+        size = not_done  # this is for the final cycle if there are any remainders
+        all_completed = True
+    print("SIZE", size)
+    print("COMPLETED", completed)
+    d = DataManager(size, 0)
+    train_data, train_target = None, None  # served for clearing variable in loops
+    train_data, train_target = zip(*d.load(completed, size))
+    X_train, y_train, X_val, y_val = d.loading(train_data, train_target)
+    # repeat the training process for all agents in population
+    # load weights onto AI
     for agent in population:
-        with open("progress.txt", "r+") as f:
-            contents = f.read()
-        contents = contents.split(" ")
-        completed, size = int(contents[0]), int(contents[1])
-        not_done = result - completed
-        if not_done == 0:
-            all_completed = True
-            break
-        if (
-            not_done < size
-        ):  # size is the number of chess games processed/cycle in total
-            size = not_done  # this is for the final cycle if there are any remainders
-            all_completed = True
-        print("SIZE", size)
-        print("COMPLETED", completed)
-        d = DataManager(size, 0)
-        train_data, train_target = None, None  # served for clearing variable in loops
-        train_data, train_target = zip(*d.load(completed, size))
-        X_train, y_train, X_val, y_val = d.loading(train_data, train_target)
-        t = Train(X_train, y_train, X_val, y_val, agent)
-        score = t.cycle(X_train, y_train, X_val, y_val, agent)
-        results[str(c)] = score
-        completed = completed + size
-        with open("progress.txt", "w") as f:  # overwrite file contents
-            f.write(str(completed) + " " + str(size))
-        completed = counter * size
-        del X_train
-        del y_train
-        del X_val
-        del y_val
-        c += 1
-    # save the best Agents and breed them
-    results = {
-        k: v
-        for k, v in sorted(results.items(), key=lambda item: item[1], reverse=False)
-    }  # reverse=False to find agents with the lowest MSE score
-    print(results)
-    p1 = list(results.keys())[0]
-    p2 = list(results.keys())[1]
-    # indexing the find the parent among the population
-    parent1 = population[int(p1)]
-    parent2 = population[int(p2)]
-    # save parents' weights
-    # index best score
-    best_score = list(results.values())[0]
-    improvement = previous - float(best_score)
-    print(improvement)
-    if improvement >= 0 or completed == 0:
-        torch.save(parent1.state_dict(), "./zlparent1.pt")
-        torch.save(parent2.state_dict(), "./zlparent2.pt")
-    previous = float(best_score)
-    num_of_children = len(population) - 2
-    new_population = []
-    new_population.append(parent1)
-    new_population.append(parent2)
-    for _ in range(num_of_children):
-        child = ResidualRegressionModel()
-        for name, param in child.named_parameters():
-            if np.random.rand() > 0.5:
-                param.data.copy_(parent1.state_dict()[name].data)
-            else:
-                param.data.copy_(parent2.state_dict()[name].data)
-        # Perform mutation on the child
-        child = mutate(child, np.random.rand())
-        new_population.append(child)
+        decider = np.random.rand()
+
+        if decider > 0.5:
+            weights_path = "./zlparent1.pt"
+        else:
+            weights_path = "./zlparent2.pt"
+        state_dict = torch.load(weights_path)
+        agent.load_state_dict(state_dict)
+    results = {}
+    agent = population[count]
+    t = Train(X_train, y_train, X_val, y_val, agent)
+    score = t.cycle(X_train, y_train, X_val, y_val, agent)
+    results[count] = score
+    completed = completed + size
+    count += 1
+    if count == POPULATION_SIZE:  # reached end of list index
+        count = 0  # reset back to 0 for indexing
+        results = {
+            k: v
+            for k, v in sorted(
+                results.items(), key=lambda item: item[1], reverse=True
+            )  # reverse=False to find the best move with highest score
+        }
+        p1 = list(results.keys())[0]
+        p2 = list(results.keys())[1]
+        parent1 = population[p1]
+        parent2 = population[p2]
+        new_population = []
+        new_population.append(parent1)
+        new_population.append(parent2)
+        torch.save(
+            torch.save(
+                parent1.state_dict(),
+                "./zlparent1.pt",
+            )
+        )
+        torch.save(
+            torch.save(
+                parent2.state_dict(),
+                "./zlparent2.pt",
+            )
+        )
+        for _ in range(POPULATION_SIZE - 2):  # exclude parents, already included
+            child = Agent()
+            for name, param in child.named_parameters():
+                if np.random.rand() > 0.5:
+                    param.data.copy_(parent1.state_dict()[name].data)
+                else:
+                    param.data.copy_(parent2.state_dict()[name].data)
+            child = mutate(child, np.random.rand(), np.random.rand())
+            new_population.append(child)
     population = new_population
-    del c
+    with open("progress.txt", "w") as f:  # overwrite file contents
+        f.write(str(completed) + " " + str(size))
+    completed = counter * size
     del d
+    del t
+    del X_train
+    del y_train
+    del X_val
+    del y_val
+    del new_population
     counter += 1
