@@ -15,7 +15,6 @@ The Evaluation AI is trained on a SQL database* containing games 🎮 that were 
 
 ## Features in progress
 - Implement finding best hyperparameters using genetic 🧬 algorithm 🔍
-- Implement residual characteristics to NN
 
 ## Current todo and goals 
 - Train V1 Evaluation Engine (with at least 3+ million games 🎮 analysed) (ETA - End 🔚 of May)
