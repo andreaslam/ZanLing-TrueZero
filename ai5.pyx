@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import chess
 from chess import Move
+import torch.nn.init as init
 
 # set up AI (Sequential NN)
 
@@ -13,17 +14,35 @@ class Tanh200(nn.Module):
         return torch.tanh(x / 200)
 
 
-model = nn.Sequential(
-    nn.Linear(833, 512),
-    nn.Dropout(p=0.25),
-    nn.ReLU(),
-    nn.Linear(512, 1),
-    nn.Dropout(p=0.25),
-    Tanh200(),
-)
+class Agent(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc1 = nn.Linear(833, 512)
+        self.dropout1 = nn.Dropout(p=0.25)
+        self.relu = nn.LeakyReLU(0.05)
+        self.layer2 = nn.Linear(512, 1)
+        self.dropout2 = nn.Dropout(p=0.25)
+        self.tanh200 = Tanh200()
+        self.hidden_layers = nn.ModuleList()
 
-model.eval()
-weights_path = "./zlv6_1.pt"
+        # Initialize weights of Linear layers
+        init.uniform_(self.fc1.weight, -1, 1)
+        init.uniform_(self.layer2.weight, -1, 1)
+
+        self.loss = nn.MSELoss()
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.dropout1(x)
+        x = self.relu(x)
+        x = self.layer2(x)
+        x = self.dropout2(x)
+        x = self.tanh200(x)
+        return x
+
+
+model = Agent()
+weights_path = "./zlparent1.pt"
 state_dict = torch.load(weights_path)
 model.load_state_dict(state_dict)
 
@@ -55,8 +74,12 @@ def negamax_ab(board, alpha, beta, colour, depth=2):
             (matrix_game, np.array([[move_turn]])), axis=1
         )  # have to append the move turn - the AI needs to know this
         matrix_game = torch.tensor(matrix_game, dtype=torch.float32)
-        score = model(matrix_game) # EVALUTATION - high score for winning (if white/black wins, high score, vice versa)
+        score = model(
+            matrix_game
+        )  # EVALUTATION - high score for winning (if white/black wins, high score, vice versa)
         score = float(score)
+        if board.is_game_over():
+            score = 2
         return score * colour
 
     child_nodes = list(board.legal_moves)
@@ -91,7 +114,7 @@ def play_game(NUMBER_OF_GAMES):
             with open("ai_gamesNN.txt", "a+") as f:
                 f.write(str(legal_moves[chosen_move]))
                 f.write(" ")
-            colour = colour * - 1
+            colour = colour * -1
             print(str(legal_moves[chosen_move]))
         while not board.is_game_over():
             legal_moves = list(board.legal_moves)
@@ -107,7 +130,10 @@ def play_game(NUMBER_OF_GAMES):
                     m_dict.items(), key=lambda item: item[1], reverse=True
                 )  # reverse=False to find the best move with highest score
             }
-            best_move = list(m_dict.keys())[0] # best move, first key
+            if colour == 1:
+                best_move = list(m_dict.keys())[0]  # best move, first key
+            else:
+                best_move = list(m_dict.keys())[-1]
             print(m_dict)
             print(best_move)
             with open("ai_gamesNN.txt", "a+") as f:
