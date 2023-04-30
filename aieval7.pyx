@@ -67,6 +67,7 @@ class DataManager:
         # board_array.shape = 832 (1D)
         yield board_array
 
+
     def load(self, completed, size):
         conn = sqlite3.connect(DB_LOCATION)
         cursor = conn.cursor()
@@ -103,13 +104,16 @@ class DataManager:
                 yield matrix_game.flatten(), self.get_status(move_turn, g[1])
 
         conn.close()
+        del games
 
+    
     def loading(self, train_data, train_target):
         train_data, train_target = np.array(train_data), np.array(train_target)
         X_train, X_val, y_train, y_val = train_test_split(
             train_data, train_target, test_size=0.2, shuffle=True
         )
-
+        del train_data
+        del train_target
         X_train = torch.tensor(X_train, dtype=torch.float32)
         y_train = torch.tensor(y_train, dtype=torch.float32)
         X_val = torch.tensor(X_val, dtype=torch.float32)
@@ -122,7 +126,7 @@ class Tanh200(nn.Module):
         super(Tanh200, self).__init__()
 
     def forward(self, x):
-        return torch.tanh(x/200)
+        return torch.tanh(x / 200)
 
 
 class Agent(nn.Module):
@@ -130,7 +134,7 @@ class Agent(nn.Module):
         super().__init__()
         self.fc1 = nn.Linear(833, 512)
         self.dropout1 = nn.Dropout(p=0.25)
-        self.relu = nn.ReLU()
+        self.relu = nn.LeakyReLU(0.05)
         self.layer2 = nn.Linear(512, 1)
         self.dropout2 = nn.Dropout(p=0.25)
         self.tanh200 = Tanh200()
@@ -139,7 +143,7 @@ class Agent(nn.Module):
         # Initialize weights of Linear layers
         init.uniform_(self.fc1.weight, -1, 1)
         init.uniform_(self.layer2.weight, -1, 1)
-        
+
         self.loss = nn.MSELoss()
 
     def forward(self, x):
@@ -163,12 +167,12 @@ class Train:
     def cycle(self, X_train, y_train, X_val, y_val, model):
         # loss function and optimizer
         loss_fn = nn.MSELoss()  # mean square error
-        optimizer = optim.AdamW(model.parameters(), lr=1e-3)
+        optimizer = optim.AdamW(model.parameters(), lr=1e-2)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, factor=0.75, patience=5, verbose=True
         )
         n_epochs = 100
-        batch_size = 4096  # size of each batch
+        batch_size = 2048  # size of each batch
         batch_start = torch.arange(0, len(X_train), batch_size)
         # Hold the best model
         best_mse = np.inf  # initialise value as infinite
@@ -231,7 +235,8 @@ class Train:
         del X_val
         del y_train
         del y_val
-        return best_mse
+        return history[-1]
+
 
 
 def board_data(board):
@@ -255,6 +260,7 @@ counter = 1
 all_completed = False
 
 
+
 def mutate(agent, mutation_rate):
     # Calculate the new mutation rate based on the game score
     # Mutate the agent's parameters
@@ -272,6 +278,7 @@ except FileNotFoundError:
         f.write(
             "0 " + str(size)
         )  # 0 means 0 games processed; starting from scratch, size is number of games to process in one cycle
+
 
 
 def similarity(population):
@@ -295,6 +302,7 @@ def similarity(population):
                         agent1 = mutate(agent1, np.random.rand())
                     else:
                         agent2 = mutate(agent2, np.random.rand())
+    return population
 
 
 # instantiate population
@@ -313,33 +321,40 @@ while all_completed == False:
     if not_done < size:  # size is the number of chess games processed/cycle in total
         size = not_done  # this is for the final cycle if there are any remainders
         all_completed = True
-    print("SIZE", size)
-    print("COMPLETED", completed)
-    d = DataManager(size, 0)
-    train_data, train_target = None, None  # served for clearing variable in loops
-    train_data, train_target = zip(*d.load(completed, size))
-    X_train, y_train, X_val, y_val = d.loading(train_data, train_target)
     # repeat the training process for all agents in population
     # load weights onto AI
-    results = {}
-    similarity(population)
     for agent in population:
         decider = np.random.rand()
         if decider > 0.5:
             weights_path = "./zlparent1.pt"
         else:
             weights_path = "./zlparent2.pt"
-
         try:
             state_dict = torch.load(weights_path)
             agent.load_state_dict(state_dict)
+            print("loaded")
         except Exception:
             pass
-        agent = population[count]
+        population = similarity(population)
+    results = {}
+    for agent in population:
+        print("SIZE", size)
+        print("COMPLETED", completed)
+        d = DataManager(size, 0)
+        train_data, train_target = zip(*d.load(completed, size))
+        X_train, y_train, X_val, y_val = d.loading(train_data, train_target)
         t = Train(X_train, y_train, X_val, y_val, agent)
         score = t.cycle(X_train, y_train, X_val, y_val, agent)
         results[count] = score
         completed = completed + size
+        del train_data
+        del train_target
+        del X_train
+        del y_train
+        del X_val
+        del y_val
+        del d
+
         count += 1
     if count == POPULATION_SIZE:  # reached end of list index
         count = 0  # reset back to 0 for indexing
@@ -381,8 +396,4 @@ while all_completed == False:
     completed = counter * size
     del d
     del t
-    del X_train
-    del y_train
-    del X_val
-    del y_val
     counter += 1
