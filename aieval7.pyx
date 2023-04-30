@@ -67,7 +67,6 @@ class DataManager:
         # board_array.shape = 832 (1D)
         yield board_array
 
-
     def load(self, completed, size):
         conn = sqlite3.connect(DB_LOCATION)
         cursor = conn.cursor()
@@ -106,7 +105,6 @@ class DataManager:
         conn.close()
         del games
 
-    
     def loading(self, train_data, train_target):
         train_data, train_target = np.array(train_data), np.array(train_target)
         X_train, X_val, y_train, y_val = train_test_split(
@@ -238,7 +236,6 @@ class Train:
         return history[-1]
 
 
-
 def board_data(board):
     board_array = np.zeros((8, 8, 13), dtype=np.int8)
     for i in range(64):
@@ -260,7 +257,6 @@ counter = 1
 all_completed = False
 
 
-
 def mutate(agent, mutation_rate):
     # Calculate the new mutation rate based on the game score
     # Mutate the agent's parameters
@@ -278,7 +274,6 @@ except FileNotFoundError:
         f.write(
             "0 " + str(size)
         )  # 0 means 0 games processed; starting from scratch, size is number of games to process in one cycle
-
 
 
 def similarity(population):
@@ -354,6 +349,7 @@ while all_completed == False:
         del X_val
         del y_val
         del d
+        del t
 
         count += 1
     if count == POPULATION_SIZE:  # reached end of list index
@@ -394,6 +390,4 @@ while all_completed == False:
     with open("progress.txt", "w") as f:  # overwrite file contents
         f.write(str(completed) + " " + str(size))
     completed = counter * size
-    del d
-    del t
     counter += 1
