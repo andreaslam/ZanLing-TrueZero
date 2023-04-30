@@ -80,7 +80,7 @@ class DataManager:
 
         for g in tqdm.tqdm(games, desc="each game"):
             game = g[2]
-            MAX_MOMENTS = min(20, len(game)-10)
+            MAX_MOMENTS = min(20, len(game) - 10)
             unsampled_idx = [
                 np.random.randint(10, len(game)) for _ in range(MAX_MOMENTS - 1)
             ]
