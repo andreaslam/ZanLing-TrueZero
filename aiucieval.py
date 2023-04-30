@@ -1,9 +1,10 @@
+# zan1ling4 | 真零 | (pronounced Jun Ling)
 # imports
 import numpy as np
 import torch
 import torch.nn as nn
 import chess
-
+import torch.nn.init as init
 # set up AI (Sequential NN)
 
 
@@ -11,18 +12,35 @@ class Tanh200(nn.Module):
     def forward(self, x):
         return torch.tanh(x / 200)
 
+class Agent(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc1 = nn.Linear(833, 512)
+        self.dropout1 = nn.Dropout(p=0.25)
+        self.relu = nn.LeakyReLU(0.05)
+        self.layer2 = nn.Linear(512, 1)
+        self.dropout2 = nn.Dropout(p=0.25)
+        self.tanh200 = Tanh200()
+        self.hidden_layers = nn.ModuleList()
 
-model = nn.Sequential(
-    nn.Linear(833, 512),
-    nn.Dropout(p=0.25),
-    nn.ReLU(),
-    nn.Linear(512, 1),
-    nn.Dropout(p=0.25),
-    Tanh200(),
-)
+        # Initialize weights of Linear layers
+        init.uniform_(self.fc1.weight, -1, 1)
+        init.uniform_(self.layer2.weight, -1, 1)
+        
+        self.loss = nn.MSELoss()
 
-model.eval()
-weights_path = "./zlv6_1.pt"
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.dropout1(x)
+        x = self.relu(x)
+        x = self.layer2(x)
+        x = self.dropout2(x)
+        x = self.tanh200(x)
+        return x
+
+
+model = Agent()
+weights_path = "./zlv6.pt"
 state_dict = torch.load(weights_path)
 model.load_state_dict(state_dict)
 
@@ -54,7 +72,7 @@ def static_eval(board):
     return score
 
 
-def negamax_ab_iterative(board, alpha, beta, colour: int, max_depth:int):
+def negamax_ab_iterative(board, alpha, beta, colour: int, max_depth: int):
     best_move = None
     for depth in range(1, max_depth + 1):
         value, move = negamax_ab(board, alpha, beta, colour, depth)
@@ -62,16 +80,15 @@ def negamax_ab_iterative(board, alpha, beta, colour: int, max_depth:int):
             best_move = (value, move)
     return best_move
 
-def negamax_ab(board, alpha, beta, colour: int, depth:int):
+
+def negamax_ab(board, alpha, beta, colour: int, depth: int):
     if depth == 0 or board.is_game_over():  # check if the depth is 0 or "terminal node"
         if colour == 1:
             move_turn = 0  # my eval accepts 0 for white and black for 1 :/
         else:
             move_turn = 1
         matrix_game = np.array([board_data(board)])
-        matrix_game = np.concatenate(
-            (matrix_game, np.array([[move_turn]])), axis=1
-        )
+        matrix_game = np.concatenate((matrix_game, np.array([[move_turn]])), axis=1)
         matrix_game = torch.tensor(matrix_game, dtype=torch.float32)
         score = model(matrix_game)
         score = float(score)
@@ -126,7 +143,6 @@ def analyse_move_nodes(board, ready, max_nodes):
                 n_count += 1
         m = iter(m_dict)
         best_move = next(m)  # first move after sorting, best move
-        print(m_dict)
         colour = colour * -1  # TODO: check if this line is needed
         return best_move
 
@@ -153,6 +169,5 @@ def analyse_move(board, ready, depth=2):
         }  # reverse=True to find best move with highest score
         m = iter(m_dict)
         best_move = next(m)  # first move after sorting, best move
-        print(m_dict)
         colour = colour * -1  # TODO: check if this line is needed
         return best_move
