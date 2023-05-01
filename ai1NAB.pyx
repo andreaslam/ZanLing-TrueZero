@@ -7,9 +7,11 @@ from chess import Move
 import torch
 from torch import nn
 from torch import optim
+import torch.nn.init as init
+import tqdm
 
 
-def negamax_ab(board, alpha, beta, colour, model,depth=2):
+def negamax_ab(board, alpha, beta, colour, model, depth=2):
     if depth == 0 or board.is_game_over():  # check if the depth is 0 or "terminal node"
         if colour == 1:
             move_turn = 0  # my eval accepts 0 for white and black for 1 :/
@@ -30,21 +32,25 @@ def negamax_ab(board, alpha, beta, colour, model,depth=2):
 
     child_nodes = list(board.legal_moves)
     # child_nodes = order_moves(child_nodes) # make an ordermove function
-    value = -np.inf
+    best_score = -np.inf
     for child in child_nodes:
         board.push(child)  # Push the current child move on the board
-        value = max(value, -negamax_ab(board, -beta, -alpha, -colour, model, depth - 1))
+        score = -negamax_ab(board, -beta, -alpha, -colour, model, depth - 1)
         board.pop()  # Pop the current child move from the board
 
-        alpha = max(alpha, value)
+        best_score = max(best_score, score)
+        alpha = max(alpha, best_score)
         if alpha >= beta:
             break
 
-    return value
+    del matrix_game
+    return best_score
+
 
 class Tanh200(nn.Module):
     def forward(self, x):
         return torch.tanh(x / 200)
+
 
 class Agent(nn.Module):
     def __init__(self):
@@ -60,6 +66,8 @@ class Agent(nn.Module):
         self.scheduler = optim.lr_scheduler.StepLR(
             self.optimizer, step_size=10, gamma=0.5
         )
+        init.xavier_uniform_(self.fc1.weight)
+        init.xavier_uniform_(self.layer2.weight)
         self.loss = nn.MSELoss()
 
     def forward(self, x):
@@ -70,7 +78,6 @@ class Agent(nn.Module):
         x = self.dropout2(x)
         x = self.tanh200(x)
         return x
-
 
     def generate_move(self, board, depth=3):
         legal_moves = list(board.legal_moves)
@@ -84,7 +91,7 @@ class Agent(nn.Module):
         m_dict = {}
         for move in legal_moves:
             board.push(move)
-            move_score = negamax_ab(board,np.inf,np.inf,colour,self,depth)
+            move_score = negamax_ab(board, np.inf, np.inf, colour, self, depth)
             m_dict[str(move)] = move_score
             m_dict = {
                 k: v
@@ -99,12 +106,12 @@ class Agent(nn.Module):
             board.pop()
         with open("./games.txt", "a+") as f:
             f.write(str(best_move) + "\n")
-        print(m_dict)
-        print(best_move)
+        del m_dict
         return best_move
 
     def load_weights(self, path):
         self.load_state_dict(torch.load(path))
+
 
 def board_data(board):
     board_array = np.zeros((8, 8, 13), dtype=np.int8)
@@ -156,18 +163,46 @@ def play_game(agent1, agent2, population):
                 board.push(move)
                 if board.turn == chess.WHITE:
                     move_turn = 0
-                    batch_inputs.append(np.concatenate((np.array([board_data(board)]),np.array([[move_turn]])), axis=1))
+                    batch_inputs.append(
+                        np.concatenate(
+                            (np.array([board_data(board)]), np.array([[move_turn]])),
+                            axis=1,
+                        )
+                    )
                     batch_targets.append(
                         agent1.forward(
-                            torch.tensor(np.concatenate((np.array([board_data(board)]),np.array([[move_turn]])), axis=1), dtype=torch.float)
+                            torch.tensor(
+                                np.concatenate(
+                                    (
+                                        np.array([board_data(board)]),
+                                        np.array([[move_turn]]),
+                                    ),
+                                    axis=1,
+                                ),
+                                dtype=torch.float,
+                            )
                         ).item()
                     )
                 else:
                     move_turn = 1
-                    batch_inputs.append(np.concatenate((np.array([board_data(board)]),np.array([[move_turn]])), axis=1))
+                    batch_inputs.append(
+                        np.concatenate(
+                            (np.array([board_data(board)]), np.array([[move_turn]])),
+                            axis=1,
+                        )
+                    )
                     batch_targets.append(
                         agent2.forward(
-                            torch.tensor(np.concatenate((np.array([board_data(board)]),np.array([[move_turn]])), axis=1), dtype=torch.float)
+                            torch.tensor(
+                                np.concatenate(
+                                    (
+                                        np.array([board_data(board)]),
+                                        np.array([[move_turn]]),
+                                    ),
+                                    axis=1,
+                                ),
+                                dtype=torch.float,
+                            )
                         ).item()
                     )
             # Append final target value when game is over
@@ -186,10 +221,10 @@ def play_game(agent1, agent2, population):
                 batch_targets = np.array([[batch_targets]])
                 inputs = torch.tensor(batch_inputs, dtype=torch.float)
                 targets = torch.tensor(batch_targets, dtype=torch.float)
-                targets = torch.reshape(targets,(-1,1,1))
+                targets = torch.reshape(targets, (-1, 1, 1))
                 outputs = agent1.forward(inputs)
-                
-                loss = agent1.loss(outputs, targets) # 
+
+                loss = agent1.loss(outputs, targets)  #
                 loss.backward()
                 # NOTE: UserWarning: Detected call of `lr_scheduler.step()` before `optimizer.step()`. In PyTorch 1.1.0 and later, you should call them in the opposite order: `optimizer.step()` before `lr_scheduler.step()`.  Failure to do this will result in PyTorch skipping the first value of the learning rate schedule. See more details at https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate
                 agent1.optimizer.zero_grad()
@@ -208,9 +243,9 @@ def play_game(agent1, agent2, population):
 
 
 # Define genetic algorithm parameters
-POP_SIZE = 60  # 10
-NUM_EPOCHS = 500  # 100
-MUTATION_RATE = 0.7
+POP_SIZE = 5  # 10
+NUM_EPOCHS = 100  # 100
+MUTATION_RATE = 0.5
 
 # Initialise documents
 
@@ -237,7 +272,7 @@ num_elites = int(POP_SIZE * 0.2)
 # Use best agents
 
 
-for epoch in range(NUM_EPOCHS):
+for epoch in tqdm.tqdm(range(NUM_EPOCHS), desc="each epoch"):
     for agent in population:
         decider = np.random.rand()
         if decider > 0.5:
