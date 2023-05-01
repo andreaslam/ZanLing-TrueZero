@@ -92,17 +92,14 @@ class Agent(nn.Module):
             board.push(move)
             move_score = negamax_ab(board, np.inf, np.inf, colour, self, depth)
             m_dict[str(move)] = move_score
-            m_dict = {
-                k: v
-                for k, v in sorted(
-                    m_dict.items(), key=lambda item: item[1], reverse=True
-                )  # reverse=False to find the best move with highest score
-            }
-            if colour == 1:
-                best_move = list(m_dict.keys())[0]  # best move, first key
-            else:
-                best_move = list(m_dict.keys())[-1]
             board.pop()
+        m_dict = {
+            k: v
+            for k, v in sorted(
+                m_dict.items(), key=lambda item: item[1], reverse=True
+            )  # reverse=False to find the best move with highest score
+        }
+        best_move = list(m_dict.keys())[0]  # best move, first key
         with open("./games.txt", "a+") as f:
             f.write(str(best_move) + "\n")
         del m_dict
@@ -222,8 +219,7 @@ def play_game(agent1, agent2, population):
                 targets = torch.tensor(batch_targets, dtype=torch.float)
                 targets = torch.reshape(targets, (-1, 1, 1))
                 outputs = agent1.forward(inputs)
-
-                loss = agent1.loss(outputs, targets)  #
+                loss = agent1.loss(outputs, targets)  
                 loss.backward()
                 # NOTE: UserWarning: Detected call of `lr_scheduler.step()` before `optimizer.step()`. In PyTorch 1.1.0 and later, you should call them in the opposite order: `optimizer.step()` before `lr_scheduler.step()`.  Failure to do this will result in PyTorch skipping the first value of the learning rate schedule. See more details at https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate
                 agent1.optimizer.zero_grad()
@@ -242,7 +238,7 @@ def play_game(agent1, agent2, population):
 
 
 # Define genetic algorithm parameters
-POP_SIZE = 5  # 10
+POP_SIZE = 60  # 10
 NUM_EPOCHS = 100  # 100
 MUTATION_RATE = 0.5
 
@@ -284,22 +280,34 @@ for epoch in tqdm.tqdm(range(NUM_EPOCHS), desc="each epoch"):
     with open("games.txt", "a+") as f:
         f.write("Epoch " + str(epoch) + "\n")
     # Play each agent against every other agent in the population
-    scores = np.zeros((POP_SIZE, POP_SIZE))
-    val_table = []
+    s_table = {} # TODO: implement fairer logic for evaluation
+    for x in range(POP_SIZE):
+        s_table[x] = 0
     for i in range(POP_SIZE):
         for j in range(POP_SIZE):
             if i != j:
                 mutate(population[i], np.random.rand(), np.random.randint(-10, 10))
                 mutate(population[j], np.random.rand(), np.random.randint(-10, 10))
-                scores[i][j] = play_game(population[i], population[j], population)
-                val_table.append(scores[i][j])
+                raw_score = play_game(population[i], population[j], population)
+                if raw_score == -5: # draw
+                    s_table[j] -=5
+                    s_table[i] -=5
+                else:
+                    s_table[i] += raw_score
+                    s_table[j] += raw_score * -1
     # Rank the agents by their scores
-    ranked_indices = np.argsort(np.sum(scores, axis=1))[::-1]
-
-    ranked_population = [population[i] for i in ranked_indices]
+    s_table = {
+                k: v
+                for k, v in sorted(
+                    s_table.items(), key=lambda item: item[1], reverse=True
+                )  # reverse=False to find the best agent with highest score
+            }
+    best_agents = list(s_table.keys())[:num_elites]  # best agent, first key
+    print(s_table)
+    print(best_agents)
     is_winning = False
     winner_count = 0
-    for game_score in val_table:
+    for game_score in s_table.values():
         if game_score > 0:
             is_winning = True
             winner_count += 1
@@ -310,53 +318,32 @@ for epoch in tqdm.tqdm(range(NUM_EPOCHS), desc="each epoch"):
             num_of_saves = num_elites
         else:
             num_of_saves = winner_count
-        for agent_index in range(num_of_saves):
+        counter = 0
+        for agent_index in best_agents:
             torch.save(
-                ranked_population[agent_index].state_dict(),
-                "./best_agents" + str(agent_index) + ".pt",
+                population[agent_index].state_dict(),
+                "./best_agents" + str(counter) + ".pt",
             )
+            counter +=1
 
     # Create a new population through selection, crossover, and mutation
     new_population = []
 
     # Keep the top-performing agents in the population
-    elites = ranked_population[:num_elites]
-    for elite in elites:
-        new_population.append(elite)
+    for elite in best_agents:
+        new_population.append(population[elite])
     # Select parents for breeding using tournament selection
-    tournament_size = 3  # 4
-    for i in range(num_elites, POP_SIZE):
-        parent1 = None
-        parent2 = None
-        for _ in range(tournament_size):
-            idx = np.random.randint(POP_SIZE)
-            if parent1 is None or scores[idx][i] > scores[parent1][i]:
-                p1 = idx
-            elif parent2 is None or scores[idx][i] > scores[parent2][i]:
-                p2 = idx
-                population[i].optimizer.step()
-                population[i].scheduler.step()
-                parent1 = ranked_population[p1]
-                parent2 = ranked_population[p2]
-
-                # Perform crossover to create a new child
-                child = Agent()
-                for name, param in child.named_parameters():
-                    if np.random.rand() > 0.5:
-                        param.data.copy_(parent1.state_dict()[name].data)
-                    else:
-                        param.data.copy_(parent2.state_dict()[name].data)
-
-                # Perform mutation on the child
-                for agent_score, agent in zip(scores, population):
-                    # Mutate the agent based on its score
-                    avg_score = 0
-                    avg_counter = 0
-                    for item in agent_score:
-                        if item != 0:
-                            avg_score += item
-                            avg_counter += 1
-                    avg_score = avg_score / avg_counter
-                    agent = mutate(agent, MUTATION_RATE, avg_score)
-                    new_population.append(agent)
-                    population = new_population
+    for _ in range(POP_SIZE):  # exclude parents, already included
+        random_parents = np.random.randint(0, len(new_population), size=2)
+        parent1 = new_population[random_parents[0]]
+        parent2 = new_population[random_parents[1]]
+        
+        child = Agent()
+        for name, param in child.named_parameters():
+            if np.random.rand() > 0.5:
+                param.data.copy_(parent1.state_dict()[name].data)
+            else:
+                param.data.copy_(parent2.state_dict()[name].data)
+        child = mutate(child, np.random.rand(), np.random.rand())
+        new_population.append(child)
+        population = new_population
