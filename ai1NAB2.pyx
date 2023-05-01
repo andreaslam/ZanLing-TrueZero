@@ -65,8 +65,8 @@ class Agent(nn.Module):
         self.scheduler = optim.lr_scheduler.StepLR(
             self.optimizer, step_size=10, gamma=0.5
         )
-        init.xavier_uniform_(self.fc1.weight)
-        init.xavier_uniform_(self.layer2.weight)
+        init.uniform_(self.fc1.weight, -1, 1)
+        init.uniform_(self.layer2.weight, -1, 1)
         self.loss = nn.MSELoss()
 
     def forward(self, x):
@@ -219,7 +219,7 @@ def play_game(agent1, agent2, population):
                 targets = torch.tensor(batch_targets, dtype=torch.float)
                 targets = torch.reshape(targets, (-1, 1, 1))
                 outputs = agent1.forward(inputs)
-                loss = agent1.loss(outputs, targets)  
+                loss = agent1.loss(outputs, targets)
                 loss.backward()
                 # NOTE: UserWarning: Detected call of `lr_scheduler.step()` before `optimizer.step()`. In PyTorch 1.1.0 and later, you should call them in the opposite order: `optimizer.step()` before `lr_scheduler.step()`.  Failure to do this will result in PyTorch skipping the first value of the learning rate schedule. See more details at https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate
                 agent1.optimizer.zero_grad()
@@ -238,7 +238,7 @@ def play_game(agent1, agent2, population):
 
 
 # Define genetic algorithm parameters
-POP_SIZE = 60  # 10
+POP_SIZE = 25  # 10
 NUM_EPOCHS = 100  # 100
 MUTATION_RATE = 0.5
 
@@ -280,7 +280,7 @@ for epoch in tqdm.tqdm(range(NUM_EPOCHS), desc="each epoch"):
     with open("games.txt", "a+") as f:
         f.write("Epoch " + str(epoch) + "\n")
     # Play each agent against every other agent in the population
-    s_table = {} # TODO: implement fairer logic for evaluation
+    s_table = {}  # TODO: implement fairer logic for evaluation
     for x in range(POP_SIZE):
         s_table[x] = 0
     for i in range(POP_SIZE):
@@ -289,19 +289,19 @@ for epoch in tqdm.tqdm(range(NUM_EPOCHS), desc="each epoch"):
                 mutate(population[i], np.random.rand(), np.random.randint(-10, 10))
                 mutate(population[j], np.random.rand(), np.random.randint(-10, 10))
                 raw_score = play_game(population[i], population[j], population)
-                if raw_score == -5: # draw
-                    s_table[j] -=5
-                    s_table[i] -=5
+                if raw_score == -5:  # draw
+                    s_table[j] -= 5
+                    s_table[i] -= 5
                 else:
                     s_table[i] += raw_score
                     s_table[j] += raw_score * -1
     # Rank the agents by their scores
     s_table = {
-                k: v
-                for k, v in sorted(
-                    s_table.items(), key=lambda item: item[1], reverse=True
-                )  # reverse=False to find the best agent with highest score
-            }
+        k: v
+        for k, v in sorted(
+            s_table.items(), key=lambda item: item[1], reverse=True
+        )  # reverse=False to find the best agent with highest score
+    }
     best_agents = list(s_table.keys())[:num_elites]  # best agent, first key
     print(s_table)
     print(best_agents)
@@ -324,7 +324,7 @@ for epoch in tqdm.tqdm(range(NUM_EPOCHS), desc="each epoch"):
                 population[agent_index].state_dict(),
                 "./best_agents" + str(counter) + ".pt",
             )
-            counter +=1
+            counter += 1
 
     # Create a new population through selection, crossover, and mutation
     new_population = []
@@ -337,7 +337,7 @@ for epoch in tqdm.tqdm(range(NUM_EPOCHS), desc="each epoch"):
         random_parents = np.random.randint(0, len(new_population), size=2)
         parent1 = new_population[random_parents[0]]
         parent2 = new_population[random_parents[1]]
-        
+
         child = Agent()
         for name, param in child.named_parameters():
             if np.random.rand() > 0.5:
