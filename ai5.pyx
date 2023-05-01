@@ -62,7 +62,6 @@ def board_data(board):
     board_array = board_array.flatten()
     return board_array
 
-
 def negamax_ab(board, alpha, beta, colour, depth=2):
     if depth == 0 or board.is_game_over():  # check if the depth is 0 or "terminal node"
         if colour == 1:
@@ -84,18 +83,17 @@ def negamax_ab(board, alpha, beta, colour, depth=2):
 
     child_nodes = list(board.legal_moves)
     # child_nodes = order_moves(child_nodes) # make an ordermove function
-    value = -np.inf
+    best_score = -np.inf
     for child in child_nodes:
         board.push(child)  # Push the current child move on the board
-        value = max(value, -negamax_ab(board, -beta, -alpha, -colour, depth - 1))
+        score = -negamax_ab(board, -beta, -alpha, -colour, model, depth - 1)
         board.pop()  # Pop the current child move from the board
 
-        alpha = max(alpha, value)
+        best_score = max(best_score, score)
+        alpha = max(alpha, best_score)
         if alpha >= beta:
             break
-
-    return value
-
+    return best_score
 
 # set up chess game
 
@@ -142,6 +140,7 @@ def play_game(NUMBER_OF_GAMES):
             best_move = Move.from_uci(best_move)
             board.push(best_move)
             colour = colour * -1
+            del m_dict
         with open("ai_gamesNN.txt", "a+") as f:
             f.write(board.result())
             f.write("\n")
