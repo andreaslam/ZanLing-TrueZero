@@ -43,7 +43,6 @@ def negamax_ab(board, alpha, beta, colour, model, depth=2):
         if alpha >= beta:
             break
 
-    del matrix_game
     return best_score
 
 
