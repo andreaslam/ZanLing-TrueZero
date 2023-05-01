@@ -30,6 +30,7 @@ The Evaluation AI is trained on a SQL database* containing games 🎮 that were 
 
 ## What each file 📁 does
 - `ai5.pyx` - used for internal testing, 🧪📝 not a UCI compliant way of running the Engine
+- `a1NA-B.pyx` - prototype code using reinforcement learning and genetic algorithm for the chess AI to learn to play chess using Negamax using Alpha-Beta pruning. 
 - `aiuci.py` - UCI compliant, contains the logic for handling UCI commands
 - `main.py` - run this file 📁 for the "work-in-progress" 🏗️ experience of the UCI Engine 
 - `aiucieval.py` - UCI compliant version of the code that handles move search 🔍 and evaluation
