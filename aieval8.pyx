@@ -12,13 +12,14 @@ from chess import Move
 import torch.nn.init as init
 from sklearn.model_selection import train_test_split
 import copy
+import aimatchup
 
 # puzzle presets
 board = chess.Board()
 completed = 0
 # find number of lines in a database
 
-DB_LOCATION = "./chess_games.db"
+DB_LOCATION = "./fracchess_games.db"
 
 # Connect to the database
 conn = sqlite3.connect(
@@ -35,7 +36,7 @@ cursor.execute("SELECT COUNT(*) FROM games")
 result = cursor.fetchone()[0]
 # print(result)
 conn.close()
-size = 50000
+size = 20
 
 
 class DataManager:
@@ -138,9 +139,9 @@ class Agent(nn.Module):
         self.tanh200 = Tanh200()
         self.hidden_layers = nn.ModuleList()
 
-        # Initialize weights of Linear layers
-        init.uniform_(self.fc1.weight, -1, 1)
-        init.uniform_(self.layer2.weight, -1, 1)
+        # Initialize weights of Linear layers using Xavier initialization
+        init.xavier_uniform_(self.fc1.weight)
+        init.xavier_uniform_(self.layer2.weight)
 
         self.loss = nn.MSELoss()
 
@@ -170,13 +171,13 @@ class Train:
             optimizer, factor=0.75, patience=5, verbose=True
         )
         n_epochs = 100
-        batch_size = 2048  # size of each batch
+        batch_size = 512  # size of each batch
         batch_start = torch.arange(0, len(X_train), batch_size)
         # Hold the best model
         best_mse = np.inf  # initialise value as infinite
         best_weights = None
         history = []
-        accumulation_steps = 2  # accumulate gradients over 2 batches
+        # accumulation_steps = 2  # accumulate gradients over 2 batches
         for _ in tqdm.tqdm(range(n_epochs), desc="Epochs"):
             epoch_loss = 0.0
             for i, batch_idx in enumerate(batch_start):
@@ -190,10 +191,10 @@ class Train:
                 # scaler.scale(loss).backward() # NEED GPU
 
                 # accumulate gradients over several batches
-                if (i + 1) % accumulation_steps == 0 or (i + 1) == len(batch_start):
-                    # scaler.step(optimizer) # NEED GPU
-                    # scaler.update() # NEED GPU
-                    model.zero_grad()
+                # if (i + 1) % accumulation_steps == 0 or (i + 1) == len(batch_start):
+                #     # scaler.step(optimizer) # NEED GPU
+                #     # scaler.update() # NEED GPU
+                model.zero_grad()
                 y_pred = model(batch_X)
                 loss = loss_fn(y_pred, batch_y.view(-1, 1))
                 loss.backward()
@@ -321,9 +322,9 @@ while all_completed == False:
     for agent in population:
         decider = np.random.rand()
         if decider > 0.5:
-            weights_path = "./zlparent1.pt"
+            weights_path = "./best_agents0.pt"
         else:
-            weights_path = "./zlparent2.pt"
+            weights_path = "./best_agents1.pt"
         try:
             state_dict = torch.load(weights_path)
             agent.load_state_dict(state_dict)
@@ -340,7 +341,7 @@ while all_completed == False:
         X_train, y_train, X_val, y_val = d.loading(train_data, train_target)
         t = Train(X_train, y_train, X_val, y_val, agent)
         score = t.cycle(X_train, y_train, X_val, y_val, agent)
-        results[count] = score
+        results[count] = 1 - score # make sure that the higher the better
         completed = completed + size
         del train_data
         del train_target
@@ -350,15 +351,24 @@ while all_completed == False:
         del y_val
         del d
         del t
-
         count += 1
     if count == POPULATION_SIZE:  # reached end of list index
+        print(results)
+        match_scores = aimatchup.play_game_tournament(population)
+        print(match_scores)
+        r = [(x + y)/2 for x, y in zip(list(match_scores.values()), list(results.values()))]
+        print(r)
+        indexer = 0
+        for item in r:
+            results[indexer] = item
+            indexer += 1
         count = 0  # reset back to 0 for indexing
+        print(results)
         results = {
             k: v
             for k, v in sorted(
-                results.items(), key=lambda item: item[1], reverse=False
-            )  # reverse=False to find the best move with highest score
+                results.items(), key=lambda item: item[1], reverse=True
+            )  # reverse=True to find the best move with highest score
         }
         print(results)
         p1 = list(results.keys())[0]
