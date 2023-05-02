@@ -34,7 +34,8 @@ The Evaluation AI is trained on a SQL database* containing games 🎮 that were 
 - `aiuci.py` - UCI compliant, contains the logic for handling UCI commands
 - `main.py` - run this file 📁 for the "work-in-progress" 🏗️ experience of the UCI Engine 
 - `aiucieval.py` - UCI compliant version of the code that handles move search 🔍 and evaluation
-- `aieval7.pyx` - used for training the evaluation AI. Handles SQL data accessing and one-hot ♨️ encoding as well
+- `aieval8.pyx` - used for training the evaluation AI. Handles SQL data accessing and one-hot ♨️ encoding as well. Includes ranking agents by playing games agianst other agents
+- `aimatchup.pyx` - used as companion code to `aieval8` to faciliate playing games against other agents
 - `aigamesdb.pyx` - used for turning PGNs from Lichess to UCI notation and storing it to the SQL database (with parameterised inputs)
 - `aigamesrand.pyx` - turning random 🎲 game PGNs to UCI notation and storing 🏬 it to the 🤘 SQL database (with parameterised inputs)
 - `randmovegen.pyx` - used for generating random 🔀 games 👾 in PGN notation. Saves 📑 games 🎮🏏 as .pgn file
