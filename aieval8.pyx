@@ -19,7 +19,7 @@ board = chess.Board()
 completed = 0
 # find number of lines in a database
 
-DB_LOCATION = "./fracchess_games.db"
+DB_LOCATION = "./chess_games.db"
 
 # Connect to the database
 conn = sqlite3.connect(
@@ -36,7 +36,7 @@ cursor.execute("SELECT COUNT(*) FROM games")
 result = cursor.fetchone()[0]
 # print(result)
 conn.close()
-size = 20
+size = 50000
 
 
 class DataManager:
@@ -201,7 +201,7 @@ class Train:
                 optimizer.step()
                 epoch_loss += loss.item() * batch_X.shape[0]
             epoch_loss /= len(X_train)
-            print(epoch_loss)
+            # print(epoch_loss)
             scheduler.step(epoch_loss)
             history.append(epoch_loss)
             if epoch_loss < best_mse:
@@ -328,14 +328,14 @@ while all_completed == False:
         try:
             state_dict = torch.load(weights_path)
             agent.load_state_dict(state_dict)
-            print("loaded")
+            # print("loaded")
         except Exception:
             pass
         population = similarity(population)
     results = {}
     for agent in population:
-        print("SIZE", size)
-        print("COMPLETED", completed)
+        # print("SIZE", size)
+        # print("COMPLETED", completed)
         d = DataManager(size, 0)
         train_data, train_target = zip(*d.load(completed, size))
         X_train, y_train, X_val, y_val = d.loading(train_data, train_target)
@@ -353,24 +353,24 @@ while all_completed == False:
         del t
         count += 1
     if count == POPULATION_SIZE:  # reached end of list index
-        print(results)
+        # print(results)
         match_scores = aimatchup.play_game_tournament(population)
-        print(match_scores)
+        # print(match_scores)
         r = [(x + y)/2 for x, y in zip(list(match_scores.values()), list(results.values()))]
-        print(r)
+        # print(r)
         indexer = 0
         for item in r:
             results[indexer] = item
             indexer += 1
         count = 0  # reset back to 0 for indexing
-        print(results)
+        # print(results)
         results = {
             k: v
             for k, v in sorted(
                 results.items(), key=lambda item: item[1], reverse=True
             )  # reverse=True to find the best move with highest score
         }
-        print(results)
+        # print(results)
         p1 = list(results.keys())[0]
         p2 = list(results.keys())[1]
         parent1 = population[p1]
