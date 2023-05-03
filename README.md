@@ -48,11 +48,11 @@ The Evaluation AI is trained on a SQL database* containing games 🎮 that were 
 This Python 🐍 Engine uses the following:
 - **Pytorch** - used for creating 🔨 NN
 - **Numpy** - used 🇻🇮 for processing data 💽 (chess board representation after one-hot encoding, handling final outcome and final game 🎮 👾 result
-- **Scikitlearn** - used 🇻🇮 minimally for splitting data 💽 into train/validation sets (will be replaced with Pytorch DataLoader in the 🫵 future)
+- **Scikitlearn** - used minimally for splitting data 💽 into train/validation sets (will be replaced with Pytorch DataLoader in the 🫵 future)
 - **Python Chess** - used for handling board-related code
 - **Cython** - used for running files 📁🗃️📂 at faster speeds 🚅 instead of running on Vanilla Python 🐍
 - **Setuptools** - used in tandem with Cython to Cythonise the Python 🐍 code
 - **SQLite3** - used for writing/accessing data 💽 to theSQL database
-- **tqdm** - used  as progress 🚧 bar 📊
+- **tqdm** - used as progress 🚧 bar 📊
 
 *database not uploaded to this GitHub repository
