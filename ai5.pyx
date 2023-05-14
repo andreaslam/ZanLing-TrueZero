@@ -5,6 +5,7 @@ import torch.nn as nn
 import chess
 from chess import Move
 import torch.nn.init as init
+from torch import optim
 
 # set up AI (Sequential NN)
 
@@ -24,11 +25,12 @@ class Agent(nn.Module):
         self.dropout2 = nn.Dropout(p=0.25)
         self.tanh200 = Tanh200()
         self.hidden_layers = nn.ModuleList()
-
-        # Initialize weights of Linear layers
+        self.optimizer = optim.Adam(self.parameters(), lr=1e-3)
+        self.scheduler = optim.lr_scheduler.StepLR(
+            self.optimizer, step_size=10, gamma=0.5
+        )
         init.uniform_(self.fc1.weight, -1, 1)
         init.uniform_(self.layer2.weight, -1, 1)
-
         self.loss = nn.MSELoss()
 
     def forward(self, x):
@@ -40,10 +42,38 @@ class Agent(nn.Module):
         x = self.tanh200(x)
         return x
 
+    def generate_move(self, board, depth=5):
+        legal_moves = list(board.legal_moves)
+        if not legal_moves:
+            return None
+        if board.turn == chess.WHITE:
+            colour = 1
+        else:
+            colour = -1
+        best_move = None
+        m_dict = {}
+        for move in legal_moves:
+            board.push(move)
+            move_score = negamax_ab(board, -np.inf, np.inf, colour, self, depth)
+            m_dict[str(move)] = move_score
+            board.pop()
+        m_dict = {
+            k: v
+            for k, v in sorted(
+                m_dict.items(), key=lambda item: item[1], reverse=True
+            )  # reverse=False to find the best move with highest score
+        }
+        best_move = list(m_dict.keys())[0]  # best move, first key
+        del m_dict
+        return best_move
+
+    def load_weights(self, path):
+        self.load_state_dict(torch.load(path))
+
 
 model = Agent()
-weights_path = "./zlparent1.pt"
-state_dict = torch.load(weights_path)
+weights_path = "./zlv6.pt"
+state_dict = torch.load(weights_path, map_location=torch.device("cpu"))
 model.load_state_dict(state_dict)
 
 
@@ -62,6 +92,7 @@ def board_data(board):
     board_array = board_array.flatten()
     return board_array
 
+
 def negamax_ab(board, alpha, beta, colour, depth=2):
     if depth == 0 or board.is_game_over():  # check if the depth is 0 or "terminal node"
         if colour == 1:
@@ -78,7 +109,7 @@ def negamax_ab(board, alpha, beta, colour, depth=2):
         )  # EVALUTATION - high score for winning (if white/black wins, high score, vice versa)
         score = float(score)
         if board.is_game_over():
-            score = 2
+            score = 2 * colour
         return score * colour
 
     child_nodes = list(board.legal_moves)
@@ -86,7 +117,7 @@ def negamax_ab(board, alpha, beta, colour, depth=2):
     best_score = -np.inf
     for child in child_nodes:
         board.push(child)  # Push the current child move on the board
-        score = -negamax_ab(board, -beta, -alpha, -colour, model, depth - 1)
+        score = -negamax_ab(board, -beta, -alpha, -colour, depth - 1)
         board.pop()  # Pop the current child move from the board
 
         best_score = max(best_score, score)
@@ -94,6 +125,7 @@ def negamax_ab(board, alpha, beta, colour, depth=2):
         if alpha >= beta:
             break
     return best_score
+
 
 # set up chess game
 
@@ -128,10 +160,7 @@ def play_game(NUMBER_OF_GAMES):
                     m_dict.items(), key=lambda item: item[1], reverse=True
                 )  # reverse=False to find the best move with highest score
             }
-            if colour == 1:
-                best_move = list(m_dict.keys())[0]  # best move, first key
-            else:
-                best_move = list(m_dict.keys())[-1]
+            best_move = list(m_dict.keys())[0]  # best move, first key
             print(m_dict)
             print(best_move)
             with open("ai_gamesNN.txt", "a+") as f:
@@ -140,7 +169,6 @@ def play_game(NUMBER_OF_GAMES):
             best_move = Move.from_uci(best_move)
             board.push(best_move)
             colour = colour * -1
-            del m_dict
         with open("ai_gamesNN.txt", "a+") as f:
             f.write(board.result())
             f.write("\n")
