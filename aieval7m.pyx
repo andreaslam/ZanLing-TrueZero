@@ -81,15 +81,13 @@ class DataManager:
                 yield matrix_game.flatten(), self.get_status(move_turn, g[1])
 
         conn.close()
-        del games
 
     def loading(self, train_data, train_target):
         train_data, train_target = np.array(train_data), np.array(train_target)
         X_train, X_val, y_train, y_val = train_test_split(
             train_data, train_target, test_size=0.2, shuffle=True
         )
-        del train_data
-        del train_target
+
         X_train = torch.tensor(X_train, dtype=torch.float32)
         y_train = torch.tensor(y_train, dtype=torch.float32)
         X_val = torch.tensor(X_val, dtype=torch.float32)
@@ -279,9 +277,7 @@ def similarity(population):
 
 
 def manager(cpu):
-    print("GOT HERE")
     size = cpu[1] - cpu[0]
-    print(size, cpu[1])
     d = DataManager(size, cpu[1])
     train_data, train_target = zip(*d.load(completed, size))
     X_train, y_train, X_val, y_val = d.loading(train_data, train_target)
@@ -346,7 +342,6 @@ if __name__ == "__main__":
 
     # # Fetch the result
     result = cursor.fetchone()[0]
-    print("done!")
     # print(result)
     conn.close()
     # instantiate population
@@ -354,7 +349,6 @@ if __name__ == "__main__":
     population = [Agent().to("cuda") for _ in range(POPULATION_SIZE)]
     num_elites = int(POPULATION_SIZE * 0.4)
     count = 0  # used for indexing which agent it is to train now
-    print("done")
     while all_completed == False:
         with open("progressX.txt", "r+") as f:
             contents = f.read()
@@ -388,11 +382,9 @@ if __name__ == "__main__":
         load = split_tasks(p, size)
         # print("SIZE", size)
         # print("COMPLETED", completed)
-        print("HERE WE GO AGAIN")
         u = 0
         for agent in population:
             with multiprocessing.Pool(p) as pool:
-                print("HEY")
                 r = pool.map(manager, load)
             X_train, y_train, X_val, y_val = zip(*r)
             xt = X_train[0]  # initialize the result with the first tensor
