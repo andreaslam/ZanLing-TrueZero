@@ -81,13 +81,15 @@ class DataManager:
                 yield matrix_game.flatten(), self.get_status(move_turn, g[1])
 
         conn.close()
+        del games
 
     def loading(self, train_data, train_target):
         train_data, train_target = np.array(train_data), np.array(train_target)
         X_train, X_val, y_train, y_val = train_test_split(
             train_data, train_target, test_size=0.2, shuffle=True
         )
-
+        del train_data
+        del train_target
         X_train = torch.tensor(X_train, dtype=torch.float32)
         y_train = torch.tensor(y_train, dtype=torch.float32)
         X_val = torch.tensor(X_val, dtype=torch.float32)
@@ -100,34 +102,33 @@ class Tanh200(nn.Module):
         super(Tanh200, self).__init__()
 
     def forward(self, x):
-        return torch.tanh(x / 200)
+        return torch.tanh(x / 200).to("cuda")
 
 
 class Agent(nn.Module):
     def __init__(self):
         super().__init__()
-        self.fc1 = nn.Linear(833, 2048)
-        self.dropout1 = nn.Dropout(p=0.25)
-        self.relu = nn.LeakyReLU(0.05)
-        self.layer2 = nn.Linear(2048, 1)
-        self.dropout2 = nn.Dropout(p=0.25)
-        self.tanh200 = Tanh200()
-        self.hidden_layers = nn.ModuleList()
+        self.fc1 = nn.Linear(833, 512).to("cuda")
+        self.dropout1 = nn.Dropout(p=0.25).to("cuda")
+        self.relu = nn.LeakyReLU(0.05).to("cuda")
+        self.layer2 = nn.Linear(512, 1).to("cuda")
+        self.dropout2 = nn.Dropout(p=0.25).to("cuda")
+        self.tanh200 = Tanh200().to("cuda")
+        self.hidden_layers = nn.ModuleList().to("cuda")
 
         # Initialize weights of Linear layers using Xavier initialization
-        init.xavier_uniform_(self.fc1.weight)
-        init.xavier_uniform_(self.layer2.weight)
+        init.xavier_uniform_(self.fc1.weight).to("cuda")
+        init.xavier_uniform_(self.layer2.weight).to("cuda")
 
-        self.loss = nn.MSELoss()
+        self.loss = nn.MSELoss().to("cuda")
 
     def forward(self, x):
-        x
-        x = self.fc1(x)
-        x = self.dropout1(x)
-        x = self.relu(x)
-        x = self.layer2(x)
-        x = self.dropout2(x)
-        x = self.tanh200(x)
+        x = self.fc1(x).to("cuda")
+        x = self.dropout1(x).to("cuda")
+        x = self.relu(x).to("cuda")
+        x = self.layer2(x).to("cuda")
+        x = self.dropout2(x).to("cuda")
+        x = self.tanh200(x).to("cuda")
         return x
 
 
@@ -140,10 +141,10 @@ class Train:
         self.model = model
 
     def cycle(self, X_train, y_train, X_val, y_val, model):
-        X_train = X_train
-        y_train = y_train
-        X_val = X_val
-        y_val = y_val
+        X_train = X_train.to("cuda")
+        y_train = y_train.to("cuda")
+        X_val = X_val.to("cuda")
+        y_val = y_val.to("cuda")
         # loss function and optimizer
         loss_fn = nn.MSELoss()  # mean square error
         optimizer = optim.AdamW(model.parameters(), lr=1e-5)
@@ -151,8 +152,8 @@ class Train:
             optimizer, factor=0.75, patience=5, verbose=False
         )
         n_epochs = 125
-        batch_size = 512  # size of each batch
-        batch_start = torch.arange(0, len(X_train), batch_size)
+        batch_size = 2048  # size of each batch
+        batch_start = torch.arange(0, len(X_train), batch_size).to("cuda")
         # Hold the best model
         best_mse = np.inf  # initialise value as infinite
         best_weights = None
@@ -166,8 +167,8 @@ class Train:
                     y_train[batch_idx : batch_idx + batch_size],
                 )
                 optimizer.zero_grad()
-                y_pred = model.forward(batch_X)
-                loss = loss_fn(y_pred, batch_y.view(-1, 1))
+                y_pred = model.forward(batch_X).to("cuda")
+                loss = loss_fn(y_pred, batch_y.view(-1, 1)).to("cuda")
                 # scaler.scale(loss).backward() # NEED GPU
 
                 # accumulate gradients over several batches
@@ -175,8 +176,8 @@ class Train:
                 #     # scaler.step(optimizer) # NEED GPU
                 #     # scaler.update() # NEED GPU
                 model.zero_grad()
-                y_pred = model(batch_X)
-                loss = loss_fn(y_pred, batch_y.view(-1, 1))
+                y_pred = model(batch_X).to("cuda")
+                loss = loss_fn(y_pred, batch_y.view(-1, 1)).to("cuda")
                 loss.backward()
                 optimizer.step()
                 epoch_loss += loss.item() * batch_X.shape[0]
@@ -202,8 +203,9 @@ class Train:
             # Test out inference with 5 samples
             for i in range(5):
                 X_sample = X_val[i : i + 1]
-                X_sample = X_sample.clone().detach()
-                y_pred = model.forward(X_sample)
+                X_sample = X_sample.clone().detach().to("cuda")
+                y_pred = model.forward(X_sample).to("cuda")
+                print(y_pred)
         torch.save(best_weights, "zlv7.pt")
         # return scheduler.optimizer.param_groups[0][
         #     "lr"
@@ -229,32 +231,13 @@ def board_data(board):
     return board_array
 
 
-# Define genetic algorithm parameters
-# Training loop
-completed = 0
-counter = 1
-all_completed = False
-
-
 def mutate(agent, mutation_rate):
     # Calculate the new mutation rate based on the game score
     # Mutate the agent's parameters
     for param in agent.parameters():
         if np.random.rand() < mutation_rate:
-            x = torch.randn(param.shape)
-            y = torch.tensor(np.random.rand())
-            param.data += x * y
+            param.data += torch.randn(param.shape) * np.random.rand()
     return agent
-
-
-try:
-    with open("progressX.txt", "r") as f:
-        contents = f.read()
-except FileNotFoundError:
-    with open("progressX.txt", "w+") as f:  # create the file if it does not exist
-        f.write(
-            "0 " + str(size)
-        )  # 0 means 0 games processed; starting from scratch, size is number of games to process in one cycle
 
 
 def similarity(population):
@@ -309,31 +292,48 @@ def manager(cpu):
 
 
 def split_tasks(cpu_count, size):
-    non_last_cores = size // cpu_count
     li = []
-    start_counter = 0
-    stop_counter = non_last_cores
-    for _ in range(cpu_count):
-        li.append([start_counter, stop_counter])
-        start_counter += non_last_cores
-        stop_counter += non_last_cores
-    ending = li[-1][-1]
-    if ending < size:
-        li[-1][-1] = ending + (size - ending)
-    del non_last_cores
-    del start_counter
-    del stop_counter
-
+    if size > cpu_count:
+        non_last_cores = size // cpu_count
+        start_counter = 0
+        stop_counter = non_last_cores
+        for _ in range(cpu_count):
+            li.append([start_counter, stop_counter])
+            start_counter += non_last_cores
+            stop_counter += non_last_cores
+        ending = li[-1][-1]
+        if ending < size:
+            li[-1][-1] = ending + (size - ending)
+        del non_last_cores
+        del start_counter
+        del stop_counter
+    else:
+        li.append([0, size])
     return li
 
 
 if __name__ == "__main__":
+    # Define genetic algorithm parameters
+    # Training loop
+    completed = 0
+    counter = 1
+    all_completed = False
+    size = 100000
+    try:
+        with open("progressX.txt", "r") as f:
+            contents = f.read()
+    except FileNotFoundError:
+        with open("progressX.txt", "w+") as f:  # create the file if it does not exist
+            f.write(
+                "0 " + str(size)
+            )  # 0 means 0 games processed; starting from scratch, size is number of games to process in one cycle
+
     # puzzle presets
     board = chess.Board()
     completed = 0
     # find number of lines in a database
 
-    DB_LOCATION = "fracchess_games.db"
+    DB_LOCATION = "chess_games.db"
 
     # Connect to the database
     conn = sqlite3.connect(DB_LOCATION)
@@ -349,10 +349,9 @@ if __name__ == "__main__":
     print("done!")
     # print(result)
     conn.close()
-    size = 5
     # instantiate population
-    POPULATION_SIZE = 50
-    population = [Agent() for _ in range(POPULATION_SIZE)]
+    POPULATION_SIZE = 5
+    population = [Agent().to("cuda") for _ in range(POPULATION_SIZE)]
     num_elites = int(POPULATION_SIZE * 0.4)
     count = 0  # used for indexing which agent it is to train now
     print("done")
@@ -385,7 +384,7 @@ if __name__ == "__main__":
             index += 1
         population = similarity(population)
         results = {}
-        p = multiprocessing.cpu_count()
+        p = multiprocessing.cpu_count() - 5 # spare some cpu cores
         load = split_tasks(p, size)
         # print("SIZE", size)
         # print("COMPLETED", completed)
@@ -417,7 +416,7 @@ if __name__ == "__main__":
                     (yv, y_val[i]), dim=0
                 )  # concatenate each tensor to the result tensor along the first dimension
             X_train, y_train, X_val, y_val = xt, yt, xv, yv
-            
+
             t = Train(X_train, y_train, X_val, y_val, agent)
             score = t.cycle(X_train, y_train, X_val, y_val, agent)
             results[count] = score  # make sure that the lower the better
@@ -452,7 +451,7 @@ if __name__ == "__main__":
             for _ in range(
                 POPULATION_SIZE - num_elites
             ):  # exclude parents, already included
-                child = Agent()
+                child = Agent().to("cuda")
                 parent1 = population[random_integers[f]]
                 parent2 = population[random_integers[f + 1]]
                 for name, param in child.named_parameters():
