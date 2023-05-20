@@ -57,4 +57,5 @@ This Python 🐍 Engine uses the following:
 - **SQLite3** - used for writing/accessing data 💽 to theSQL database
 - **tqdm** - used as progress 🚧 bar 📊
 - **multiprocessing** - used for parallelisation of code
+
 *database not uploaded to this GitHub repository
