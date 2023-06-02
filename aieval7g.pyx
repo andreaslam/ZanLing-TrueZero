@@ -132,7 +132,7 @@ def mutate(agent, mutation_rate):
     # Mutate the agent's parameters
     for param in agent.parameters():
         if np.random.rand() < mutation_rate:
-            raw = torch.randn(param.shape) * (np.random.rand()/1000)
+            raw = torch.randn(param.shape).to("cuda:0") * torch.tensor(np.random.rand()).to("cuda:0")
             if np.random.rand() > 0.5:
                 raw = -raw
             param.data = (raw+param.data)/2
@@ -152,7 +152,7 @@ class Train(Tanh200):
         # Weight initialization
         try:
             weights_path = "./zlv6.pt"
-            state_dict = torch.load(weights_path)
+            state_dict = torch.load(weights_path,map_location="cuda")
             model.load_state_dict(state_dict)
         except FileNotFoundError:
             for m in model.modules():
@@ -165,12 +165,12 @@ class Train(Tanh200):
 
         # loss function and optimizer
         loss_fn = nn.MSELoss()  # mean square error
-        optimizer = optim.AdamW(model.parameters(), lr=1e-3)
+        optimizer = optim.AdamW(model.parameters(), lr=1e-5)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, factor=0.75, patience=5, verbose=True
         )
-        n_epochs = 100
-        batch_size = 512  # size of each batch
+        n_epochs = 150
+        batch_size = 256  # size of each batch
         batch_start = torch.arange(0, len(X_train), batch_size).to('cuda')
         # Hold the best model
         best_mse = np.inf  # initialise value as infinite
@@ -214,7 +214,7 @@ class Train(Tanh200):
                 is_mutated = True
             elif epoch_loss >= best_mse and is_mutated == True:
                 weights_path = "./zlv6_t.pt"
-                state_dict = torch.load(weights_path, map_location="cpu")
+                state_dict = torch.load(weights_path, map_location="cuda")
                 model.load_state_dict(state_dict)
                 is_mutated = False
 
@@ -314,7 +314,7 @@ if __name__ == "__main__":
     completed = 0
     # find number of lines in a database
 
-    DB_LOCATION = "chess_games.db"
+    DB_LOCATION = "fracchess_games.db"
 
     # Connect to the database
     conn = sqlite3.connect(DB_LOCATION)
@@ -379,10 +379,10 @@ if __name__ == "__main__":
         #         (yv, y_val[i]), dim=0
         #     )  # concatenate each tensor to the result tensor along the first dimension
         # X_train, y_train, X_val, y_val = xt, yt, xv, yv
-        xt = torch.cat(X_train, dim=0)
-        yt = torch.cat(y_train, dim=0)
-        xv = torch.cat(X_val, dim=0)
-        yv = torch.cat(y_val, dim=0)
+        xt = torch.cat(X_train, dim=0).to("cuda")
+        yt = torch.cat(y_train, dim=0).to("cuda")
+        xv = torch.cat(X_val, dim=0).to("cuda")
+        yv = torch.cat(y_val, dim=0).to("cuda")
 
         X_train, y_train, X_val, y_val = xt, yt, xv, yv
         del xt
