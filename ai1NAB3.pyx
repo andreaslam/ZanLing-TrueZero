@@ -6,10 +6,9 @@ import chess
 from chess import Move
 import torch
 from torch import nn
-from torch import optim
-import torch.nn.init as init
 import tqdm
-
+import torch.nn.functional as F
+from torch.nn.modules.transformer import TransformerEncoder, TransformerEncoderLayer
 
 def negamax_ab(board, alpha, beta, colour, model, depth=2):
     if depth == 0 or board.is_game_over():  # check if the depth is 0 or "terminal node"
@@ -21,7 +20,7 @@ def negamax_ab(board, alpha, beta, colour, model, depth=2):
         matrix_game = np.concatenate(
             (matrix_game, np.array([[move_turn]])), axis=1
         )  # have to append the move turn - the AI needs to know this
-        matrix_game = torch.tensor(matrix_game, dtype=torch.float32)
+        matrix_game = torch.tensor(matrix_game, dtype=torch.float32).to("cuda")
         score = model(
             matrix_game
         )  # EVALUTATION - high score for winning (if white/black wins, high score, vice versa)
@@ -46,39 +45,39 @@ def negamax_ab(board, alpha, beta, colour, model, depth=2):
     return best_score
 
 
-class Tanh200(nn.Module):
-    def forward(self, x):
-        return torch.tanh(x / 200)
-
-
-class Agent(nn.Module):
+class GELU(nn.Module):
     def __init__(self):
-        super().__init__()
-        self.fc1 = nn.Linear(833, 512)
-        self.dropout1 = nn.Dropout(p=0.25)
-        self.relu = nn.LeakyReLU(0.05)
-        self.layer2 = nn.Linear(512, 1)
-        self.dropout2 = nn.Dropout(p=0.25)
-        self.tanh200 = Tanh200()
-        self.hidden_layers = nn.ModuleList()
-        self.optimizer = optim.Adam(self.parameters(), lr=1e-3)
-        self.scheduler = optim.lr_scheduler.StepLR(
-            self.optimizer, step_size=10, gamma=0.5
-        )
-        init.uniform_(self.fc1.weight, -1, 1)
-        init.uniform_(self.layer2.weight, -1, 1)
-        self.loss = nn.MSELoss()
+        super(GELU, self).__init__()
 
     def forward(self, x):
-        x = self.fc1(x)
-        x = self.dropout1(x)
-        x = self.relu(x)
-        x = self.layer2(x)
-        x = self.dropout2(x)
-        x = self.tanh200(x)
-        return x
+        return F.gelu(x)
 
-    def generate_move(self, board, depth=3):
+
+class TransformerModel(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, num_layers, dropout=0.01):
+        super(TransformerModel, self).__init__()
+
+        self.hidden_dim = hidden_dim
+        self.embedding = nn.Linear(input_dim, hidden_dim)
+        encoder_layers = TransformerEncoderLayer(hidden_dim, nhead=8)
+        self.transformer_encoder = TransformerEncoder(encoder_layers, num_layers=num_layers)
+        self.dropout = nn.Dropout(p=dropout)
+        self.fc1 = nn.Linear(hidden_dim, output_dim)
+        self.act = GELU()
+
+    def forward(self, x):
+        x = self.embedding(x)
+        x = x.permute(0, 1)
+        x = self.transformer_encoder(x)
+        x = x.permute(0, -1)
+        x = self.fc1(x)
+        x = self.dropout(x)
+        x = self.act(x)
+        return x
+    def load_weights(self, path):
+        self.load_state_dict(torch.load(path))
+
+    def generate_move(self, board, depth=10):
         legal_moves = list(board.legal_moves)
         if not legal_moves:
             return None
@@ -104,9 +103,6 @@ class Agent(nn.Module):
             f.write(str(best_move) + "\n")
         del m_dict
         return best_move
-
-    def load_weights(self, path):
-        self.load_state_dict(torch.load(path))
 
 
 def board_data(board):
@@ -238,7 +234,7 @@ def play_game(agent1, agent2, population):
 
 
 # Define genetic algorithm parameters
-POP_SIZE = 25  # 10
+POP_SIZE = 10  # 10
 NUM_EPOCHS = 100  # 100
 MUTATION_RATE = 0.5
 
@@ -262,8 +258,8 @@ def mutate(agent, mutation_rate, score):
 
 
 # Initialize the population
-population = [Agent() for _ in range(POP_SIZE)]
-num_elites = int(POP_SIZE * 0.2)
+population = [TransformerModel(input_dim=833, hidden_dim=2048, output_dim=1, num_layers=4).to('cuda') for _ in range(POP_SIZE)]
+num_elites = int(POP_SIZE * 0.4)
 # Use best agents
 
 
@@ -338,7 +334,7 @@ for epoch in tqdm.tqdm(range(NUM_EPOCHS), desc="each epoch"):
         parent1 = new_population[random_parents[0]]
         parent2 = new_population[random_parents[1]]
 
-        child = Agent()
+        child = TransformerModel(input_dim=833, hidden_dim=8192, output_dim=1, num_layers=12).to('cuda') # implement the transformer here
         for name, param in child.named_parameters():
             if np.random.rand() > 0.5:
                 param.data.copy_(parent1.state_dict()[name].data)
