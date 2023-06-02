@@ -12,9 +12,8 @@ from chess import Move
 import torch.nn.init as init
 from sklearn.model_selection import train_test_split
 import copy
-from sklearn.cluster import KMeans
 import multiprocessing
-
+import torch.cuda
 
 class DataManager:
     def __init__(self, training_size, completed):
@@ -79,7 +78,7 @@ class DataManager:
                     (matrix_game, np.array([[move_turn]])), axis=1
                 )
                 yield matrix_game.flatten(), self.get_status(move_turn, g[1])
-
+            
         conn.close()
 
     def loading(self, train_data, train_target):
@@ -87,7 +86,6 @@ class DataManager:
         X_train, X_val, y_train, y_val = train_test_split(
             train_data, train_target, test_size=0.2, shuffle=True
         )
-
         X_train = torch.tensor(X_train, dtype=torch.float32)
         y_train = torch.tensor(y_train, dtype=torch.float32)
         X_val = torch.tensor(X_val, dtype=torch.float32)
@@ -129,35 +127,58 @@ class Agent(nn.Module):
         x = self.tanh200(x).to("cuda")
         return x
 
+def mutate(agent, mutation_rate):
+    # Calculate the new mutation rate based on the game score
+    # Mutate the agent's parameters
+    for param in agent.parameters():
+        if np.random.rand() < mutation_rate:
+            raw = torch.randn(param.shape) * (np.random.rand()/1000)
+            if np.random.rand() > 0.5:
+                raw = -raw
+            param.data = (raw+param.data)/2
+    return agent
 
-class Train:
-    def __init__(self, X_train, y_train, X_val, y_val, model):
+class Train(Tanh200):
+    def __init__(self, X_train, y_train, X_val, y_val):
         self.X_train = X_train
         self.y_train = y_train
         self.X_val = X_val
         self.y_val = y_val
-        self.model = model
 
-    def cycle(self, X_train, y_train, X_val, y_val, model):
-        X_train = X_train.to("cuda")
-        y_train = y_train.to("cuda")
-        X_val = X_val.to("cuda")
-        y_val = y_val.to("cuda")
+    def cycle(self, X_train, y_train, X_val, y_val, best_score):
+        model = Agent().to("cuda")
+        is_mutated = False
+
+        # Weight initialization
+        try:
+            weights_path = "./zlv6.pt"
+            state_dict = torch.load(weights_path)
+            model.load_state_dict(state_dict)
+        except FileNotFoundError:
+            for m in model.modules():
+                if isinstance(m, nn.Linear):
+                    nn.init.xavier_uniform_(m.weight)
+                    if m.bias is not None:
+                        init.constant_(m.bias, 0)
+
+        # scaler = GradScaler()
+
         # loss function and optimizer
         loss_fn = nn.MSELoss()  # mean square error
-        optimizer = optim.AdamW(model.parameters(), lr=1e-5)
+        optimizer = optim.AdamW(model.parameters(), lr=1e-3)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, factor=0.75, patience=5, verbose=False
+            optimizer, factor=0.75, patience=5, verbose=True
         )
-        n_epochs = 125
-        batch_size = 2048  # size of each batch
-        batch_start = torch.arange(0, len(X_train), batch_size).to("cuda")
+        n_epochs = 100
+        batch_size = 512  # size of each batch
+        batch_start = torch.arange(0, len(X_train), batch_size).to('cuda')
         # Hold the best model
         best_mse = np.inf  # initialise value as infinite
         best_weights = None
         history = []
-        # accumulation_steps = 2  # accumulate gradients over 2 batches
-        for _ in tqdm.tqdm(range(n_epochs), desc="Epochs"):
+        accumulation_steps = 2  # accumulate gradients over 2 batches
+        for epoch in tqdm.tqdm(range(n_epochs), desc="Epochs"):
+            model.train()
             epoch_loss = 0.0
             for i, batch_idx in enumerate(batch_start):
                 batch_X, batch_y = (
@@ -165,29 +186,38 @@ class Train:
                     y_train[batch_idx : batch_idx + batch_size],
                 )
                 optimizer.zero_grad()
-                y_pred = model.forward(batch_X).to("cuda")
+                y_pred = model(batch_X).to("cuda")
                 loss = loss_fn(y_pred, batch_y.view(-1, 1)).to("cuda")
                 # scaler.scale(loss).backward() # NEED GPU
 
                 # accumulate gradients over several batches
-                # if (i + 1) % accumulation_steps == 0 or (i + 1) == len(batch_start):
-                #     # scaler.step(optimizer) # NEED GPU
-                #     # scaler.update() # NEED GPU
-                model.zero_grad()
+                if (i + 1) % accumulation_steps == 0 or (i + 1) == len(batch_start):
+                    # scaler.step(optimizer) # NEED GPU
+                    # scaler.update() # NEED GPU
+                    model.zero_grad()
                 y_pred = model(batch_X).to("cuda")
                 loss = loss_fn(y_pred, batch_y.view(-1, 1)).to("cuda")
                 loss.backward()
                 optimizer.step()
                 epoch_loss += loss.item() * batch_X.shape[0]
             epoch_loss /= len(X_train)
+            print(epoch_loss)
             scheduler.step(epoch_loss)
             history.append(epoch_loss)
             if epoch_loss < best_mse:
                 best_mse = epoch_loss
                 best_weights = copy.deepcopy(model.state_dict())
+                torch.save(best_weights, "zlv6_t.pt")
+            elif epoch_loss >= best_mse and is_mutated == False:   
+                # load the best weights into the model
+                model = mutate(model,0.1)
+                is_mutated = True
+            elif epoch_loss >= best_mse and is_mutated == True:
+                weights_path = "./zlv6_t.pt"
+                state_dict = torch.load(weights_path, map_location="cpu")
+                model.load_state_dict(state_dict)
+                is_mutated = False
 
-            # load the best weights into the model
-            model.load_state_dict(best_weights)
 
         print("MSE: %.2f" % best_mse)
         print("RMSE: %.2f" % np.sqrt(best_mse))
@@ -197,22 +227,23 @@ class Train:
         plt.ylabel("Epoch Loss")
         plt.draw()
         plt.savefig("ai-eval-losses.jpg")
+        model.eval()
         with torch.no_grad():
             # Test out inference with 5 samples
             for i in range(5):
                 X_sample = X_val[i : i + 1]
-                X_sample = X_sample.clone().detach().to("cuda")
-                y_pred = model.forward(X_sample).to("cuda")
+                X_sample = X_sample.clone().detach()
+                y_pred = model(X_sample).to("cuda")
                 print(y_pred)
-        torch.save(best_weights, "zlv7.pt")
+        if best_score > epoch_loss:
+            torch.save(best_weights, "zlv6.pt")
+            print(best_score,epoch_loss)
+            print("PB!")
         # return scheduler.optimizer.param_groups[0][
         #     "lr"
         # ]  # get learning rate of training
-        del X_train
-        del X_val
-        del y_train
-        del y_val
-        return history[-1]
+        torch.cuda.empty_cache()
+        return epoch_loss
 
 
 def board_data(board):
@@ -229,56 +260,10 @@ def board_data(board):
     return board_array
 
 
-def mutate(agent, mutation_rate):
-    # Calculate the new mutation rate based on the game score
-    # Mutate the agent's parameters
-    for param in agent.parameters():
-        if np.random.rand() < mutation_rate:
-            param.data += torch.randn(param.shape) * np.random.rand()
-    return agent
-
-
-def similarity(population):
-    SIMILARITY_THRESHOLD = 0.85
-    cosine_similarity = nn.CosineSimilarity(dim=0)
-    euclidean_distance = nn.PairwiseDistance(p=2, keepdim=True)
-    # Flatten the weights of all agents
-    weights = [
-        np.concatenate(
-            [param.data.flatten().to("cpu").numpy() for param in agent.parameters()]
-        )
-        for agent in population
-    ]
-    # Use KMeans clustering to group agents by similarity
-    kmeans = KMeans(n_clusters=len(population), n_init="auto").fit(weights)
-    for cluster in np.unique(kmeans.labels_):
-        agents = [population[i] for i in np.where(kmeans.labels_ == cluster)[0]]
-        for i in range(len(agents)):
-            for j in range(i + 1, len(agents)):
-                agent1 = agents[i]
-                agent2 = agents[j]
-                weights1 = [param.data.flatten() for param in agent1.parameters()]
-                weights2 = [param.data.flatten() for param in agent2.parameters()]
-                for w1, w2 in zip(weights1, weights2):
-                    distance = euclidean_distance(
-                        w1.clone().detach(), w2.clone().detach()
-                    ).item()
-                    similarity = cosine_similarity(w1, w2).item()
-                    if (
-                        similarity > SIMILARITY_THRESHOLD
-                        or distance > SIMILARITY_THRESHOLD
-                    ):
-                        # Mutate one of the agents
-                        if np.random.rand() < 0.5:
-                            agent1 = mutate(agent1, np.random.rand())
-                        else:
-                            agent2 = mutate(agent2, np.random.rand())
-    return population
-
-
 def manager(cpu):
     size = cpu[1] - cpu[0]
     d = DataManager(size, cpu[1])
+    completed = cpu[0]
     train_data, train_target = zip(*d.load(completed, size))
     X_train, y_train, X_val, y_val = d.loading(train_data, train_target)
     del d
@@ -345,10 +330,8 @@ if __name__ == "__main__":
     # print(result)
     conn.close()
     # instantiate population
-    POPULATION_SIZE = 5
-    population = [Agent().to("cuda") for _ in range(POPULATION_SIZE)]
-    num_elites = int(POPULATION_SIZE * 0.4)
     count = 0  # used for indexing which agent it is to train now
+    best_score = np.inf
     while all_completed == False:
         with open("progressX.txt", "r+") as f:
             contents = f.read()
@@ -365,98 +348,58 @@ if __name__ == "__main__":
             all_completed = True
         # repeat the training process for all agents in population
         # load weights onto AI
-        random_integers = np.random.randint(0, num_elites, size=POPULATION_SIZE)
-        index = 0
-        for agent in population:
-            weights_path = "./best_agents" + str(random_integers[index]) + ".pt"
-            try:
-                state_dict = torch.load(weights_path)
-                agent.load_state_dict(state_dict)
-
-            except Exception:
-                pass
-            index += 1
-        population = similarity(population)
-        results = {}
-        p = multiprocessing.cpu_count() - 5 # spare some cpu cores
+        p = int(multiprocessing.cpu_count() * 0.6)  # spare some cpu cores
         load = split_tasks(p, size)
         # print("SIZE", size)
         # print("COMPLETED", completed)
-        u = 0
-        for agent in population:
-            with multiprocessing.Pool(p) as pool:
-                r = pool.map(manager, load)
-            X_train, y_train, X_val, y_val = zip(*r)
-            xt = X_train[0]  # initialize the result with the first tensor
-            for i in range(1, len(X_train)):
-                xt = torch.cat(
-                    (xt, X_train[i]), dim=0
-                )  # concatenate each tensor to the result tensor along the first dimension
-            yt = y_train[0]  # initialize the result with the first tensor
-            for i in range(1, len(y_train)):
-                yt = torch.cat(
-                    (yt, y_train[i]), dim=0
-                )  # concatenate each tensor to the result tensor along the first dimension
-            xv = X_val[0]  # initialize the result with the first tensor
-            for i in range(1, len(X_val)):
-                xv = torch.cat(
-                    (xv, X_val[i]), dim=0
-                )  # concatenate each tensor to the result tensor along the first dimension
-            yv = y_val[0]  # initialize the result with the first tensor
-            for i in range(1, len(y_val)):
-                yv = torch.cat(
-                    (yv, y_val[i]), dim=0
-                )  # concatenate each tensor to the result tensor along the first dimension
-            X_train, y_train, X_val, y_val = xt, yt, xv, yv
+        with multiprocessing.Pool(p) as pool:
+            r = pool.map(manager, load)
+        pool.join()
+        del pool
+        X_train, y_train, X_val, y_val = zip(*r)
+        xt = X_train[0]  # initialize the result with the first tensor
+        print("organising data")
+        # for i in range(1, len(X_train)):
+        #     xt = torch.cat(
+        #         (xt, X_train[i]), dim=0
+        #     )  # concatenate each tensor to the result tensor along the first dimension
+        # yt = y_train[0]  # initialize the result with the first tensor
+        # for i in range(1, len(y_train)):
+        #     yt = torch.cat(
+        #         (yt, y_train[i]), dim=0
+        #     )  # concatenate each tensor to the result tensor along the first dimension
+        # xv = X_val[0]  # initialize the result with the first tensor
+        # for i in range(1, len(X_val)):
+        #     xv = torch.cat(
+        #         (xv, X_val[i]), dim=0
+        #     )  # concatenate each tensor to the result tensor along the first dimension
+        # yv = y_val[0]  # initialize the result with the first tensor
+        # for i in range(1, len(y_val)):
+        #     yv = torch.cat(
+        #         (yv, y_val[i]), dim=0
+        #     )  # concatenate each tensor to the result tensor along the first dimension
+        # X_train, y_train, X_val, y_val = xt, yt, xv, yv
+        xt = torch.cat(X_train, dim=0)
+        yt = torch.cat(y_train, dim=0)
+        xv = torch.cat(X_val, dim=0)
+        yv = torch.cat(y_val, dim=0)
 
-            t = Train(X_train, y_train, X_val, y_val, agent)
-            score = t.cycle(X_train, y_train, X_val, y_val, agent)
-            results[count] = score  # make sure that the lower the better
-            completed = completed + size
-            count += 1
-            with open("progress.txt", "w") as f:  # overwrite file contents
-                f.write(str(completed) + " " + str(size))
-            completed = counter * size
-            counter += 1
-            u += 1
-        if count == POPULATION_SIZE:  # reached end of list index
-            # print(results)
-            results = {
-                k: v
-                for k, v in sorted(
-                    results.items(), key=lambda item: item[1], reverse=False
-                )  # reverse=False to find the best agents with lowest loss
-            }
-            # print(results)
-            elites = list(results.keys())[:num_elites]
-            q = 0  # used for indexing elites
-            new_population = []
-
-            for elite in elites:
-                torch.save(population[elite].state_dict(), "zlparent" + str(q) + ".pt")
-                new_population.append(population[elite])
-                q += 1
-            random_integers = np.random.randint(
-                0, num_elites, size=(POPULATION_SIZE - num_elites) * 2
-            )
-            f = 0  # indexing rest of agents
-            for _ in range(
-                POPULATION_SIZE - num_elites
-            ):  # exclude parents, already included
-                child = Agent().to("cuda")
-                parent1 = population[random_integers[f]]
-                parent2 = population[random_integers[f + 1]]
-                for name, param in child.named_parameters():
-                    if np.random.rand() > 0.5:
-                        param.data.copy_(parent1.state_dict()[name].data)
-                    else:
-                        param.data.copy_(parent2.state_dict()[name].data)
-                child = mutate(child, np.random.rand())
-                new_population.append(child)
-                f += 2
-            population = new_population
-            del new_population
-        with open("progress.txt", "w") as f:  # overwrite file contents
+        X_train, y_train, X_val, y_val = xt, yt, xv, yv
+        del xt
+        del yt
+        del xv
+        del yv
+        print("ready")
+        t = Train(X_train, y_train, X_val, y_val)
+        score = t.cycle(X_train, y_train, X_val, y_val, best_score)
+        best_score = min(best_score, score)
+        completed = completed + size
+        with open("progressX.txt", "w") as f:  # overwrite file contents
             f.write(str(completed) + " " + str(size))
         completed = counter * size
+        del t
+        del X_train
+        del y_train
+        del X_val
+        del y_val
         counter += 1
