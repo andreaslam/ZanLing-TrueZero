@@ -127,6 +127,16 @@ class Agent(nn.Module):
         x = self.tanh200(x).to("cuda")
         return x
 
+def mutate(agent, mutation_rate):
+    # Calculate the new mutation rate based on the game score
+    # Mutate the agent's parameters
+    for param in agent.parameters():
+        if np.random.rand() < mutation_rate:
+            raw = torch.randn(param.shape) * (np.random.rand()/1000)
+            if np.random.rand() > 0.5:
+                raw = -raw
+            param.data = (raw+param.data)/2
+    return agent
 
 class Train(Tanh200):
     def __init__(self, X_train, y_train, X_val, y_val):
@@ -135,8 +145,9 @@ class Train(Tanh200):
         self.X_val = X_val
         self.y_val = y_val
 
-    def cycle(self, X_train, y_train, X_val, y_val):
+    def cycle(self, X_train, y_train, X_val, y_val, best_score):
         model = Agent().to("cuda")
+        is_mutated = False
 
         # Weight initialization
         try:
@@ -196,9 +207,17 @@ class Train(Tanh200):
             if epoch_loss < best_mse:
                 best_mse = epoch_loss
                 best_weights = copy.deepcopy(model.state_dict())
+                torch.save(best_weights, "zlv6_t.pt")
+            elif epoch_loss >= best_mse and is_mutated == False:   
+                # load the best weights into the model
+                model = mutate(model,0.1)
+                is_mutated = True
+            elif epoch_loss >= best_mse and is_mutated == True:
+                weights_path = "./zlv6_t.pt"
+                state_dict = torch.load(weights_path, map_location="cpu")
+                model.load_state_dict(state_dict)
+                is_mutated = False
 
-        # load the best weights into the model
-        model.load_state_dict(best_weights)
 
         print("MSE: %.2f" % best_mse)
         print("RMSE: %.2f" % np.sqrt(best_mse))
@@ -216,11 +235,15 @@ class Train(Tanh200):
                 X_sample = X_sample.clone().detach()
                 y_pred = model(X_sample).to("cuda")
                 print(y_pred)
-        torch.save(best_weights, "zlv6.pt")
+        if best_score > epoch_loss:
+            torch.save(best_weights, "zlv6.pt")
+            print(best_score,epoch_loss)
+            print("PB!")
         # return scheduler.optimizer.param_groups[0][
         #     "lr"
         # ]  # get learning rate of training
         torch.cuda.empty_cache()
+        return epoch_loss
 
 
 def board_data(board):
@@ -308,6 +331,7 @@ if __name__ == "__main__":
     conn.close()
     # instantiate population
     count = 0  # used for indexing which agent it is to train now
+    best_score = np.inf
     while all_completed == False:
         with open("progressX.txt", "r+") as f:
             contents = f.read()
@@ -335,25 +359,31 @@ if __name__ == "__main__":
         X_train, y_train, X_val, y_val = zip(*r)
         xt = X_train[0]  # initialize the result with the first tensor
         print("organising data")
-        for i in range(1, len(X_train)):
-            xt = torch.cat(
-                (xt, X_train[i]), dim=0
-            )  # concatenate each tensor to the result tensor along the first dimension
-        yt = y_train[0]  # initialize the result with the first tensor
-        for i in range(1, len(y_train)):
-            yt = torch.cat(
-                (yt, y_train[i]), dim=0
-            )  # concatenate each tensor to the result tensor along the first dimension
-        xv = X_val[0]  # initialize the result with the first tensor
-        for i in range(1, len(X_val)):
-            xv = torch.cat(
-                (xv, X_val[i]), dim=0
-            )  # concatenate each tensor to the result tensor along the first dimension
-        yv = y_val[0]  # initialize the result with the first tensor
-        for i in range(1, len(y_val)):
-            yv = torch.cat(
-                (yv, y_val[i]), dim=0
-            )  # concatenate each tensor to the result tensor along the first dimension
+        # for i in range(1, len(X_train)):
+        #     xt = torch.cat(
+        #         (xt, X_train[i]), dim=0
+        #     )  # concatenate each tensor to the result tensor along the first dimension
+        # yt = y_train[0]  # initialize the result with the first tensor
+        # for i in range(1, len(y_train)):
+        #     yt = torch.cat(
+        #         (yt, y_train[i]), dim=0
+        #     )  # concatenate each tensor to the result tensor along the first dimension
+        # xv = X_val[0]  # initialize the result with the first tensor
+        # for i in range(1, len(X_val)):
+        #     xv = torch.cat(
+        #         (xv, X_val[i]), dim=0
+        #     )  # concatenate each tensor to the result tensor along the first dimension
+        # yv = y_val[0]  # initialize the result with the first tensor
+        # for i in range(1, len(y_val)):
+        #     yv = torch.cat(
+        #         (yv, y_val[i]), dim=0
+        #     )  # concatenate each tensor to the result tensor along the first dimension
+        # X_train, y_train, X_val, y_val = xt, yt, xv, yv
+        xt = torch.cat(X_train, dim=0)
+        yt = torch.cat(y_train, dim=0)
+        xv = torch.cat(X_val, dim=0)
+        yv = torch.cat(y_val, dim=0)
+
         X_train, y_train, X_val, y_val = xt, yt, xv, yv
         del xt
         del yt
@@ -361,7 +391,8 @@ if __name__ == "__main__":
         del yv
         print("ready")
         t = Train(X_train, y_train, X_val, y_val)
-        score = t.cycle(X_train, y_train, X_val, y_val)
+        score = t.cycle(X_train, y_train, X_val, y_val, best_score)
+        best_score = min(best_score, score)
         completed = completed + size
         with open("progressX.txt", "w") as f:  # overwrite file contents
             f.write(str(completed) + " " + str(size))
