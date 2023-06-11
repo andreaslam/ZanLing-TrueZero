@@ -39,10 +39,10 @@ This sounds unfair but it assumes you have PyTorch. This requirement works with 
 - `a1NAB2.pyx` - prototype code using reinforcement learning and genetic algorithm for the chess AI to learn to play chess using Negamax using Alpha-Beta pruning. 
 - `aiuci.py` - UCI compliant, contains the logic for handling UCI commands
 - `main.py` - run this file 📁 for the "work-in-progress" 🏗️ experience of the UCI Engine 
+- `aidata.py` - the companion file for `aieval7m.pyx`. Handles SQL data accessing and one-hot ♨️ encoding seperately in this file to improve speed and memory performance
 - `aiucieval.py` - UCI compliant version of the code that handles move search 🔍 and evaluation
 - `aieval8.pyx` - used for training the evaluation AI. Handles SQL data accessing and one-hot ♨️ encoding as well. Includes ranking agents by playing games agianst other agents
-- `aieval7g.pyx` - used for training the evaluation AI. Handles SQL data accessing and one-hot ♨️ encoding as well. Includes ranking agents by playing games agianst other agents. Supports GPU
-- `aieval7g.pyx` - used for training the evaluation AI. Handles SQL data accessing and one-hot ♨️ encoding as well. Includes ranking agents by playing games agianst other agents with multiprocessing
+- `aieval7m.pyx` - used for training the evaluation AI. Handles SQL data accessing and one-hot ♨️ encoding as well. Includes ranking agents by playing games agianst other agents with multiprocessing on GPU
 - `aieval8t.pyx` - used for training the evaluation AI by using state-of-the-art [Transformer architecture](https://en.wikipedia.org/wiki/Transformer_(machine_learning_model)). Handles SQL data accessing and one-hot ♨️ encoding as well.
 - `aimatchup.pyx` - used for internal testing, 🧪📝 used as companion code to `aieval8` to faciliate playing games against other agents
 - `aigamesdb.pyx` - used for turning PGNs from Lichess to UCI notation and storing it to the SQL database (with parameterised inputs)
