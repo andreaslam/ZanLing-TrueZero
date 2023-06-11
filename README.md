@@ -20,7 +20,8 @@ Run ```pip install -r requirements.txt``` in Terminal.
 This sounds unfair but it assumes you have PyTorch. This requirement works with later versions of the AI and not all versions of the archives would work but most would probably work.
 
 ## Features in progress
-- Implement finding best hyperparameters using genetic 🧬 algorithm 🔍
+- Implement finding best hyperparameters using genetic 🧬 algorithm 🔍 and evolutionary algorithms
+- Implement massive speed boosts (Cython/Numba) and improving memory efficiency (`multiprocessing`, `subprocesses`) 
 - More UCI features and more complete support (showing best moves in each depth) for UCI
 
 ## Current todo and goals 
