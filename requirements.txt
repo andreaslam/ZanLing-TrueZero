@@ -8,3 +8,4 @@ google-api-python-client==2.88.0
 Cython==0.29.35
 torch==2.0.1
 joblib==1.2.0
+setuptools==67.8.0
