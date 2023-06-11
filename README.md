@@ -33,6 +33,7 @@ Run ```pip install -r requirements.txt``` in Terminal. This `requirements.txt` w
 ## Long term goals and vision
 - Implement reinforcement learning 📘 (specifically genetic 🧬 algorithms) for the AI in order to allow for quicker realisation of chess ♟️ conepts through gameplay.
 - V2 will feature chess ♟️ games 🎮 that are randomly generated instead of taking from games that are played by humans before, to fully achieve TrueZero.
+- Create a [Data Engine](https://www.youtube.com/watch?v=zPH5O8hRfMA) where games are taken automatically and put to training DB and newly trained AIs can play against each other 24/7
 
 ## What each file 📁 does
 - `ai5.pyx` - used for internal testing, 🧪📝 not a UCI compliant way of running the Engine
