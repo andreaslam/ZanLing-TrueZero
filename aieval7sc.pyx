@@ -131,7 +131,7 @@ class Train(Tanh200):
         loss_fn = nn.MSELoss()  # mean square error
         optimizer = optim.AdamW(model.parameters(), lr=5e-3)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, factor=0.95, patience=15, verbose=True
+            optimizer, factor=0.98, patience=5, verbose=True
         )
         n_epochs = 100
         batch_size = 4096  # size of each batch
