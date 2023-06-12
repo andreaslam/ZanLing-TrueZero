@@ -25,9 +25,8 @@ gc.disable()
 
 # scaler = GradScaler()
 
-TEST_PRECISION = 100000  # number of games used for test
-RAM_USAGE = 95  # RAM usage in %
-
+TEST_PRECISION = 10000  # number of games used for test
+RAM_USAGE = 2  # RAM usage in %
 
 class Tanh200(nn.Module):
     def __init__(self):
@@ -41,6 +40,7 @@ class Agent(nn.Module):
     def __init__(self):
         super().__init__()
         self.fc1 = nn.Linear(833, 2048)
+        self.bn1 = nn.BatchNorm1d(2048)
         self.dropout1 = nn.Dropout(p=0.35)
         self.relu = nn.LeakyReLU(0.05)
         self.layer2 = nn.Linear(2048, 1)
@@ -56,6 +56,7 @@ class Agent(nn.Module):
 
     def forward(self, x):
         x = self.fc1(x)
+        x = self.bn1(x)
         x = self.dropout1(x)
         x = self.relu(x)
         x = self.layer2(x)
@@ -128,7 +129,7 @@ class Train(Tanh200):
 
         # loss function and optimizer
         loss_fn = nn.MSELoss()  # mean square error
-        optimizer = optim.AdamW(model.parameters(), lr=5e-4)
+        optimizer = optim.AdamW(model.parameters(), lr=5e-3)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, factor=0.95, patience=15, verbose=True
         )
@@ -194,8 +195,10 @@ class Train(Tanh200):
                 X_sample = X_sample.clone().detach()
                 y_pred = model(X_sample)
                 # print(y_pred)
+        best_weights = copy.deepcopy(model.state_dict())
         torch.save(best_weights, "zlv7.pt")
         if best_score > epoch_loss:
+            best_weights = copy.deepcopy(model.state_dict())
             torch.save(best_weights, "zlv7.pt")
             # print(best_score, epoch_loss)
             # print("PB!")
