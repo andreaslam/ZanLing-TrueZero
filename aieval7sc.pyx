@@ -170,8 +170,8 @@ class Train(Tanh200):
             # print(epoch_loss)
             scheduler.step(epoch_loss)
             history.append(epoch_loss)
-            # if epoch_loss < best_mse:
-            #     best_mse = epoch_loss
+            if epoch_loss < best_mse:
+                best_mse = epoch_loss
             #     best_weights = copy.deepcopy(model.state_dict())
             #     torch.save(best_weights, "zlv7_t.pt")
             # elif epoch_loss >= best_mse:
