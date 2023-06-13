@@ -5,7 +5,6 @@ import chess
 from chess import Move
 import torch
 from torch import nn
-from torch import optim
 import torch.nn.init as init
 import tqdm
 import copy
@@ -38,14 +37,16 @@ def negamax_ab(board, alpha, beta, colour, model, depth=2):
         board.pop()  # Pop the current child move from the board
 
         best_score = max(best_score, score)
-        alpha = max(alpha, best_score)
+        
         if alpha >= beta:
             break
 
     return best_score
 
-
 class Tanh200(nn.Module):
+    def __init__(self):
+        super(Tanh200, self).__init__()
+
     def forward(self, x):
         return torch.tanh(x / 200)
 
@@ -53,19 +54,18 @@ class Tanh200(nn.Module):
 class Agent(nn.Module):
     def __init__(self):
         super().__init__()
-        self.fc1 = nn.Linear(833, 512)
-        self.dropout1 = nn.Dropout(p=0.25)
+        self.fc1 = nn.Linear(833, 2048)
+        self.dropout1 = nn.Dropout(p=0.35)
         self.relu = nn.LeakyReLU(0.05)
-        self.layer2 = nn.Linear(512, 1)
-        self.dropout2 = nn.Dropout(p=0.25)
+        self.layer2 = nn.Linear(2048, 1)
+        self.dropout2 = nn.Dropout(p=0.35)
         self.tanh200 = Tanh200()
         self.hidden_layers = nn.ModuleList()
-        self.optimizer = optim.Adam(self.parameters(), lr=1e-3)
-        self.scheduler = optim.lr_scheduler.StepLR(
-            self.optimizer, step_size=10, gamma=0.5
-        )
-        init.uniform_(self.fc1.weight, -1, 1)
-        init.uniform_(self.layer2.weight, -1, 1)
+
+        # Initialize weights of Linear layers using Xavier initialization
+        init.xavier_uniform_(self.fc1.weight)
+        init.xavier_uniform_(self.layer2.weight)
+
         self.loss = nn.MSELoss()
 
     def forward(self, x):
@@ -75,7 +75,9 @@ class Agent(nn.Module):
         x = self.layer2(x)
         x = self.dropout2(x)
         x = self.tanh200(x)
+
         return x
+
 
     def generate_move(self, board, depth=3):
         legal_moves = list(board.legal_moves)
@@ -119,8 +121,6 @@ def board_data(board):
 
 def play_game(agent1, agent2):
     board = chess.Board()
-    batch_inputs = []
-    batch_targets = []
     while not board.is_game_over():
         if board.turn == chess.WHITE:
             move = agent1.generate_move(board)
@@ -128,50 +128,7 @@ def play_game(agent1, agent2):
             move = agent2.generate_move(board)
         move = Move.from_uci(move)
         board.push(move)
-        if board.turn == chess.WHITE:
-            move_turn = 0
-            batch_inputs.append(
-                np.concatenate(
-                    (np.array([board_data(board)]), np.array([[move_turn]])),
-                    axis=1,
-                )
-            )
-            batch_targets.append(
-                agent1.forward(
-                    torch.tensor(
-                        np.concatenate(
-                            (
-                                np.array([board_data(board)]),
-                                np.array([[move_turn]]),
-                            ),
-                            axis=1,
-                        ),
-                        dtype=torch.float,
-                    )
-                ).item()
-            )
-        else:
-            move_turn = 1
-            batch_inputs.append(
-                np.concatenate(
-                    (np.array([board_data(board)]), np.array([[move_turn]])),
-                    axis=1,
-                )
-            )
-            batch_targets.append(
-                agent2.forward(
-                    torch.tensor(
-                        np.concatenate(
-                            (
-                                np.array([board_data(board)]),
-                                np.array([[move_turn]]),
-                            ),
-                            axis=1,
-                        ),
-                        dtype=torch.float,
-                    )
-                ).item()
-            )
+
     # Append final target value when game is over
     if board.result() == "1-0":
         score = 1
@@ -179,30 +136,6 @@ def play_game(agent1, agent2):
         score = -1
     else:
         score = 0
-    batch_targets[-1] = score  # set the last target value to score
-    # Train the agents on the batch
-    if len(batch_inputs) > 0:
-        batch_inputs = np.array(batch_inputs)
-        batch_targets = np.array([[batch_targets]])
-        inputs = torch.tensor(batch_inputs, dtype=torch.float)
-        targets = torch.tensor(batch_targets, dtype=torch.float)
-        targets = torch.reshape(targets, (-1, 1, 1))
-        outputs = agent1.forward(inputs)
-        loss = agent1.loss(outputs, targets)
-        loss.backward()
-        # NOTE: UserWarning: Detected call of `lr_scheduler.step()` before `optimizer.step()`. In PyTorch 1.1.0 and later, you should call them in the opposite order: `optimizer.step()` before `lr_scheduler.step()`.  Failure to do this will result in PyTorch skipping the first value of the learning rate schedule. See more details at https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate
-        agent1.optimizer.zero_grad()
-        agent1.optimizer.step()
-        agent1.scheduler.step()
-        outputs = agent2.forward(inputs)
-        loss = agent2.loss(outputs, targets)
-        loss.backward()
-        agent2.optimizer.zero_grad()
-        agent2.optimizer.step()
-        agent2.scheduler.step()
-    board = chess.Board()
-    batch_inputs = []
-    batch_targets = []
     return score
 
 
@@ -226,5 +159,4 @@ def play_game_tournament(population):
                     s_table[j] += raw_score * -1
     for x in s_table:
         s_table[x] = s_table[x]/((POP_SIZE)**2)
-    print(s_table)
     return s_table
