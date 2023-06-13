@@ -36,16 +36,20 @@ Run ```pip install -r requirements.txt``` in Terminal. This `requirements.txt` w
 - Create a [Data Engine](https://www.youtube.com/watch?v=zPH5O8hRfMA) where games are taken automatically and put to training DB and newly trained AIs can play against each other 24/7
 
 ## What each file 📁 does
+### Internal testing (non-UCI compliant)
 - `ai5.pyx` - used for internal testing, 🧪📝 not a UCI compliant way of running the Engine
-- `a1NAB2.pyx` - prototype code using reinforcement learning and genetic algorithm for the chess AI to learn to play chess using Negamax using Alpha-Beta pruning. 
-- `aiuci.py` - UCI compliant, contains the logic for handling UCI commands
+- `aimatchup.pyx` - used for internal testing, 🧪📝 used as companion code to `aieval8` to faciliate playing games against other agents
+### Prototype UCI complaint code
 - `main.py` - run this file 📁 for the "work-in-progress" 🏗️ experience of the UCI Engine 
+`aiucieval.py` - UCI compliant version of the code that handles move search 🔍 and evaluation
+- `aiuci.py` - UCI compliant, contains the logic for handling UCI commands
+### Source code for AI
+- `a1NAB2.pyx` - prototype code using reinforcement learning and genetic algorithm for the chess AI to learn to play chess using Negamax using Alpha-Beta pruning. 
 - `aidata.py` - the companion file for `aieval7m.pyx`. Handles SQL data accessing and one-hot ♨️ encoding seperately in this file to improve speed and memory performance
-- `aiucieval.py` - UCI compliant version of the code that handles move search 🔍 and evaluation
 - `aieval8.pyx` - used for training the evaluation AI. Handles SQL data accessing and one-hot ♨️ encoding as well. Includes ranking agents by playing games agianst other agents
 - `aieval7m.pyx` - used for training the evaluation AI. Handles SQL data accessing and one-hot ♨️ encoding as well. Includes ranking agents by playing games agianst other agents with multiprocessing on GPU
 - `aieval8t.pyx` - used for training the evaluation AI by using state-of-the-art [Transformer architecture](https://en.wikipedia.org/wiki/Transformer_(machine_learning_model)). Handles SQL data accessing and one-hot ♨️ encoding as well.
-- `aimatchup.pyx` - used for internal testing, 🧪📝 used as companion code to `aieval8` to faciliate playing games against other agents
+### Training data code and sample dataset
 - `aigamesdb.pyx` - used for turning PGNs from Lichess to UCI notation and storing it to the SQL database (with parameterised inputs)
 - `aigamesrand.pyx` - turning random 🎲 game PGNs to UCI notation and storing 🏬 it to the 🤘 SQL database (with parameterised inputs)
 - `randmovegen.pyx` - used for generating random 🔀 games 👾 in PGN notation. Saves 📑 games 🎮🏏 as .pgn file
