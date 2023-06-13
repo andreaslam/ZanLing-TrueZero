@@ -39,7 +39,7 @@ Run ```pip install -r requirements.txt``` in Terminal. This `requirements.txt` w
 ### Internal testing (non-UCI compliant)
 - `ai5.pyx` - used for internal testing, 🧪📝 not a UCI compliant way of running the Engine
 - `aimatchup.pyx` - used for internal testing, 🧪📝 used as companion code to `aieval8` to faciliate playing games against other agents
-### Prototype UCI complaint code
+### Prototype UCI compliant code
 - `main.py` - run this file 📁 for the "work-in-progress" 🏗️ experience of the UCI Engine 
 `aiucieval.py` - UCI compliant version of the code that handles move search 🔍 and evaluation
 - `aiuci.py` - UCI compliant, contains the logic for handling UCI commands
