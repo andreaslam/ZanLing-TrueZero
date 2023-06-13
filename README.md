@@ -41,7 +41,7 @@ Run ```pip install -r requirements.txt``` in Terminal. This `requirements.txt` w
 - `aimatchup.pyx` - used for internal testing, 🧪📝 used as companion code to `aieval8` to faciliate playing games against other agents
 ### Prototype UCI compliant code
 - `main.py` - run this file 📁 for the "work-in-progress" 🏗️ experience of the UCI Engine 
-`aiucieval.py` - UCI compliant version of the code that handles move search 🔍 and evaluation
+- `aiucieval.py` - UCI compliant version of the code that handles move search 🔍 and evaluation
 - `aiuci.py` - UCI compliant, contains the logic for handling UCI commands
 ### Source code for AI
 - `a1NAB2.pyx` - prototype code using reinforcement learning and genetic algorithm for the chess AI to learn to play chess using Negamax using Alpha-Beta pruning. 
