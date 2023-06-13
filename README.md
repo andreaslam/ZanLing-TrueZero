@@ -47,7 +47,8 @@ Run ```pip install -r requirements.txt``` in Terminal. This `requirements.txt` w
 - `a1NAB2.pyx` - prototype code using reinforcement learning and genetic algorithm for the chess AI to learn to play chess using Negamax using Alpha-Beta pruning. 
 - `aidata.py` - the companion file for `aieval7m.pyx`. Handles SQL data accessing and one-hot ♨️ encoding seperately in this file to improve speed and memory performance
 - `aieval8.pyx` - used for training the evaluation AI. Handles SQL data accessing and one-hot ♨️ encoding as well. Includes ranking agents by playing games agianst other agents
-- `aieval7m.pyx` - used for training the evaluation AI. Handles SQL data accessing and one-hot ♨️ encoding as well. Includes ranking agents by playing games agianst other agents with multiprocessing on GPU
+- `aieval7sc.pyx` - used for training the evaluation AI. Handles SQL data accessing and one-hot ♨️ encoding as well. 
+- - `aieval7sc.pyx` - used for training the evaluation AI. Handles SQL data accessing and one-hot ♨️ encoding as well. Includes support for GPU.
 - `aieval8t.pyx` - used for training the evaluation AI by using state-of-the-art [Transformer architecture](https://en.wikipedia.org/wiki/Transformer_(machine_learning_model)). Handles SQL data accessing and one-hot ♨️ encoding as well.
 ### Training data code and sample dataset
 - `aigamesdb.pyx` - used for turning PGNs from Lichess to UCI notation and storing it to the SQL database (with parameterised inputs)
