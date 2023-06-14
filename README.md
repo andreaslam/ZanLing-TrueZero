@@ -52,7 +52,7 @@ Run ```pip install -r requirements.txt``` in Terminal. This `requirements.txt` w
 - `aieval8t.pyx` - used for training the evaluation AI by using state-of-the-art [Transformer architecture](https://en.wikipedia.org/wiki/Transformer_(machine_learning_model)). Handles SQL data accessing and one-hot ♨️ encoding as well.
 ### Training data code and sample dataset
 - `aigamesdb.pyx` - used for turning PGNs from Lichess to UCI notation and storing it to the SQL database (with parameterised inputs)
-- `aigamesrand.pyx` - turning random 🎲 game PGNs to UCI notation and storing 🏬 it to the 🤘 SQL database (with parameterised inputs)
+- `aigamesrand.pyx` - turning random 🎲 game PGNs to UCI notation and storing 🏬 it to the SQL database (with parameterised inputs)
 - `randmovegen.pyx` - used for generating random 🔀 games 👾 in PGN notation. Saves 📑 games 🎮🏏 as .pgn file
 - `aitraitgen.pyx` - used for generating and storing inital traits for the agents for genetic algorithm
 - `fracchess.db` - a sample, smaller database that mirrors 🪞 the actual database used in training containing a smaller number of games 🎲 from Lichess
