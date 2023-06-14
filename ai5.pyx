@@ -11,6 +11,9 @@ from torch import optim
 
 
 class Tanh200(nn.Module):
+    def __init__(self):
+        super(Tanh200, self).__init__()
+
     def forward(self, x):
         return torch.tanh(x / 200)
 
@@ -18,19 +21,18 @@ class Tanh200(nn.Module):
 class Agent(nn.Module):
     def __init__(self):
         super().__init__()
-        self.fc1 = nn.Linear(833, 512)
-        self.dropout1 = nn.Dropout(p=0.25)
+        self.fc1 = nn.Linear(833, 2048)
+        self.dropout1 = nn.Dropout(p=0.45)
         self.relu = nn.LeakyReLU(0.05)
-        self.layer2 = nn.Linear(512, 1)
-        self.dropout2 = nn.Dropout(p=0.25)
+        self.layer2 = nn.Linear(2048, 1)
+        self.dropout2 = nn.Dropout(p=0.45)
         self.tanh200 = Tanh200()
         self.hidden_layers = nn.ModuleList()
-        self.optimizer = optim.Adam(self.parameters(), lr=1e-3)
-        self.scheduler = optim.lr_scheduler.StepLR(
-            self.optimizer, step_size=10, gamma=0.5
-        )
-        init.uniform_(self.fc1.weight, -1, 1)
-        init.uniform_(self.layer2.weight, -1, 1)
+
+        # Initialize weights of Linear layers using Xavier initialization
+        init.xavier_uniform_(self.fc1.weight)
+        init.xavier_uniform_(self.layer2.weight)
+
         self.loss = nn.MSELoss()
 
     def forward(self, x):
@@ -42,37 +44,9 @@ class Agent(nn.Module):
         x = self.tanh200(x)
         return x
 
-    def generate_move(self, board, depth=5):
-        legal_moves = list(board.legal_moves)
-        if not legal_moves:
-            return None
-        if board.turn == chess.WHITE:
-            colour = 1
-        else:
-            colour = -1
-        best_move = None
-        m_dict = {}
-        for move in legal_moves:
-            board.push(move)
-            move_score = negamax_ab(board, -np.inf, np.inf, colour, self, depth)
-            m_dict[str(move)] = move_score
-            board.pop()
-        m_dict = {
-            k: v
-            for k, v in sorted(
-                m_dict.items(), key=lambda item: item[1], reverse=True
-            )  # reverse=False to find the best move with highest score
-        }
-        best_move = list(m_dict.keys())[0]  # best move, first key
-        del m_dict
-        return best_move
-
-    def load_weights(self, path):
-        self.load_state_dict(torch.load(path))
-
 
 model = Agent()
-weights_path = "./zlv6.pt"
+weights_path = "./zlv7.pt"
 state_dict = torch.load(weights_path, map_location=torch.device("cpu"))
 model.load_state_dict(state_dict)
 
