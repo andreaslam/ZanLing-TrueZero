@@ -20,6 +20,7 @@ Run ```pip install -r requirements.txt``` in Terminal. This `requirements.txt` w
 
 ## Features in progress
 - Implement finding best hyperparameters using genetic 🧬 algorithm 🔍 and evolutionary algorithms
+- Implement gradient-based tuning and hyperparameter adjustments
 - Implement massive speed boosts (Cython/Numba) and improving memory efficiency (`multiprocessing`, `subprocesses`) 
 - More UCI features and more complete support (showing best moves in each depth) for UCI
 
