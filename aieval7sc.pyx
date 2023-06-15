@@ -15,7 +15,6 @@ import gc
 import subprocess
 import psutil
 import torch.cuda
-from memory_profiler import profile
 
 # from torch.cuda.amp import GradScaler  # NEED GPU
 import subprocess
@@ -26,7 +25,7 @@ gc.disable()
 # scaler = GradScaler()
 
 TEST_PRECISION = 10000  # number of games used for test
-RAM_USAGE = 2  # RAM usage in %
+RAM_USAGE = 0.2  # RAM usage in %
 
 class Tanh200(nn.Module):
     def __init__(self):
@@ -77,13 +76,11 @@ class MemoryEstimator:
         self, threshold_percent
     ):  # used for estimating how many games to analyse before reaching threshold
         before = psutil.virtual_memory().available / psutil.virtual_memory().total
-        print("BEFORE", before)
         after = subprocess.run(
             ["python3", "aidata.py", str(0), str(TEST_PRECISION), "True"],
             capture_output=True,
         )  # do test run with 10 games
         after = float(str(after.stdout.decode("utf-8").strip()))
-        print("AFTER", after)
         # find memory reduction
         memory_reduction = (
             before - after
@@ -129,12 +126,12 @@ class Train(Tanh200):
 
         # loss function and optimizer
         loss_fn = nn.MSELoss()  # mean square error
-        optimizer = optim.AdamW(model.parameters(), lr=5e-3)
+        optimizer = optim.AdamW(model.parameters(), lr=5e-6, weight_decay=0.003)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, factor=0.98, patience=5, verbose=True
+            optimizer, factor=0.98, patience=3, verbose=True
         )
-        n_epochs = 100
-        batch_size = 4096  # size of each batch
+        n_epochs = 300
+        batch_size = 8192  # size of each batch
         batch_start = torch.arange(0, len(X_train), batch_size)
         # Hold the best model
         best_mse = np.inf  # initialise value as infinite
@@ -216,7 +213,7 @@ class Train(Tanh200):
         return epoch_loss
 
 
-@profile
+
 def manager(size, completed):
     subprocess.run(
         ["python3", "aidata.py", str(completed), str(size), "False"], shell=False
@@ -242,7 +239,7 @@ if __name__ == "__main__":
     completed = 0
     # find number of lines in a database
 
-    DB_LOCATION = "chess_games.db"
+    DB_LOCATION = "./randchess_games.db"
 
     # Connect to the database
     conn = sqlite3.connect(DB_LOCATION)
@@ -296,7 +293,6 @@ if __name__ == "__main__":
         gc.enable()
         gc.collect()
         gc.disable()
-        print(X_train.shape, y_train.shape, X_val.shape, y_val.shape)
         #######################################################################################
         # print("ready")
         t = Train(X_train, y_train, X_val, y_val)
