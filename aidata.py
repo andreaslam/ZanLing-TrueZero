@@ -60,9 +60,12 @@ class DataManager:
         for g in tqdm.tqdm(games, desc="each game"):
             game = g[2]
             MAX_MOMENTS = min(2, len(game) - 10)
-            unsampled_idx = [
-                np.random.randint(10, len(game)) for _ in range(MAX_MOMENTS - 1)
-            ]
+            try:
+                unsampled_idx = [
+                    np.random.randint(20, len(game)) for _ in range(MAX_MOMENTS - 1)
+                ]
+            except ValueError:
+                unsampled_idx = [np.random.randint(len(game), 20) for _ in range(MAX_MOMENTS - 1)]
             game = game.split(" ")
             for move in range(MAX_MOMENTS - 1):
                 board = chess.Board()
@@ -112,16 +115,16 @@ data = [X_train, y_train, X_val, y_val]
 files = ["X_train", "y_train", "X_val", "y_val"]
 
 for d, file in zip(data, files):
-    storagefile = open(file,"ab")
-    pickle.dump(d, storagefile)
+    with open(file, "ab") as storagefile:
+        pickle.dump(d, storagefile)
 
 test = sys.argv[3]
 if test == "True":
-    memory_available_after = psutil.virtual_memory().available/ psutil.virtual_memory().total # in percent
+    memory_available_after = psutil.virtual_memory().available / psutil.virtual_memory().total # in percent
     print(memory_available_after)
     for file in files:
-        f = open(file, "w+")
-        f.write("")
+        with open(file, "w+") as f:
+            f.write("")
     del memory_available_after
 del X_train
 del y_train
