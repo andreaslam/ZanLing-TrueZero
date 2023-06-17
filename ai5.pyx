@@ -9,7 +9,6 @@ from torch import optim
 
 # set up AI (Sequential NN)
 
-
 class Tanh200(nn.Module):
     def __init__(self):
         super(Tanh200, self).__init__()
@@ -22,10 +21,11 @@ class Agent(nn.Module):
     def __init__(self):
         super().__init__()
         self.fc1 = nn.Linear(833, 2048)
-        self.dropout1 = nn.Dropout(p=0.45)
+        self.bn1 = nn.BatchNorm1d(2048)
+        self.dropout1 = nn.Dropout(p=0.35)
         self.relu = nn.LeakyReLU(0.05)
         self.layer2 = nn.Linear(2048, 1)
-        self.dropout2 = nn.Dropout(p=0.45)
+        self.dropout2 = nn.Dropout(p=0.35)
         self.tanh200 = Tanh200()
         self.hidden_layers = nn.ModuleList()
 
@@ -37,15 +37,18 @@ class Agent(nn.Module):
 
     def forward(self, x):
         x = self.fc1(x)
+        x = self.bn1(x)
         x = self.dropout1(x)
         x = self.relu(x)
         x = self.layer2(x)
         x = self.dropout2(x)
         x = self.tanh200(x)
+
         return x
 
 
 model = Agent()
+model.eval()
 weights_path = "./zlv7.pt"
 state_dict = torch.load(weights_path, map_location=torch.device("cpu"))
 model.load_state_dict(state_dict)
@@ -78,12 +81,13 @@ def negamax_ab(board, alpha, beta, colour, depth=2):
             (matrix_game, np.array([[move_turn]])), axis=1
         )  # have to append the move turn - the AI needs to know this
         matrix_game = torch.tensor(matrix_game, dtype=torch.float32)
-        score = model(
-            matrix_game
-        )  # EVALUTATION - high score for winning (if white/black wins, high score, vice versa)
+        with torch.no_grad():
+            score = model(
+                matrix_game
+            )  # EVALUTATION - high score for winning (if white/black wins, high score, vice versa)
         score = float(score)
         if board.is_game_over():
-            score = 2 * colour
+            return 2 * colour
         return score * colour
 
     child_nodes = list(board.legal_moves)
@@ -126,14 +130,22 @@ def play_game(NUMBER_OF_GAMES):
             for move in legal_moves:
                 test_board = board.copy()
                 test_board.push(move)
-                move_score = negamax_ab(test_board, -np.inf, np.inf, -colour, 2)
+                move_score = negamax_ab(test_board, -np.inf, np.inf, -colour, 3)
                 m_dict[str(move)] = move_score
-            m_dict = {
-                k: v
-                for k, v in sorted(
-                    m_dict.items(), key=lambda item: item[1], reverse=True
-                )  # reverse=False to find the best move with highest score
-            }
+            if colour == -1:
+                m_dict = {
+                    k: v
+                    for k, v in sorted(
+                        m_dict.items(), key=lambda item: item[1], reverse=False
+                    )  # reverse=False to find the best move with highest score
+                }
+            else:
+                m_dict = {
+                    k: v
+                    for k, v in sorted(
+                        m_dict.items(), key=lambda item: item[1], reverse=True
+                    )  # reverse=False to find the best move with highest score
+                }
             best_move = list(m_dict.keys())[0]  # best move, first key
             print(m_dict)
             print(best_move)
