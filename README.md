@@ -37,7 +37,7 @@ Run ```pip install -r requirements.txt``` in Terminal. This `requirements.txt` w
 
 ## What each file 📁 does
 ## Evaluation Engines
-- `zlv7.pt` - ZanLing Evaluation Engine
+- `zlv7_3m.pt` - ZanLing Evaluation Engine
 ### Internal testing (non-UCI compliant)
 - `ai5.pyx` - used for internal testing, 🧪📝 not a UCI compliant way of running the Engine
 - `aimatchup.pyx` - used for internal testing, 🧪📝 used as companion code to `aieval8` to faciliate playing games against other agents
