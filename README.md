@@ -59,6 +59,7 @@ Run ```pip install -r requirements.txt``` in Terminal. This `requirements.txt` w
 - `randmovegen.pyx` - used for generating random 🔀 games 👾 in PGN notation. Saves 📑 games 🎮🏏 as .pgn file
 - `aitraitgen.pyx` - used for generating and storing inital traits for the agents for genetic algorithm
 - `fracchess.db` - a sample, smaller database that mirrors 🪞 the actual database used in training containing a smaller number of games 🎲 from Lichess
+- `aidatacombiner.py` - code to combine databases together
 
 ## Libraries/technologies used 🔨
 This Python 🐍 Engine uses the following:
