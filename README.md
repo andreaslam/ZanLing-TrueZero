@@ -25,7 +25,6 @@ Run ```pip install -r requirements.txt``` in Terminal. This `requirements.txt` w
 - More UCI features and more complete support (showing best moves in each depth) for UCI
 
 ## Current todo and goals 
-- Train V1 Evaluation Engine (with at least 3+ million games 🎮 analysed) (ETA - End 🔚 of May)
 - Have fully functional UCI compliance ✅ (ETA - End 🔚 of June/start of July)
 - Implement Move Ordering (ETA - mid-July)
 - Implement Transposition tables, killer🔪 moves (ETA - August)
@@ -37,6 +36,8 @@ Run ```pip install -r requirements.txt``` in Terminal. This `requirements.txt` w
 - Create a [Data Engine](https://www.youtube.com/watch?v=zPH5O8hRfMA) where games are taken automatically and put to training DB and newly trained AIs can play against each other 24/7
 
 ## What each file 📁 does
+## Evaluation Engines
+- `zlv7.pt` - ZanLing Evaluation Engine
 ### Internal testing (non-UCI compliant)
 - `ai5.pyx` - used for internal testing, 🧪📝 not a UCI compliant way of running the Engine
 - `aimatchup.pyx` - used for internal testing, 🧪📝 used as companion code to `aieval8` to faciliate playing games against other agents
