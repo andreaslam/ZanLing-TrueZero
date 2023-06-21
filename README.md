@@ -53,7 +53,7 @@ Run ```pip install -r requirements.txt``` in Terminal. This `requirements.txt` w
 - `aieval7sc.pyx` - used for training the evaluation AI. Handles SQL data accessing and one-hot ♨️ encoding as well. 
 - `aieval7sc.pyx` - used for training the evaluation AI. Handles SQL data accessing and one-hot ♨️ encoding as well. Includes support for GPU.
 - `aieval8t.pyx` - used for training the evaluation AI by using state-of-the-art [Transformer architecture](https://en.wikipedia.org/wiki/Transformer_(machine_learning_model)). Handles SQL data accessing and one-hot ♨️ encoding as well.
-### Training data code and sample dataset
+### Training data code and code for the Data Engine
 - `aigamesdb.pyx` - used for turning PGNs from Lichess to UCI notation and storing it to the SQL database (with parameterised inputs)
 - `aigamesrand.pyx` - turning random 🎲 game PGNs to UCI notation and storing 🏬 it to the SQL database (with parameterised inputs)
 - `randmovegen.pyx` - used for generating random 🔀 games 👾 in PGN notation. Saves 📑 games 🎮🏏 as .pgn file
