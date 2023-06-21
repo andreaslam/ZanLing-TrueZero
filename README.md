@@ -36,7 +36,7 @@ Run ```pip install -r requirements.txt``` in Terminal. This `requirements.txt` w
 - Create a [Data Engine](https://www.youtube.com/watch?v=zPH5O8hRfMA) where games are taken automatically and put to training DB and newly trained AIs can play against each other 24/7
 
 ## What each file 📁 does
-## Evaluation Engines
+### Evaluation Engines
 - `zlv7_3m.pt` - ZanLing Evaluation Engine
 ### Internal testing (non-UCI compliant)
 - `ai5.pyx` - used for internal testing, 🧪📝 not a UCI compliant way of running the Engine
