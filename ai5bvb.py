@@ -76,14 +76,14 @@ class Agent2(nn.Module):
 
 
 model1 = Agent1()
-weights_path = "./zlv7.pt"
-model1_name = "zlv7"
+weights_path = "./zlv7_pro.pt"
+model1_name = "zlv7_pro"
 state_dict = torch.load(weights_path, map_location=torch.device("cpu"))
 model1.load_state_dict(state_dict)
 
 model2 = Agent2()
-weights_path = "./zlv7_3m.pt"
-model2_name = "zlv7_3m"
+weights_path = "./zlv7_full.pt"
+model2_name = "zlv7_full"
 state_dict = torch.load(weights_path, map_location=torch.device("cpu"))
 model2.load_state_dict(state_dict)
 
@@ -122,7 +122,7 @@ def negamax_ab(board, alpha, beta, colour, model, depth=2):
         )  # EVALUTATION - high score for winning (if white/black wins, high score, vice versa)
         score = float(score)
         if board.is_game_over():
-            return 2 * colour
+            return score * colour * (1 if board.turn == chess.WHITE else -1)
         return score * colour
 
     child_nodes = list(board.legal_moves)
