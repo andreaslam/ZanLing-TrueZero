@@ -5,7 +5,6 @@ import torch.nn as nn
 import chess
 from chess import Move
 import torch.nn.init as init
-from torch import optim
 
 # set up AI (Sequential NN)
 
