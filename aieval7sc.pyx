@@ -25,7 +25,7 @@ gc.disable()
 # scaler = GradScaler()
 
 TEST_PRECISION = 10000  # number of games used for test
-RAM_USAGE = 0.2  # RAM usage in %
+RAM_USAGE = 50  # RAM usage in %
 
 class Tanh200(nn.Module):
     def __init__(self):
@@ -112,7 +112,7 @@ class Train(Tanh200):
 
         # Weight initialization
         try:
-            weights_path = "./zlv7.pt"
+            weights_path = "./zlv7_full.pt"
             state_dict = torch.load(weights_path, map_location="cpu")
             model.load_state_dict(state_dict)
         except FileNotFoundError:
@@ -193,10 +193,10 @@ class Train(Tanh200):
                 y_pred = model(X_sample)
                 # print(y_pred)
         best_weights = copy.deepcopy(model.state_dict())
-        torch.save(best_weights, "zlv7.pt")
+        torch.save(best_weights, "zlv7_full.pt")
         if best_score > epoch_loss:
             best_weights = copy.deepcopy(model.state_dict())
-            torch.save(best_weights, "zlv7.pt")
+            torch.save(best_weights, "zlv7_full.pt")
             # print(best_score, epoch_loss)
             # print("PB!")
         # return scheduler.optimizer.param_groups[0][
@@ -239,7 +239,7 @@ if __name__ == "__main__":
     completed = 0
     # find number of lines in a database
 
-    DB_LOCATION = "./randchess_games.db"
+    DB_LOCATION = "./all_data.db"
 
     # Connect to the database
     conn = sqlite3.connect(DB_LOCATION)
@@ -293,7 +293,7 @@ if __name__ == "__main__":
         gc.enable()
         gc.collect()
         gc.disable()
-        #######################################################################################
+        ###############################################################################################
         # print("ready")
         t = Train(X_train, y_train, X_val, y_val)
         score = t.cycle(X_train, y_train, X_val, y_val, best_score)
