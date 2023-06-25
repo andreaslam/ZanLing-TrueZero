@@ -48,7 +48,7 @@ class Agent(nn.Module):
 
 model = Agent()
 model.eval()
-weights_path = "./zlv7.pt"
+weights_path = "./zlv7_3m.pt"
 state_dict = torch.load(weights_path, map_location=torch.device("cpu"))
 model.load_state_dict(state_dict)
 
