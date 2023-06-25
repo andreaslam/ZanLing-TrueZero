@@ -14,23 +14,24 @@ import pickle
 import gc
 import subprocess
 import psutil
-import torch.cuda
-from torch.cuda.amp import GradScaler  # NEED GPU
 gc.disable()
 
 
-TEST_PRECISION = 10000  # number of games used for test
-RAM_USAGE = 50  # RAM usage in %
+TEST_PRECISION = 10  # number of games used for test
+RAM_USAGE = 75  # RAM usage in %
 
 if torch.cuda.is_available():
     d = torch.device("cuda")
     scaler = GradScaler()
+    import torch.cuda
+    from torch.cuda.amp import GradScaler  # NEED GPU
 elif torch.backends.mps.is_available():
     d = torch.device("mps")
 else:
     d = torch.device("cpu")
 
 print("Using: " + str(d))
+
 
 class Tanh200(nn.Module):
     def __init__(self):
@@ -43,11 +44,11 @@ class Tanh200(nn.Module):
 class Agent(nn.Module):
     def __init__(self):
         super().__init__()
-        self.fc1 = nn.Linear(833, 2048).to(d)
-        self.bn1 = nn.BatchNorm1d(2048).to(d)
+        self.fc1 = nn.Linear(833, 2048,dtype=torch.float32).to(d)
+        self.bn1 = nn.BatchNorm1d(2048, dtype=torch.float32).to(d)
         self.dropout1 = nn.Dropout(p=0.45).to(d)
         self.relu = nn.LeakyReLU(0.05).to(d)
-        self.layer2 = nn.Linear(2048, 1).to(d)
+        self.layer2 = nn.Linear(2048, 1,dtype=torch.float32).to(d)
         self.dropout2 = nn.Dropout(p=0.45).to(d)
         self.tanh200 = Tanh200().to(d)
         self.hidden_layers = nn.ModuleList().to(d)
@@ -105,6 +106,7 @@ class MemoryEstimator:
 
 # import torch.nn.functional as F
 
+
 class Train(Tanh200):
     def __init__(self, X_train, y_train, X_val, y_val):
         self.X_train = X_train
@@ -114,7 +116,8 @@ class Train(Tanh200):
 
     def cycle(self, X_train, y_train, X_val, y_val, best_score, l1_lambda=0.001, l2_lambda=0.001):
         model = Agent().to(d)
-        X_train, y_train, X_val, y_val = X_train.to(d), y_train.to(d), X_val.to(d), y_val.to(d)
+        X_train, y_train, X_val, y_val = X_train.to(
+            d), y_train.to(d), X_val.to(d), y_val.to(d)
         # Weight initialization
         try:
             weights_path = "./zlv7_full.pt"
@@ -129,7 +132,11 @@ class Train(Tanh200):
 
         # loss function and optimizer
         loss_fn = nn.MSELoss()  # mean square error
-        optimizer = optim.AdamW(model.parameters(), lr=5e-6, weight_decay=0)  # Set weight_decay to 0 for L2 regularization
+        # loss_fn2 = nn.HuberLoss()
+        # loss_fn3 =
+        # Set weight_decay to 0 for L2 regularization
+        optimizer = optim.AdamW(
+            model.parameters(), lr=1e-5, weight_decay=0.003)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, factor=0.98, patience=3, verbose=True
         )
@@ -147,9 +154,10 @@ class Train(Tanh200):
             epoch_loss = 0.0
             for i, batch_idx in enumerate(batch_start):
                 batch_X, batch_y = (
-                    X_train[batch_idx : batch_idx + batch_size],
-                    y_train[batch_idx : batch_idx + batch_size],
+                    X_train[batch_idx: batch_idx + batch_size],
+                    y_train[batch_idx: batch_idx + batch_size],
                 )
+                batch_X, batch_y = batch_X.to(dtype=torch.float32), batch_y.to(dtype=torch.float32)
                 optimizer.zero_grad()
                 y_pred = model.forward(batch_X).to(d)
                 loss = loss_fn(y_pred, batch_y.view(-1, 1)).to(d)
@@ -208,19 +216,13 @@ class Train(Tanh200):
         plt.ylabel("Epoch Loss")
         plt.draw()
         plt.savefig("ai-eval-losses.jpg")
-        model.eval()
-        with torch.no_grad():
-            # Test out inference with 5 samples
-            for i in range(5):
-                X_sample = X_val[i : i + 1]
-                X_sample = X_sample.clone().detach().to(d)
-                y_pred = model.forward(X_sample).to(d)
         best_weights = copy.deepcopy(model.state_dict())
         torch.save(best_weights, "zlv7_full.pt")
         if best_score > epoch_loss:
             best_weights = copy.deepcopy(model.state_dict())
             torch.save(best_weights, "zlv7_full.pt")
-        torch.cuda.empty_cache()
+        if d == torch.device("cuda"):
+            torch.cuda.empty_cache()
         del X_train
         del X_val
         del y_train
@@ -256,7 +258,7 @@ if __name__ == "__main__":
     completed = 0
     # find number of lines in a database
 
-    DB_LOCATION = "./chess_games.db"
+    DB_LOCATION = "./all_data.db"
 
     # Connect to the database
     conn = sqlite3.connect(DB_LOCATION)
@@ -275,6 +277,10 @@ if __name__ == "__main__":
     count = 0  # used for indexing which agent it is to train now
     best_score = np.inf
     while all_completed == False:
+        files = ["X_train", "y_train", "X_val", "y_val"]
+        for file in files:
+            with open(file, "w+") as f:  # clear each file
+                f.write("")
         with open("progressX.txt", "r+") as f:
             contents = f.read()
         contents = contents.split(" ")
@@ -296,7 +302,6 @@ if __name__ == "__main__":
         # load weights onto AI
         manager(size, completed)
         ###############################################################################################
-        files = ["X_train", "y_train", "X_val", "y_val"]
         data = []
         for file in files:
             storagefile = open(file, "rb")
