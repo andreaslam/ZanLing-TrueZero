@@ -143,7 +143,7 @@ def play_game(NUMBER_OF_GAMES):
                     k: v
                     for k, v in sorted(
                         m_dict.items(), key=lambda item: item[1], reverse=True
-                    )  # reverse=False to find the best move with highest score
+                    )  # reverse=True to find the best move with highest score
                 }
             best_move = list(m_dict.keys())[0]  # best move, first key
             print(m_dict)
