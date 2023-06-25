@@ -22,9 +22,9 @@ RAM_USAGE = 75  # RAM usage in %
 
 if torch.cuda.is_available():
     d = torch.device("cuda")
-    scaler = GradScaler()
     import torch.cuda
     from torch.cuda.amp import GradScaler  # NEED GPU
+    scaler = GradScaler()
 elif torch.backends.mps.is_available():
     d = torch.device("mps")
 else:
