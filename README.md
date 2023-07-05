@@ -19,16 +19,7 @@ The Evaluation AI is trained on a SQL database* containing games that were previ
 Run ```pip install -r requirements.txt``` in Terminal. This `requirements.txt` works with most versions of the AI as the packages used are mostly the same.
 
 ## Features in progress
-- Implement finding best hyperparameters using genetic algorithm and evolutionary algorithms
-- Implement gradient-based tuning and hyperparameter adjustments
-- Implement massive speed boosts (Cython/Numba) and improving memory efficiency (`multiprocessing`, `subprocesses`) 
-- More UCI features and more complete support (showing best moves in each depth) for UCI
-
-## Current todo and goals 
-- Have fully functional UCI compliance (ETA - End of June/start of July)
-- Implement Move Ordering (ETA - mid-July)
-- Implement Transposition tables, killer moves (ETA - August)
-- TrueZero V1 (ETA - End of August)
+Rewrite in progress! After careful consideration, ZanLing will be written in Rust. 
 
 ## Long term goals and vision
 - Implement reinforcement learning (specifically genetic algorithms) for the AI in order to allow for quicker realisation of chess concepts through gameplay.
