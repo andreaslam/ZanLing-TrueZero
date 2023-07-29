@@ -16,6 +16,7 @@ print("Using: " + str(d))
 model = torch.jit.load("chess_16x128_gen3634.pt", map_location=d)
 model.eval()
 
+move_counter = 0
 
 class Node:
     def __init__(self, board):
@@ -54,9 +55,36 @@ class Node:
 
     def __str__(self) -> str:
         try:
-            return "This is object of type Node and represents action " + str(self.move_name)
+            return "This is object of type Node and represents action " + str(
+                self.move_name
+            )
         except Exception:
             return "Node at starting board position"
+
+    def eval_and_expand(self, board, move_counter):
+        b = convert_board(board, move_counter % 2)
+        (
+            value,
+            logit_win_pc,
+            logit_draw_pc,
+            logit_loss_pc,
+            policy,
+            best_move,
+        ) = eval_board(b, board, move_counter % 2)
+        self.eval_score = value
+        self.visits += 1
+        for child in policy:
+            # create the child, append the list of child Node objects into self.children in the root node
+            board.push(chess.Move.from_uci(child))
+            cb = Node(board)
+            cb.policy = policy[child]
+            cb.parent = self
+            cb.move_name = chess.Move.from_uci(child)
+            # get q, PUCT (u) and then # q + u
+            # print(upper_confidence_bound)
+            self.children.append(cb)
+            board.pop()  # remove the child move
+
 
 class Tree:
     def __init__(self, board):
@@ -66,7 +94,6 @@ class Tree:
     def select(self):
         curr = self.root_node
         while curr.children:
-            print(curr.children[0])
             curr = max(curr.children, key=lambda n: n.puct_formula(curr.visits))
         return curr
 
@@ -80,21 +107,33 @@ class Tree:
                 n  # updated NN value incremented, not outdated evals
             )
             node = node.parent
-    
+
+    def step(self, move_counter):
+        selected_node = self.select()
+        if not selected_node.is_terminal(board):
+            selected_node.eval_and_expand(board,move_counter)
+
+        self.backpropagate(selected_node)
+        
+
     def __repr__(self) -> str:
         try:
-            return "This is object of type Node and represents action " + str(self.root_node.move_name)
+            return "This is object of type Node and represents action " + str(
+                self.root_node.move_name
+            )
         except Exception:
             return "Node at starting board position"
-    
+
     def __str__(self) -> str:
         try:
-            return "This is object of type Node and represents action " + str(self.root_node.move_name)
+            return "This is object of type Node and represents action " + str(
+                self.root_node.move_name
+            )
         except Exception:
             return "Node at starting board position"
 
 
-def convert_board(board, us, bigl):
+def convert_board(board, us):
     # FULL LIST HERE:
     # sq1 - white's turn
     # sq2 - black's turn
@@ -290,8 +329,8 @@ def convert_board(board, us, bigl):
 
     # Stack the tensors
     all_data = torch.stack(all_data)
-    bigl.append(all_data)
-    return all_data, bigl
+    # .append(all_data)
+    return all_data
 
 
 with open("list.txt", "r") as f:
@@ -364,53 +403,23 @@ board = chess.Board()
 
 tree = Tree(board)
 
-bigl = []
-
-move_counter = 0
 
 
-def eval_and_expand(node, board, move_counter, bigl):
-    b, bigl = convert_board(board, move_counter % 2, bigl)
-    value, logit_win_pc, logit_draw_pc, logit_loss_pc, policy, best_move = eval_board(
-        b, board, move_counter % 2
-    )
-    node.eval_score = value
-    node.visits += 1
-    for child in policy:
-        # create the child, append the list of child Node objects into self.children in the root node
-        board.push(chess.Move.from_uci(child))
-        cb = Node(board)
-        cb.policy = policy[child]
-        cb.parent = node
-        cb.move_name = chess.Move.from_uci(child)
-        # get q, PUCT (u) and then # q + u
-        # print(upper_confidence_bound)
-        node.children.append(cb)
-        board.pop()  # remove the child move
-
-
-selected_node = tree.root_node
+MAX_NODES = 10
 
 while not board.is_game_over():
-    while True:
-        if selected_node.is_leaf() or selected_node.is_terminal(
-            board
-        ):  # select UNTIL leaf or terminal
+    tree = Tree(board)
+    while tree.root_node.visits < MAX_NODES:
+        tree.step(move_counter)
+        move_counter += 1
+    # select once
+    best_move_node = max(tree.root_node.children, key=lambda n: n.visits)
+    best_move = best_move_node.move_name
+    print(best_move)
 
-            if selected_node.is_terminal(board):  # terminal node
-                tree.backpropagate(selected_node)
-            else:
-                eval_and_expand(selected_node, board, move_counter, bigl)
-                selected_node = tree.select()
-                board.push(chess.Move.from_uci(selected_node.move_name))
-        else:
-            selected_node = tree.select()
-            board.push(chess.Move.from_uci(selected_node.move_name))
-
-
-bigl = torch.stack(bigl, dim=0)
-b, c, h, w = bigl.shape
-all_grid = torchvision.utils.make_grid(
-    bigl.view(b * c, 1, h, w), nrow=c, padding=1, pad_value=0.3
-)
-torchvision.utils.save_image(all_grid, "BIGL.png")
+# bigl = torch.stack(bigl, dim=0)
+# b, c, h, w = bigl.shape
+# all_grid = torchvision.utils.make_grid(
+#     bigl.view(b * c, 1, h, w), nrow=c, padding=1, pad_value=0.3
+# )
+# torchvision.utils.save_image(all_grid, "BIGL.png")
