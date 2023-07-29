@@ -1,4 +1,4 @@
-# ZanLing-TrueZero
+# ZanLing-TrueZero [V2 IN PROGRESS]
 A Python chess engine that starts from Zero 0. This project is still very much work-in-progress.
 
 This repository contains the latest and greatest code for the chess AI but previous-generation code can be accessed through the `archives` folder.
