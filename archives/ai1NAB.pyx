@@ -2,7 +2,7 @@
 # zan1ling4 真零 | TrueZero
 # imports
 import numpy as np
-import chess
+import chess 
 from chess import Move
 import torch
 from torch import nn
