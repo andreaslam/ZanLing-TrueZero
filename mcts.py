@@ -31,21 +31,17 @@ class Node:
     def is_leaf(self):
         return self.visits == 0
 
-    def puct_formula(self):  # child POV
-        C_PUCT = 2  # "constant determining the level of exploration"
-        u = (
-            C_PUCT
-            * self.policy
-            * (math.sqrt(self.parent.visits - 1))
-            / (1 + self.visits)
-        )
-        # need to do q + u, but probably not in this function
-        return u
-
     def get_q_val(self):  # child POV
         FPU = 0  # First Player Urgency
         q = self.total_action_value / self.visits if self.visits > 0 else FPU
         return q
+
+    def puct_formula(self, parent_visits):  # child POV
+        C_PUCT = 2  # "constant determining the level of exploration"
+        u = C_PUCT * self.policy * (math.sqrt(parent_visits - 1)) / (1 + self.visits)
+        q = self.get_q_val()
+        result = q + u
+        return result
 
     def is_terminal(self, board):
         return board.is_game_over()
@@ -58,10 +54,9 @@ class Node:
 
     def __str__(self) -> str:
         try:
-            return "This is object of type Node and represents action " + self.move_name
+            return "This is object of type Node and represents action " + str(self.move_name)
         except Exception:
             return "Node at starting board position"
-
 
 class Tree:
     def __init__(self, board):
@@ -69,44 +64,11 @@ class Tree:
         self.root_node = Node(board)
 
     def select(self):
-        self.root_node.visits += 1
-        self.root_node.board = self.board
-        # b, bigl = convert_board(board, move_counter % 2, bigl)
-        # value, logit_win_pc, logit_draw_pc, logit_loss_pc, policy, best_move = eval_board(b, board, move_counter % 2)
-        # self.root_node.eval_score = value
-
-        # for child in policy:
-        #     # create the child, append the list of child Node objects into self.children in the root node
-        #     board.push(chess.Move.from_uci(child))
-        #     cb = Node(board)
-        #     cb.policy = policy[child]
-        #     cb.parent = self.root_node
-        #     cb.move_name = chess.Move.from_uci(child)
-        #     # get q, PUCT (u) and then # q + u
-        #     q = cb.puct_formula()
-        #     u = cb.get_q_val()
-        #     upper_confidence_bound = q + u
-        #     # print(upper_confidence_bound)
-        #     self.root_node.children.append(cb)
-        #     board.pop() # remove the child move
-        # # do the selection here
-        upper_confidence_bound_scores = {}
-
-        for child in self.root_node.children:
-            q = cb.puct_formula()
-            u = cb.get_q_val()
-            upper_confidence_bound = q + u
-            upper_confidence_bound_scores[child] = upper_confidence_bound
-        # sort the children
-        upper_confidence_bound_scores = dict(
-            sorted(
-                upper_confidence_bound_scores.items(),
-                key=lambda item: item[1],
-                reverse=True,
-            )
-        )
-        selected_node = list(upper_confidence_bound_scores.keys())[0]
-        return selected_node
+        curr = self.root_node
+        while curr.children:
+            print(curr.children[0])
+            curr = max(curr.children, key=lambda n: n.puct_formula(curr.visits))
+        return curr
 
     def backpropagate(self, node):
         # increment visit count
@@ -118,6 +80,18 @@ class Tree:
                 n  # updated NN value incremented, not outdated evals
             )
             node = node.parent
+    
+    def __repr__(self) -> str:
+        try:
+            return "This is object of type Node and represents action " + str(self.root_node.move_name)
+        except Exception:
+            return "Node at starting board position"
+    
+    def __str__(self) -> str:
+        try:
+            return "This is object of type Node and represents action " + str(self.root_node.move_name)
+        except Exception:
+            return "Node at starting board position"
 
 
 def convert_board(board, us, bigl):
@@ -320,6 +294,11 @@ def convert_board(board, us, bigl):
     return all_data, bigl
 
 
+with open("list.txt", "r") as f:
+    contents = f.readlines()
+    contents = [m.strip() for m in contents]
+
+
 def eval_board(b, board, us):
     if us == 0:
         us = chess.WHITE
@@ -346,9 +325,6 @@ def eval_board(b, board, us):
         )
         # print(logit_win_pc, logit_draw_pc, logit_loss_pc)
 
-    with open("list.txt", "r") as f:
-        contents = f.readlines()
-    contents = [m.strip() for m in contents]
     if board.turn == chess.BLACK:
         # n = []
         board.apply_mirror()
@@ -373,17 +349,14 @@ def eval_board(b, board, us):
     )
     # print(legal_lookup)
     # print(board)
-    best_move = list(legal_lookup.keys())[0]
     # print(legal_lookup)
     if move_counter % 2 == 1:
         board.apply_mirror()
-        best_move = (
-            best_move[0]
-            + str(9 - int(best_move[1]))
-            + best_move[2]
-            + str(9 - int(best_move[3]))
-        )
-        print(best_move)
+        n = {}
+        for move, key in zip(legal_lookup, legal_lookup.items()):
+            n[move[0] + str(9 - int(move[1])) + move[2] + str(9 - int(move[3]))] = key
+        legal_lookup = n
+    best_move = list(legal_lookup.keys())[0]
     return value, logit_win_pc, logit_draw_pc, logit_loss_pc, legal_lookup, best_move
 
 
@@ -391,21 +364,49 @@ board = chess.Board()
 
 tree = Tree(board)
 
-selfplay = True
 bigl = []
 
 move_counter = 0
 
+
+def eval_and_expand(node, board, move_counter, bigl):
+    b, bigl = convert_board(board, move_counter % 2, bigl)
+    value, logit_win_pc, logit_draw_pc, logit_loss_pc, policy, best_move = eval_board(
+        b, board, move_counter % 2
+    )
+    node.eval_score = value
+    node.visits += 1
+    for child in policy:
+        # create the child, append the list of child Node objects into self.children in the root node
+        board.push(chess.Move.from_uci(child))
+        cb = Node(board)
+        cb.policy = policy[child]
+        cb.parent = node
+        cb.move_name = chess.Move.from_uci(child)
+        # get q, PUCT (u) and then # q + u
+        # print(upper_confidence_bound)
+        node.children.append(cb)
+        board.pop()  # remove the child move
+
+
+selected_node = tree.root_node
+
 while not board.is_game_over():
-    if selfplay:
-        while not tree.root_node.is_leaf() and not tree.root_node.is_terminal(board): # select UNTIL leaf or terminal
+    while True:
+        if selected_node.is_leaf() or selected_node.is_terminal(
+            board
+        ):  # select UNTIL leaf or terminal
+
+            if selected_node.is_terminal(board):  # terminal node
+                tree.backpropagate(selected_node)
+            else:
+                eval_and_expand(selected_node, board, move_counter, bigl)
+                selected_node = tree.select()
+                board.push(chess.Move.from_uci(selected_node.move_name))
+        else:
             selected_node = tree.select()
-            if tree.root_node.is_terminal(board) or tree.root_node.is_leaf():
-                break
-        while not tree.root_node.is_terminal(board): # keep cycle
-            pass # cycle of picking largest child
-        if tree.root_node.is_terminal(board): # terminal node
-            tree.backpropagate(selected_node)
+            board.push(chess.Move.from_uci(selected_node.move_name))
+
 
 bigl = torch.stack(bigl, dim=0)
 b, c, h, w = bigl.shape
