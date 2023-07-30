@@ -68,10 +68,10 @@ class Node:
             logit_draw_pc,
             logit_loss_pc,
             policy,
-            best_move,
         ) = eval_board(b, board, move_counter % 2)
         self.eval_score = value
-        self.visits += 1
+        self.visits = 0
+        self.total_action_value = 0
         for child in policy:
             # create the child, append the list of child Node objects into self.children in the root node
             board.push(chess.Move.from_uci(child))
@@ -79,6 +79,8 @@ class Node:
             cb.policy = policy[child]
             cb.parent = self
             cb.move_name = chess.Move.from_uci(child)
+            print("child",cb)
+            print("parent",cb.parent)
             # get q, PUCT (u) and then # q + u
             # print(upper_confidence_bound)
             self.children.append(cb)
@@ -363,26 +365,25 @@ def eval_board(b, board, us):
         # print(logit_win_pc, logit_draw_pc, logit_loss_pc)
 
     if board.turn == chess.BLACK:
-        # n = []
         board.apply_mirror()
-        # for m in contents:
-        #     d1, d3 = str(9 - int(m[1])), str(9 - int(m[3]))
-        #     m = m[0] + d1 + m[2] + d3
-        #     n.append(m)
-        # contents = n
     policy = policy.tolist()
     policy = policy[0]
     lookup = {}
     for p, c in zip(policy, contents):
         lookup[c] = p
+    # print(lookup)
     legal_lookup = {}
     legal_moves = list(board.legal_moves)
+    # print(legal_moves)
     for m in legal_moves:
         legal_lookup[str(m)] = lookup[str(m)]
     legal_lookup = dict(
         sorted(legal_lookup.items(), key=lambda item: item[1], reverse=True)
     )
-    if move_counter % 2 == 1:
+    # print(move_counter)
+    if (
+        move_counter % 2 == 1
+    ):  # board.turn == chess.BLACK doesn't work since all the moves are in white's POV
         board.apply_mirror()
         n = {}
         for move, key in zip(legal_lookup, legal_lookup.items()):
@@ -390,8 +391,8 @@ def eval_board(b, board, us):
                 -1
             ]
         legal_lookup = n
-    best_move = list(legal_lookup.keys())[0]
-    return value, logit_win_pc, logit_draw_pc, logit_loss_pc, legal_lookup, best_move
+    # best_move = list(legal_lookup.keys())[0]
+    return value, logit_win_pc, logit_draw_pc, logit_loss_pc, legal_lookup
 
 
 board = chess.Board()
@@ -409,12 +410,12 @@ while not board.is_game_over():
     tree = Tree(board)
     while tree.root_node.visits < MAX_NODES:
         tree.step(move_counter)
-        move_counter += 1
     # select once
     best_move_node = max(tree.root_node.children, key=lambda n: n.visits)
     best_move = best_move_node.move_name
     print(best_move)
-    board.push(best_move)
+    board.push(best_move)z
+    move_counter += 1
 
 # bigl = torch.stack(bigl, dim=0)
 # b, c, h, w = bigl.shape
