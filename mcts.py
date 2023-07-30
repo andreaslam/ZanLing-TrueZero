@@ -16,7 +16,6 @@ print("Using: " + str(d))
 model = torch.jit.load("chess_16x128_gen3634.pt", map_location=d)
 model.eval()
 
-move_counter = 0
 
 class Node:
     def __init__(self, board):
@@ -62,7 +61,7 @@ class Node:
             return "Node at starting board position"
 
     def eval_and_expand(self, board, move_counter):
-        b = convert_board(board, move_counter % 2)
+        b = convert_board(board, move_counter % 2, bigl)
         (
             value,
             logit_win_pc,
@@ -111,10 +110,9 @@ class Tree:
     def step(self, move_counter):
         selected_node = self.select()
         if not selected_node.is_terminal(board):
-            selected_node.eval_and_expand(board,move_counter)
+            selected_node.eval_and_expand(board, move_counter)
 
         self.backpropagate(selected_node)
-        
 
     def __repr__(self) -> str:
         try:
@@ -133,7 +131,7 @@ class Tree:
             return "Node at starting board position"
 
 
-def convert_board(board, us):
+def convert_board(board, us, bigl):
     # FULL LIST HERE:
     # sq1 - white's turn
     # sq2 - black's turn
@@ -377,23 +375,20 @@ def eval_board(b, board, us):
     lookup = {}
     for p, c in zip(policy, contents):
         lookup[c] = p
-    # print(lookup)
     legal_lookup = {}
     legal_moves = list(board.legal_moves)
-    # print(legal_moves)
     for m in legal_moves:
         legal_lookup[str(m)] = lookup[str(m)]
     legal_lookup = dict(
         sorted(legal_lookup.items(), key=lambda item: item[1], reverse=True)
     )
-    # print(legal_lookup)
-    # print(board)
-    # print(legal_lookup)
     if move_counter % 2 == 1:
         board.apply_mirror()
         n = {}
         for move, key in zip(legal_lookup, legal_lookup.items()):
-            n[move[0] + str(9 - int(move[1])) + move[2] + str(9 - int(move[3]))] = key
+            n[move[0] + str(9 - int(move[1])) + move[2] + str(9 - int(move[3]))] = key[
+                -1
+            ]
         legal_lookup = n
     best_move = list(legal_lookup.keys())[0]
     return value, logit_win_pc, logit_draw_pc, logit_loss_pc, legal_lookup, best_move
@@ -403,9 +398,12 @@ board = chess.Board()
 
 tree = Tree(board)
 
+bigl = []
+
+move_counter = 0
 
 
-MAX_NODES = 10
+MAX_NODES = 100
 
 while not board.is_game_over():
     tree = Tree(board)
@@ -416,6 +414,7 @@ while not board.is_game_over():
     best_move_node = max(tree.root_node.children, key=lambda n: n.visits)
     best_move = best_move_node.move_name
     print(best_move)
+    board.push(best_move)
 
 # bigl = torch.stack(bigl, dim=0)
 # b, c, h, w = bigl.shape
