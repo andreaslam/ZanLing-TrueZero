@@ -79,10 +79,8 @@ class Node:
             cb.policy = policy[child]
             cb.parent = self
             cb.move_name = chess.Move.from_uci(child)
-            print("child",cb)
-            print("parent",cb.parent)
-            # get q, PUCT (u) and then # q + u
-            # print(upper_confidence_bound)
+            # print("child",cb)
+            # print("parent",cb.parent)
             self.children.append(cb)
             board.pop()  # remove the child move
 
@@ -420,6 +418,6 @@ while not board.is_game_over():
 # bigl = torch.stack(bigl, dim=0)
 # b, c, h, w = bigl.shape
 # all_grid = torchvision.utils.make_grid(
-#     bigl.view(b * c, 1, h, w), nrow=c, padding=1, pad_value=0.3
+#     bigl.view(b * c, 1, h, w), nrow=c, padding=1, pad_value=0.3 
 # )
 # torchvision.utils.save_image(all_grid, "BIGL.png")
