@@ -414,7 +414,7 @@ while not board.is_game_over():
     best_move_node = max(tree.root_node.children, key=lambda n: n.visits)
     best_move = best_move_node.move_name
     print(best_move)
-    board.push(best_move)z
+    board.push(best_move)
     move_counter += 1
 
 # bigl = torch.stack(bigl, dim=0)
