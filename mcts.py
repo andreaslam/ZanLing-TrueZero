@@ -11,7 +11,7 @@ if torch.cuda.is_available():
 else:
     d = torch.device("cpu")
 
-print("Using: " + str(d))
+# print("Using: " + str(d))
 
 model = torch.jit.load("chess_16x128_gen3634.pt", map_location=d)
 model.eval()
@@ -65,13 +65,13 @@ class Node:
         except Exception:
             return (
                 "Node( Action: at starting board position"
-                + ", V= "
+                + ", V="
                 + str(self.eval_score)
-                + ", N= "
+                + ", N="
                 + str(self.visits)
-                + ", Q=  "
+                + ", Q= "
                 + str(self.q)
-                + ", W= "
+                + ", W="
                 + str(self.total_action_value)
             )
 
@@ -105,6 +105,7 @@ class Node:
             )
 
     def eval_and_expand(self, board, move_counter):
+        # print(board)
         b = convert_board(board, move_counter % 2, bigl)
         (
             value,
@@ -113,15 +114,17 @@ class Node:
             logit_loss_pc,
             policy,
         ) = eval_board(b, board, move_counter % 2)
-        print("    ran NN:")
-        print("         V=", str(value), "\n         policy=", str(policy))
+        # print("    ran NN:")
+        # print("         V=", str(value), "\n         policy=", str(policy))
         self.eval_score = value
         for p in policy:
-            board.push(chess.Move.from_uci(p))
+            x = board.copy()
+            x.push(chess.Move.from_uci(p))
             child = Node(board, policy[p], self, p)
             self.children.append(child)
-            board.pop()
-        # print("        children:",self.children)
+            child.board = x
+
+        # # print("        children:",self.children)
 
 
 class Tree:
@@ -131,17 +134,17 @@ class Tree:
 
     def select(self):
         curr = self.root_node
-        print("    selection:")
+        # print("    selection:")
         while curr.children:
             curr = max(curr.children, key=lambda n: n.puct_formula(curr.visits))
-            print("        ", curr)
-            print("        children:", curr.children)
+            # print("        ", curr)
+            # print("        children:", curr.children)
         return curr
 
     def backpropagate(self, node):
         # increment visit count
         n = node.eval_score
-        print("    backup:")
+        # print("    backup:")
         while node:
             node.visits += 1
             # update action value w
@@ -149,15 +152,15 @@ class Tree:
                 n  # updated NN value incremented, not outdated evals
             )
             node = node.parent
-            print("         updated node to " + str(node))
+            # print("         updated node to " + str(node))
 
     def step(self, move_counter):
-        print("        Root node:", self.root_node)
+        # print("        Root node:", self.root_node)
 
         selected_node = self.select()
         if not selected_node.is_terminal(board):
             selected_node.eval_and_expand(selected_node.board, move_counter)
-        print("        Root node:", self.root_node)
+        # print("        Root node:", self.root_node)
         self.backpropagate(selected_node)
 
     def __repr__(self) -> str:
@@ -190,10 +193,10 @@ def convert_board(board, us, bigl):
     # sq1 - white's turn
     # sq2 - black's turn
     if board.turn == chess.BLACK:
-        # print("BLACK")
+        # # print("BLACK")
         sq1, sq2 = torch.zeros((8, 8)), torch.ones((8, 8))
     else:
-        # print("WHITE")
+        # # print("WHITE")
         sq1, sq2 = torch.ones((8, 8)), torch.zeros((8, 8))
 
     # sq3, sq4 - castling pos l + r (us)
@@ -406,7 +409,7 @@ def eval_board(b, board, us):
             l[1].item(),
             l[2].item(),
         )
-        # print(logit_win_pc, logit_draw_pc, logit_loss_pc)
+        # # print(logit_win_pc, logit_draw_pc, logit_loss_pc)
 
     if board.turn == chess.BLACK:
         board.apply_mirror()
@@ -416,10 +419,10 @@ def eval_board(b, board, us):
     for p, c in zip(policy, contents):
         lookup[c] = p
 
-    # print(lookup)
+    # # print(lookup)
     legal_lookup = {}
     legal_moves = list(board.legal_moves)
-    # print(legal_moves)
+    # # print(legal_moves)
     for m in legal_moves:
         legal_lookup[str(m)] = lookup[str(m)]
     # softmax on policy
@@ -440,7 +443,7 @@ def eval_board(b, board, us):
         sorted(legal_lookup.items(), key=lambda item: item[1], reverse=True)
     )
 
-    # print(move_counter)
+    # # print(move_counter)
     if (
         move_counter % 2 == 1
     ):  # board.turn == chess.BLACK doesn't work since all the moves are in white's POV
@@ -472,12 +475,12 @@ MAX_NODES = 4
 while not board.is_game_over():
     tree = Tree(board)
     while tree.root_node.visits < MAX_NODES:
-        print("step", tree.root_node.visits, ":")
+        # print("step", tree.root_node.visits, ":")
         tree.step(move_counter)
     # select once
     best_move_node = max(tree.root_node.children, key=lambda n: n.visits)
     best_move = best_move_node.move_name
-    print("bestmove", best_move)
+    print(best_move)
     board.push(chess.Move.from_uci(best_move))
     move_counter += 1
 
