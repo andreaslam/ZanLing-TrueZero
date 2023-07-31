@@ -47,72 +47,72 @@ class Node:
     def is_terminal(self, board):
         return board.is_game_over()
 
-    def __repr__(self) -> str:
-        try:
-            return (
-                'Node(action="'
-                + str(self.move_name)
-                + '" V='
-                + str(self.eval_score)
-                + ", N="
-                + str(self.visits)
-                + ", Q="
-                + str(self.q)
-                + ", W="
-                + str(self.total_action_value)
-                + ")"
-            )
-        except Exception:
-            return (
-                'Node(action="at starting board position"'
-                + ", V="
-                + str(self.eval_score)
-                + ", N="
-                + str(self.visits)
-                + ", Q= "
-                + str(self.q)
-                + ", W="
-                + str(self.total_action_value)
-            )
+    # def __repr__(self) -> str:
+    #     if self.parent != None:
+    #         u = 2 * self.policy * (math.sqrt(self.parent.visits - 1)) / (1 + self.visits)
+    #         puct = self.puct_formula(self.parent.visits)
+    #     else:
+    #         u = "NaN"
+    #         puct = "NaN"
+    #     return ('Node(action="'
+    #     + str(self.move_name)
+    #     + '" V='
+    #     + str(self.eval_score)
+    #     + ", N="
+    #     + str(self.visits)
+    #     + ", W="
+    #     + str(self.total_action_value)
+    #     + ", P="
+    #     + str(self.policy)
+    #     + ", Q="
+    #     + str(self.q)
+    #     + ", U="
+    #     + str(u)
+    #     + ", PUCT="
+    #     + str(puct)
+    #     + ", len_children="
+    #     + str(len(self.children))
+    #     + ")")
+    
 
     def __str__(self) -> str:
-        try:
-            return (
-                'Node(action="'
-                + str(self.move_name)
-                + '" V='
-                + str(self.eval_score)
-                + ", N="
-                + str(self.visits)
-                + ", Q="
-                + str(self.q)
-                + ", W="
-                + str(self.total_action_value)
-                + ")"
-            )
-        except Exception:
-            return (
-                'Node(action="at starting board position"'
-                + ", V="
-                + str(self.eval_score)
-                + ", N="
-                + str(self.visits)
-                + ", Q="
-                + str(self.q)
-                + ", W="
-                + str(self.total_action_value)
-                + ")"
-            )
+        if self.parent != None:
+            u = 2 * self.policy * (math.sqrt(self.parent.visits - 1)) / (1 + self.visits)
+            puct = self.puct_formula(self.parent.visits)
+        else:
+            u = "NaN"
+            puct = "NaN"
+        return ('Node(action="'
+        + str(self.move_name)
+        + '" V='
+        + str(self.eval_score)
+        + ", N="
+        + str(self.visits)
+        + ", W="
+        + str(self.total_action_value)
+        + ", P="
+        + str(self.policy)
+        + ", Q="
+        + str(self.q)
+        + ", U="
+        + str(u)
+        + ", PUCT="
+        + str(puct)
+        + ", len_children="
+        + str(len(self.children))
+        + ")")
 
-    def layer_print(self, indent_count):
-        if self.children:
-            for c in self.children:
-                c.layer_print(indent_count+1)
-                print("    " * indent_count, c.parent.move_name, "->",c)
+    def layer_print(self, depth, MAX_TREE_PRINT_DEPTH):
+        indent_count = depth + 2
+        if depth <= MAX_TREE_PRINT_DEPTH: 
+            if self.children:
+                for c in self.children:
+                    print("    " * indent_count ,c)
+                    c.layer_print(depth+1, MAX_TREE_PRINT_DEPTH)
 
     def eval_and_expand(self, board, move_counter, bigl):
         # print(board)
-        b, bigl = convert_board(board, move_counter % 2, bigl)
+        b, bigl = convert_board(board, bigl)
         (
             value,
             logit_win_pc,
@@ -120,6 +120,7 @@ class Node:
             logit_loss_pc,
             policy,
         ) = eval_board(b, board, move_counter % 2)
+        print("    board FEN: " + board.fen())
         print("    ran NN:")
         print("         V=", str(value), "\n         policy=", str(policy))
         self.eval_score = value
@@ -164,8 +165,9 @@ class Tree:
         # print("        root node:")
         # print("            ", self.root_node)
         # print("    children:")
-        indent_count = 2
-        self.root_node.layer_print(indent_count)
+        MAX_TREE_PRINT_DEPTH = 1
+        print("    ", self.root_node)
+        self.root_node.layer_print(0,MAX_TREE_PRINT_DEPTH)
 
     def step(self, move_counter, bigl):
         print("    root node:", self.root_node)
@@ -176,20 +178,12 @@ class Tree:
             bigl = selected_node.eval_and_expand(
                 selected_node.board, move_counter, bigl
             )
-            self.display_full_tree()
-        print("        root node:", self.root_node)
+            # self.display_full_tree()
+        # print("        root node:", self.root_node)
         self.backpropagate(selected_node)
         self.display_full_tree()
 
     # utility function to print the entire tree
-
-    def __repr__(self) -> str:
-        try:
-            return "This is object of type Node and represents action " + str(
-                self.root_node.move_name
-            )
-        except Exception:
-            return "Node at starting board position"
 
     def __str__(self) -> str:
         try:
@@ -200,7 +194,7 @@ class Tree:
             return "Node at starting board position"
 
 
-def convert_board(board, us, bigl):
+def convert_board(board, bigl):
     # FULL LIST HERE:
     # sq1 - white's turn
     # sq2 - black's turn
@@ -222,12 +216,8 @@ def convert_board(board, us, bigl):
 
     # i think the castling is correct?
 
-    if us == 0:
-        us = chess.WHITE
-        opp = chess.BLACK
-    else:
-        us = chess.BLACK
-        opp = chess.WHITE
+    us = board.turn
+    opp = not us
 
     if us == chess.WHITE:
         sq3, sq4 = torch.full(
@@ -325,8 +315,7 @@ def convert_board(board, us, bigl):
         use = 1
     else:  # white down
         use = 0
-    # if board.turn == chess.WHITE:
-    #     board.apply_mirror()
+
     for piece in pieces:
         bb = board.pieces(piece, use)
         bb = str(bb)
@@ -485,7 +474,7 @@ bigl = []
 move_counter = 0
 
 
-MAX_NODES = 5
+MAX_NODES = 10
 
 while not board.is_game_over():
     tree = Tree(board)
@@ -498,6 +487,7 @@ while not board.is_game_over():
     print("bestmove", best_move)
     board.push(chess.Move.from_uci(best_move))
     move_counter += 1
+    break
 
 bigl = torch.stack(bigl, dim=0)
 b, c, h, w = bigl.shape
