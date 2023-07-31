@@ -11,7 +11,7 @@ if torch.cuda.is_available():
 else:
     d = torch.device("cpu")
 
-# print("Using: " + str(d))
+print("Using: " + str(d))
 
 model = torch.jit.load("chess_16x128_gen3634.pt", map_location=d)
 model.eval()
@@ -50,9 +50,9 @@ class Node:
     def __repr__(self) -> str:
         try:
             return (
-                "Node(Action: "
+                'Node(action="'
                 + str(self.move_name)
-                + " V="
+                + '" V='
                 + str(self.eval_score)
                 + ", N="
                 + str(self.visits)
@@ -64,7 +64,7 @@ class Node:
             )
         except Exception:
             return (
-                "Node( Action: at starting board position"
+                'Node(action="at starting board position"'
                 + ", V="
                 + str(self.eval_score)
                 + ", N="
@@ -78,9 +78,9 @@ class Node:
     def __str__(self) -> str:
         try:
             return (
-                "Node(Action: "
+                'Node(action="'
                 + str(self.move_name)
-                + " V="
+                + '" V='
                 + str(self.eval_score)
                 + ", N="
                 + str(self.visits)
@@ -92,8 +92,8 @@ class Node:
             )
         except Exception:
             return (
-                "Node( Action: at starting board position"
-                + " V="
+                'Node(action="at starting board position"'
+                + ", V="
                 + str(self.eval_score)
                 + ", N="
                 + str(self.visits)
@@ -103,6 +103,12 @@ class Node:
                 + str(self.total_action_value)
                 + ")"
             )
+
+    def layer_print(self, indent_count):
+        if self.children:
+            for c in self.children:
+                c.layer_print(indent_count+1)
+                print("    " * indent_count, c.parent.move_name, "->",c)
 
     def eval_and_expand(self, board, move_counter, bigl):
         # print(board)
@@ -114,8 +120,8 @@ class Node:
             logit_loss_pc,
             policy,
         ) = eval_board(b, board, move_counter % 2)
-        # print("    ran NN:")
-        # print("         V=", str(value), "\n         policy=", str(policy))
+        print("    ran NN:")
+        print("         V=", str(value), "\n         policy=", str(policy))
         self.eval_score = value
         for p in policy:
             x = board.copy()
@@ -124,7 +130,7 @@ class Node:
             self.children.append(child)
             child.board = x
 
-        # # print("        children:",self.children)
+        # print("        children:",self.children)
 
 
 class Tree:
@@ -134,17 +140,17 @@ class Tree:
 
     def select(self):
         curr = self.root_node
-        # print("    selection:")
+        print("    selection:")
         while curr.children:
             curr = max(curr.children, key=lambda n: n.puct_formula(curr.visits))
-            # print("        ", curr)
-            # print("        children:", curr.children)
+            print("        ", curr)
+            print("        children:", curr.children)
         return curr
 
     def backpropagate(self, node):
         # increment visit count
         n = node.eval_score
-        # print("    backup:")
+        print("    backup:")
         while node:
             node.visits += 1
             # update action value w
@@ -152,16 +158,30 @@ class Tree:
                 n  # updated NN value incremented, not outdated evals
             )
             node = node.parent
-            # print("         updated node to " + str(node))
+            print("         updated node to " + str(node))
+
+    def display_full_tree(self):
+        # print("        root node:")
+        # print("            ", self.root_node)
+        # print("    children:")
+        indent_count = 2
+        self.root_node.layer_print(indent_count)
 
     def step(self, move_counter, bigl):
-        # print("        Root node:", self.root_node)
+        print("    root node:", self.root_node)
 
         selected_node = self.select()
+        self.display_full_tree()
         if not selected_node.is_terminal(board):
-            bigl = selected_node.eval_and_expand(selected_node.board, move_counter, bigl)
-        # print("        Root node:", self.root_node)
+            bigl = selected_node.eval_and_expand(
+                selected_node.board, move_counter, bigl
+            )
+            self.display_full_tree()
+        print("        root node:", self.root_node)
         self.backpropagate(selected_node)
+        self.display_full_tree()
+
+    # utility function to print the entire tree
 
     def __repr__(self) -> str:
         try:
@@ -193,10 +213,8 @@ def convert_board(board, us, bigl):
     # sq1 - white's turn
     # sq2 - black's turn
     if board.turn == chess.BLACK:
-        # # print("BLACK")
         sq1, sq2 = torch.zeros((8, 8)), torch.ones((8, 8))
     else:
-        # # print("WHITE")
         sq1, sq2 = torch.ones((8, 8)), torch.zeros((8, 8))
 
     # sq3, sq4 - castling pos l + r (us)
@@ -250,8 +268,7 @@ def convert_board(board, us, bigl):
         use = 1
     else:  # black up
         use = 0
-    # if board.turn == chess.BLACK:
-    #     board.apply_mirror()
+
     # determine which colour pieces to find
     # determine which colour affects what orientation
     for piece in pieces:
@@ -289,8 +306,6 @@ def convert_board(board, us, bigl):
     all_bitboard_ours = torch.stack(
         all_bitboard_ours
     )  # Use torch.stack() instead of torch.tensor()
-    # if move_counter % 1: # since black would yield crap at the bottom
-    #     board.apply_mirror()
     # pieces (opponent's)
 
     # determine which colour pieces to find
@@ -409,7 +424,6 @@ def eval_board(b, board, us):
             l[1].item(),
             l[2].item(),
         )
-        # # print(logit_win_pc, logit_draw_pc, logit_loss_pc)
 
     if board.turn == chess.BLACK:
         board.apply_mirror()
@@ -419,10 +433,9 @@ def eval_board(b, board, us):
     for p, c in zip(policy, contents):
         lookup[c] = p
 
-    # # print(lookup)
     legal_lookup = {}
     legal_moves = list(board.legal_moves)
-    # # print(legal_moves)
+
     for m in legal_moves:
         legal_lookup[str(m)] = lookup[str(m)]
     # softmax on policy
@@ -443,7 +456,7 @@ def eval_board(b, board, us):
         sorted(legal_lookup.items(), key=lambda item: item[1], reverse=True)
     )
 
-    # # print(move_counter)
+    # print(move_counter)
     if (
         move_counter % 2 == 1
     ):  # board.turn == chess.BLACK doesn't work since all the moves are in white's POV
@@ -463,6 +476,8 @@ def eval_board(b, board, us):
 
 board = chess.Board()
 
+# board.set_fen("r1b1k1nr/ppppb1pp/5pq1/4p3/2B1P2P/3PBQ2/PPP2PP1/RN3RK1 w kq - 2 10")
+
 tree = Tree(board)
 
 bigl = []
@@ -470,17 +485,17 @@ bigl = []
 move_counter = 0
 
 
-MAX_NODES = 100
+MAX_NODES = 5
 
 while not board.is_game_over():
     tree = Tree(board)
     while tree.root_node.visits < MAX_NODES:
-        # print("step", tree.root_node.visits, ":")
+        print("step", tree.root_node.visits, ":")
         tree.step(move_counter, bigl)
     # select once
     best_move_node = max(tree.root_node.children, key=lambda n: n.visits)
     best_move = best_move_node.move_name
-    print(best_move)
+    print("bestmove", best_move)
     board.push(chess.Move.from_uci(best_move))
     move_counter += 1
 
