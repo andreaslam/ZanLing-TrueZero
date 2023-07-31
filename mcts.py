@@ -104,9 +104,9 @@ class Node:
                 + ")"
             )
 
-    def eval_and_expand(self, board, move_counter):
+    def eval_and_expand(self, board, move_counter, bigl):
         # print(board)
-        b = convert_board(board, move_counter % 2, bigl)
+        b, bigl = convert_board(board, move_counter % 2, bigl)
         (
             value,
             logit_win_pc,
@@ -154,12 +154,12 @@ class Tree:
             node = node.parent
             # print("         updated node to " + str(node))
 
-    def step(self, move_counter):
+    def step(self, move_counter, bigl):
         # print("        Root node:", self.root_node)
 
         selected_node = self.select()
         if not selected_node.is_terminal(board):
-            selected_node.eval_and_expand(selected_node.board, move_counter)
+            bigl = selected_node.eval_and_expand(selected_node.board, move_counter, bigl)
         # print("        Root node:", self.root_node)
         self.backpropagate(selected_node)
 
@@ -376,8 +376,8 @@ def convert_board(board, us, bigl):
 
     # Stack the tensors
     all_data = torch.stack(all_data)
-    # .append(all_data)
-    return all_data
+    bigl.append(all_data)
+    return all_data, bigl
 
 
 with open("list.txt", "r") as f:
@@ -470,13 +470,13 @@ bigl = []
 move_counter = 0
 
 
-MAX_NODES = 4
+MAX_NODES = 100
 
 while not board.is_game_over():
     tree = Tree(board)
     while tree.root_node.visits < MAX_NODES:
         # print("step", tree.root_node.visits, ":")
-        tree.step(move_counter)
+        tree.step(move_counter, bigl)
     # select once
     best_move_node = max(tree.root_node.children, key=lambda n: n.visits)
     best_move = best_move_node.move_name
@@ -484,9 +484,9 @@ while not board.is_game_over():
     board.push(chess.Move.from_uci(best_move))
     move_counter += 1
 
-# bigl = torch.stack(bigl, dim=0)
-# b, c, h, w = bigl.shape
-# all_grid = torchvision.utils.make_grid(
-#     bigl.view(b * c, 1, h, w), nrow=c, padding=1, pad_value=0.3
-# )
-# torchvision.utils.save_image(all_grid, "BIGL.png")
+bigl = torch.stack(bigl, dim=0)
+b, c, h, w = bigl.shape
+all_grid = torchvision.utils.make_grid(
+    bigl.view(b * c, 1, h, w), nrow=c, padding=1, pad_value=0.3
+)
+torchvision.utils.save_image(all_grid, "BIGL.png")
