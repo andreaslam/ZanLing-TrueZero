@@ -8,6 +8,16 @@ board = chess.Board()
 
 bigl = []
 
+if torch.cuda.is_available():
+    d = torch.device("cuda")
+else:
+    d = torch.device("cpu")
+
+print("Using: " + str(d))
+
+model = torch.jit.load("chess_16x128_gen3634.pt", map_location=d)
+model.eval()
+
 def convert_board(board, bigl):
     # FULL LIST HERE:
     # sq1 - white's turn
