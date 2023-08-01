@@ -1,22 +1,8 @@
 import torch
 import chess
-import torch.nn.functional as nnf
 import torchvision
 import math
 import decoder
-
-# check for GPU
-
-if torch.cuda.is_available():
-    d = torch.device("cuda")
-else:
-    d = torch.device("cpu")
-
-print("Using: " + str(d))
-
-model = torch.jit.load("chess_16x128_gen3634.pt", map_location=d)
-model.eval()
-
 
 class Node:
     def __init__(self, board, policy, parent, move_name):
