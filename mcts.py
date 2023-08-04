@@ -87,13 +87,13 @@ class Node:
         + str(len(self.children))
         + ")")
 
-    def layer_print(self, depth, MAX_TREE_PRINT_DEPTH):
+    def layer_p(self, depth, MAX_TREE_PRINT_DEPTH):
         indent_count = depth + 2
         if depth <= MAX_TREE_PRINT_DEPTH: 
             if self.children:
                 for c in self.children:
                     print("    " * indent_count ,c)
-                    c.layer_print(depth+1, MAX_TREE_PRINT_DEPTH)
+                    c.layer_p(depth+1, MAX_TREE_PRINT_DEPTH)
 
     def eval_and_expand(self, board, move_counter, bigl):
         # print(board)
@@ -153,7 +153,7 @@ class Tree:
         # print("    children:")
         MAX_TREE_PRINT_DEPTH = 10
         print("    ", self.root_node)
-        self.root_node.layer_print(0,MAX_TREE_PRINT_DEPTH)
+        self.root_node.layer_p(0,MAX_TREE_PRINT_DEPTH)
 
     def step(self, move_counter, bigl):
         print("    root node:", self.root_node)
