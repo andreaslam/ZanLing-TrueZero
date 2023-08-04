@@ -169,7 +169,7 @@ class Tree:
         self.backpropagate(selected_node)
         self.display_full_tree()
 
-    # utility function to print the entire tree
+    # utility function to display the entire tree
 
     def __str__(self) -> str:
         try:
