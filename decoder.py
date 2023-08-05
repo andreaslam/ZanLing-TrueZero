@@ -1,6 +1,7 @@
 import torch
 import chess
-import torch.nn.functional as nnf
+import torch.nn.functional as F
+import torch.nn as nn
 import torchvision
 import math
 
@@ -104,10 +105,16 @@ with open("list.txt", "r") as f:
     contents = [m.strip() for m in contents]
 
 
-def eval_board(board, bigl, net):
+def eval_board(board, bigl, model):
     b = convert_board(board, bigl)
-
-    model = torch.jit.load(net, map_location=d)
+    try:
+        model = torch.jit.load("tz.pt", map_location=d)
+    except FileNotFoundError:
+        for m in model.modules():
+                if isinstance(m, nn.Linear):
+                    nn.init.xavier_uniform_(m.weight)
+                    if m.bias is not None:
+                        nn.init.constant_(m.bias, 0)
     model.eval()
     with torch.no_grad():
         b = b.to(d)  # bring tensor to device
@@ -121,7 +128,7 @@ def eval_board(board, bigl, net):
             board_eval[0][4],
         )
         value = torch.tanh(logit_value).item()
-        l = nnf.softmax(board_eval[0][1:-1], dim=0)  # ignore board_eval and moves_left
+        l = F.softmax(board_eval[0][1:-1], dim=0)  # ignore board_eval and moves_left
         logit_win_pc, logit_draw_pc, logit_loss_pc = (
             l[0].item(),
             l[1].item(),
@@ -149,7 +156,7 @@ def eval_board(board, bigl, net):
 
     sm = torch.tensor(sm)
 
-    sm = nnf.softmax(sm, dim=0)
+    sm = F.softmax(sm, dim=0)
 
     sm = sm.tolist()
 
