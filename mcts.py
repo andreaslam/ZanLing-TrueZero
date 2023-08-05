@@ -26,7 +26,7 @@ class Node:
         C_PUCT = 2  # "constant determining the level of exploration"
         u = C_PUCT * self.policy * (math.sqrt(parent_visits - 1)) / (1 + self.visits)
         q = self.get_q_val()
-        result = q + u
+        result = -q + u
         return result
 
     def is_terminal(self, board):
@@ -95,7 +95,7 @@ class Node:
                     print("    " * indent_count ,c)
                     c.layer_p(depth+1, MAX_TREE_PRINT_DEPTH)
 
-    def eval_and_expand(self, board, move_counter, bigl):
+    def eval_and_expand(self, board, bigl):
         # print(board)
         (
             value,
@@ -103,7 +103,6 @@ class Node:
             logit_draw_pc,
             logit_loss_pc,
             policy,
-            _best_move,
         ) = decoder.eval_board(board, bigl)
         print("    board FEN: " + board.fen())
         print("    ran NN:")
@@ -155,14 +154,14 @@ class Tree:
         print("    ", self.root_node)
         self.root_node.layer_p(0,MAX_TREE_PRINT_DEPTH)
 
-    def step(self, move_counter, bigl):
+    def step(self, bigl):
         print("    root node:", self.root_node)
 
         selected_node = self.select()
         # self.display_full_tree()
         if not selected_node.is_terminal(board):
             bigl = selected_node.eval_and_expand(
-                selected_node.board, move_counter, bigl
+                selected_node.board, bigl
             )
             # self.display_full_tree()
         # print("        root node:", self.root_node)
@@ -193,7 +192,6 @@ tree = Tree(board)
 
 bigl = []
 
-move_counter = 0
 
 
 MAX_NODES = 10
@@ -202,14 +200,13 @@ while not board.is_game_over():
     tree = Tree(board)
     while tree.root_node.visits < MAX_NODES:
         print("step", tree.root_node.visits, ":")
-        tree.step(move_counter, bigl)
+        tree.step(bigl)
     # select once
     best_move_node = max(tree.root_node.children, key=lambda n: n.visits)
     best_move = best_move_node.move_name
     print("bestmove", best_move)
     board.push(chess.Move.from_uci(best_move))
-    move_counter += 1
-    break
+    # break
 
 bigl = torch.stack(bigl, dim=0)
 b, c, h, w = bigl.shape
