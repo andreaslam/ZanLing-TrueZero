@@ -4,7 +4,6 @@ import torchvision
 import math
 import decoder
 import torch
-import numpy as np
 from torch.distributions.dirichlet import Dirichlet
 
 
@@ -78,7 +77,7 @@ class Node:
                     # print("    " * indent_count ,c)
                     c.layer_p(depth + 1, MAX_TREE_PRINT_DEPTH)
 
-    def eval_and_expand(self, board, bigl):
+    def eval_and_expand(self, board, bigl, net):
         # # print(board)
         (
             value,
@@ -86,7 +85,7 @@ class Node:
             logit_draw_pc,
             logit_loss_pc,
             policy,
-        ) = decoder.eval_board(board, bigl)
+        ) = decoder.eval_board(board, bigl, net)
         # print("    board FEN: " + board.fen())
         # print("    ran NN:")
         # print("         V=", str(value), "\n         policy=", str(policy))
@@ -137,13 +136,13 @@ class Tree:
         # print("    ", self.root_node)
         self.root_node.layer_p(0, MAX_TREE_PRINT_DEPTH)
 
-    def step(self, bigl):
+    def step(self, bigl, net):
         # print("    root node:", self.root_node)
         EPS = 0.3  # 0.3 for chess
         selected_node = self.select()
         # self.display_full_tree()
         if not selected_node.is_terminal(selected_node.board):
-            bigl = selected_node.eval_and_expand(selected_node.board, bigl)
+            bigl = selected_node.eval_and_expand(selected_node.board, bigl, net)
             # add Dirichlet noise if root node
             if selected_node is self.root_node:
                 noise = Dirichlet(
@@ -181,11 +180,11 @@ bigl = []
 MAX_NODES = 10
 
 
-def move(board):
+def move(board, net):
     tree = Tree(board)
     while tree.root_node.visits < MAX_NODES:
         # # print("step", tree.root_node.visits, ":")
-        tree.step(bigl)
+        tree.step(bigl, net)
     # select once
     best_move_node = max(tree.root_node.children, key=lambda n: n.visits)
     best_move = best_move_node.move_name
