@@ -8,7 +8,7 @@ class TrueNet(nn.Module):
 
         self.device = device
         self.startBlock = nn.Sequential(
-            nn.Conv2d(3, num_hidden, kernel_size=3, padding=1),
+            nn.Conv2d(21, num_hidden, kernel_size=8, padding=1),
             nn.BatchNorm2d(num_hidden),
             nn.ReLU(),
         )
@@ -18,30 +18,38 @@ class TrueNet(nn.Module):
         )
 
         self.policyHead = nn.Sequential(
-            nn.Conv2d(num_hidden, 32, kernel_size=3, padding=1),
-            nn.BatchNorm2d(32),
+            nn.Conv2d(num_hidden, 1, kernel_size=3, padding=1),
+            nn.BatchNorm2d(1),
             nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(32 * 8 * 8, 64),
+            nn.Linear(9, 1880),
         )
 
         self.valueHead = nn.Sequential(
-            nn.Conv2d(num_hidden, 3, kernel_size=3, padding=1),
-            nn.BatchNorm2d(3),
+            nn.Conv2d(num_hidden,1, kernel_size=1, padding=1),
+            nn.BatchNorm2d(1),
             nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(3 * 64, 1),
+            nn.Linear(25, 1),
             nn.Tanh(),
         )
 
         self.to(device)
 
     def forward(self, x):
+        # print(x.shape)
         x = self.startBlock(x)
+        # print(x.shape)
         for resBlock in self.backBone:
             x = resBlock(x)
+            # print(x.shape)
+        # print(x.shape)
         policy = self.policyHead(x)
+        policy = policy.squeeze(0)
+        # print(policy.shape)
+        # print(x.shape)
         value = self.valueHead(x)
+        value = value.squeeze(0)
         return policy, value
 
 
