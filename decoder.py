@@ -15,8 +15,6 @@ else:
 
 print("Using: " + str(d))
 
-model = torch.jit.load("chess_16x128_gen3634.pt", map_location=d)
-model.eval()
 
 
 def convert_board(board, bigl):
@@ -106,9 +104,11 @@ with open("list.txt", "r") as f:
     contents = [m.strip() for m in contents]
 
 
-def eval_board(board, bigl):
+def eval_board(board, bigl, net):
     b = convert_board(board, bigl)
 
+    model = torch.jit.load(net, map_location=d)
+    model.eval()
     with torch.no_grad():
         b = b.to(d)  # bring tensor to device
         board_eval, policy = model(b.unsqueeze(0))
