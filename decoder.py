@@ -18,6 +18,7 @@ print("Using: " + str(d))
 model = torch.jit.load("chess_16x128_gen3634.pt", map_location=d)
 model.eval()
 
+
 def convert_board(board, bigl):
     # FULL LIST HERE:
     # sq1 - white's turn
@@ -72,17 +73,15 @@ def convert_board(board, bigl):
     piece_sqs = []
     for color in [chess.WHITE, chess.BLACK]:
         for piece in pieces:
-            sq = torch.zeros(8,8)
+            sq = torch.zeros(8, 8)
             for tile in board.pieces(piece, color):
                 sq[tile // 8, tile % 8] = 1
             piece_sqs.append(sq)
 
     # piece_sqs = torch.stack(piece_sqs)
 
-
     sq21 = torch.zeros((8, 8))
-    
-    
+
     all_data = [
         sq1,
         sq2,
@@ -108,9 +107,7 @@ with open("list.txt", "r") as f:
 
 
 def eval_board(board, bigl):
-    
     b = convert_board(board, bigl)
-    
 
     with torch.no_grad():
         b = b.to(d)  # bring tensor to device
@@ -164,7 +161,9 @@ def eval_board(board, bigl):
     )
 
     # print(move_counter)
-    if mirrored:  # board.turn == chess.BLACK doesn't work since all the moves are in white's POV
+    if (
+        mirrored
+    ):  # board.turn == chess.BLACK doesn't work since all the moves are in white's POV
         n = {}
         s = 0
         for move, key in zip(legal_lookup, legal_lookup.items()):
@@ -173,7 +172,5 @@ def eval_board(board, bigl):
             ]
             s += key[-1]
         legal_lookup = n
-
-    best_move = list(legal_lookup.keys())[0]
-    return value, logit_win_pc, logit_draw_pc, logit_loss_pc, legal_lookup, best_move
-
+    # best_move = list(legal_lookup.keys())[0]
+    return value, logit_win_pc, logit_draw_pc, logit_loss_pc, legal_lookup
