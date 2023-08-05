@@ -3,7 +3,6 @@ import chess
 import torch.nn.functional as F
 import torch.nn as nn
 import torchvision
-import math
 
 board = chess.Board()
 
@@ -15,7 +14,6 @@ else:
     d = torch.device("cpu")
 
 print("Using: " + str(d))
-
 
 
 def convert_board(board, bigl):
@@ -109,37 +107,40 @@ def eval_board(board, bigl, model):
     b = convert_board(board, bigl)
     try:
         model = torch.jit.load("tz.pt", map_location=d)
-    except FileNotFoundError:
+    except ValueError:
         for m in model.modules():
-                if isinstance(m, nn.Linear):
-                    nn.init.xavier_uniform_(m.weight)
-                    if m.bias is not None:
-                        nn.init.constant_(m.bias, 0)
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
     model.eval()
     with torch.no_grad():
         b = b.to(d)  # bring tensor to device
-        board_eval, policy = model(b.unsqueeze(0))
-
-        logit_value, logit_win_pc, logit_draw_pc, logit_loss_pc, moves_left = (
-            board_eval[0][0],
-            board_eval[0][1],
-            board_eval[0][2],
-            board_eval[0][3],
-            board_eval[0][4],
-        )
-        value = torch.tanh(logit_value).item()
-        l = F.softmax(board_eval[0][1:-1], dim=0)  # ignore board_eval and moves_left
-        logit_win_pc, logit_draw_pc, logit_loss_pc = (
-            l[0].item(),
-            l[1].item(),
-            l[2].item(),
-        )
+        # print(b.shape)
+        policy, board_eval = model(b.unsqueeze(0))
+        # print(policy)
+        # print(board_eval)
+        # logit_value, logit_win_pc, logit_draw_pc, logit_loss_pc, moves_left = (
+        #     board_eval[0][0],
+        #     board_eval[0][1],
+        #     board_eval[0][2],
+        #     board_eval[0][3],
+        #     board_eval[0][4],
+        # )
+        # value = torch.tanh(logit_value).item()
+        value = torch.tanh(board_eval).item()
+        # l = F.softmax(board_eval[0][1:-1], dim=0)  # ignore board_eval and moves_left
+        # logit_win_pc, logit_draw_pc, logit_loss_pc = (
+        #     l[0].item(),
+        #     l[1].item(),
+        #     l[2].item(),
+        # )
     mirrored = False
     if board.turn == chess.BLACK:
         board = board.mirror()
         mirrored = True
     policy = policy.tolist()
-    policy = policy[0]
+    # policy = policy[0]
     lookup = {}
     for p, c in zip(policy, contents):
         lookup[c] = p
@@ -180,4 +181,5 @@ def eval_board(board, bigl, model):
             s += key[-1]
         legal_lookup = n
     # best_move = list(legal_lookup.keys())[0]
+    logit_win_pc, logit_draw_pc, logit_loss_pc = 0,0,0
     return value, logit_win_pc, logit_draw_pc, logit_loss_pc, legal_lookup
