@@ -16,11 +16,10 @@ print("Using: " + str(d))
 
 # create TrueZero class (different from network class)
 class TrueZero:
-    def __init__(self, net, optimiser, iterations, spi, epochs, batch_size) -> None:
+    def __init__(self, net, optimiser, iterations, epochs, batch_size) -> None:
         self.net = net  # use pretrained net for now
         self.iterations = iterations
         self.optimiser = optimiser
-        self.self_play_iterations = spi
         self.num_epochs = epochs
         self.batch_size = batch_size
 
@@ -41,7 +40,7 @@ class TrueZero:
         # get game outcome
         z = 0
         outcome = board.result()
-        print(outcome)
+        print("GAME OVER",outcome)
         training_ready_data = []
         for mem, pl in zip(memory, pi_list):
             # access move turn
@@ -128,7 +127,11 @@ class TrueZero:
         return training_batch, target_batch
 
 
-net = network.TrueNet(num_resBlocks=1, device=d, num_hidden=512)
+net = network.TrueNet(num_resBlocks=1, device=d, num_hidden=128)
 
 optim = torch.optim.AdamW(lr=1e-3, params=net.parameters(), weight_decay=1e-4)
-tz = TrueZero(net, optim, 10, 10, 10, 10)
+tz = TrueZero(net, optim, 10, 100, 128)
+
+while True:
+    tz.data_loop()
+    tz.training_loop()
