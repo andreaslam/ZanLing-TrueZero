@@ -1,7 +1,6 @@
 import torch
 import mcts_trainer
 import chess
-import random
 import network
 import pickle  # probably serde in rust impl
 import torch.optim
@@ -31,7 +30,7 @@ class TrueZero:
         pi_list = []
         while not board.is_game_over():
             best_move, memory_piece, pi = mcts_trainer.move(
-                board
+                board, self.net
             )  # pi is going to be the target for training
             board.push(chess.Move.from_uci(best_move))
             print(best_move)
