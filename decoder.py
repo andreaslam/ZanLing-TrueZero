@@ -106,7 +106,7 @@ with open("list.txt", "r") as f:
 def eval_board(board, bigl, model):
     b = convert_board(board, bigl)
     try:
-        model = torch.jit.load("tz.pt", map_location=d)
+        model = torch.jit.load(model.weights_path, map_location=d)
     except ValueError:
         for m in model.modules():
             if isinstance(m, nn.Linear):
@@ -144,7 +144,7 @@ def eval_board(board, bigl, model):
     lookup = {}
     for p, c in zip(policy, contents):
         lookup[c] = p
-
+        
     legal_lookup = {}
     legal_moves = list(board.legal_moves)
 
@@ -164,9 +164,9 @@ def eval_board(board, bigl, model):
     for l, v in zip(legal_lookup, sm):
         legal_lookup[l] = v
 
-    legal_lookup = dict(
-        sorted(legal_lookup.items(), key=lambda item: item[1], reverse=True)
-    )
+    # legal_lookup = dict(
+    #     sorted(legal_lookup.items(), key=lambda item: item[1], reverse=True)
+    # )
 
     # print(move_counter)
     if (
@@ -181,5 +181,13 @@ def eval_board(board, bigl, model):
             s += key[-1]
         legal_lookup = n
     # best_move = list(legal_lookup.keys())[0]
+    
+    # keep track of indices
+    idx_li = []
+    for move in legal_lookup:
+        idx_li.append(contents.index(move))
+    
+    # print(idx_li)
+    
     logit_win_pc, logit_draw_pc, logit_loss_pc = 0,0,0
-    return value, logit_win_pc, logit_draw_pc, logit_loss_pc, legal_lookup
+    return value, logit_win_pc, logit_draw_pc, logit_loss_pc, legal_lookup, idx_li
