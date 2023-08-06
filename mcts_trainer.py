@@ -17,6 +17,7 @@ class Node:
         self.board = board
         self.total_action_value = 0  # total action value
         self.move_name = move_name  # chess.Move, eg e2e4
+        self.move_idx = None # stores indexes for training
 
     def is_leaf(self):
         return self.visits == 0
@@ -85,6 +86,7 @@ class Node:
             logit_draw_pc,
             logit_loss_pc,
             policy,
+            idx_li
         ) = decoder.eval_board(board, bigl, net)
         # print("    board FEN: " + board.fen())
         # print("    ran NN:")
@@ -98,6 +100,7 @@ class Node:
             child.board = x
 
         # # print("        children:",self.children)
+        return idx_li
 
 
 class Tree:
@@ -142,8 +145,9 @@ class Tree:
         selected_node = self.select()
         # self.display_full_tree()
         if not selected_node.is_terminal(selected_node.board):
-            bigl = selected_node.eval_and_expand(selected_node.board, bigl, net)
+            idx_li = selected_node.eval_and_expand(selected_node.board, bigl, net)
             # add Dirichlet noise if root node
+            self.root_node.move_idx = idx_li
             if selected_node is self.root_node:
                 noise = Dirichlet(
                     torch.tensor([0.3] * len(list(selected_node.board.legal_moves)))
@@ -176,8 +180,7 @@ with open("list.txt", "r") as f:
 
 bigl = []
 
-
-MAX_NODES = 10
+MAX_NODES = 2
 
 
 def move(board, net):
@@ -200,4 +203,4 @@ def move(board, net):
     # call to store the root board input
     rb_input = decoder.convert_board(tree.root_node.board, [])
     memory_piece = rb_input
-    return best_move, memory_piece, pi # return the best move, memory
+    return best_move, memory_piece, pi, tree.root_node.move_idx # return the best move, memory
