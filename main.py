@@ -1,4 +1,4 @@
-# POLICY ONLY
+# POLICY ONLY, FOR ACTUAL IMPL CHECK SELFPLAY.PY
 import torch
 import chess
 import torch.nn.functional as nnf
