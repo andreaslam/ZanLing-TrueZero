@@ -3,51 +3,42 @@ import torch.nn.functional as F
 
 
 class TrueNet(nn.Module):
-    def __init__(self, num_resBlocks, num_hidden, device):
+    def __init__(self, num_resBlocks, num_hidden):
         super().__init__()
-
-        self.device = device
         self.startBlock = nn.Sequential(
-            nn.Conv2d(21, num_hidden, kernel_size=8, padding=1),
+            nn.Conv2d(21, num_hidden, kernel_size=1, padding=0),
             nn.BatchNorm2d(num_hidden),
             nn.ReLU(),
         )
 
-        self.backBone = nn.ModuleList(
-            [ResBlock(num_hidden) for i in range(num_resBlocks)]
+        self.backBone = nn.Sequential(
+            *[ResBlock(num_hidden) for _ in range(num_resBlocks)]
         )
 
         self.policyHead = nn.Sequential(
-            nn.Conv2d(num_hidden, 1, kernel_size=3, padding=1),
-            nn.BatchNorm2d(1),
+            nn.Conv2d(num_hidden, num_hidden, kernel_size=1, padding=0),
+            nn.BatchNorm2d(num_hidden),
             nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(9, 1880),
+            nn.Linear(num_hidden * 64, 1880),  # input w*h
         )
 
         self.valueHead = nn.Sequential(
-            nn.Conv2d(num_hidden,1, kernel_size=1, padding=1),
-            nn.BatchNorm2d(1),
+            nn.Conv2d(num_hidden, 1000, kernel_size=1, padding=0),
+            nn.BatchNorm2d(1000),
             nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(25, 1),
+            nn.Linear(
+                1000 * 64, 1
+            ),  # input w*h, the size of the output can be smaller for value
             nn.Tanh(),
         )
 
-        self.to(device)
-
     def forward(self, x):
-        # print(x.shape)
         x = self.startBlock(x)
-        # print(x.shape)
-        for resBlock in self.backBone:
-            x = resBlock(x)
-            # print(x.shape)
-        # print(x.shape)
+        x = self.backBone(x)
         policy = self.policyHead(x)
         policy = policy.squeeze(0)
-        # print(policy.shape)
-        # print(x.shape)
         value = self.valueHead(x)
         value = value.squeeze(0)
         return policy, value
