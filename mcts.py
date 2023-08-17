@@ -186,13 +186,11 @@ with open("list.txt", "r") as f:
 
 board = chess.Board()
 
-# board.set_fen("r1b1k1nr/ppppb1pp/5pq1/4p3/2B1P2P/3PBQ2/PPP2PP1/RN3RK1 w kq - 2 10")
+board.set_fen("r1b1k1nr/ppppb1pp/5pq1/4p3/2B1P2P/3PBQ2/PPP2PP1/RN3RK1 w kq - 2 10")
 
 tree = Tree(board)
 
 bigl = []
-
-
 
 MAX_NODES = 10
 
@@ -206,7 +204,7 @@ while not board.is_game_over():
     best_move = best_move_node.move_name
     print("bestmove", best_move)
     board.push(chess.Move.from_uci(best_move))
-    # break
+    break
 
 bigl = torch.stack(bigl, dim=0)
 b, c, h, w = bigl.shape
