@@ -106,15 +106,9 @@ with open("list.txt", "r") as f:
 
 def eval_board(board, bigl):
     b = convert_board(board, bigl)
-    try:
-        model = torch.jit.load("tz.pt", map_location=d)
-    except ValueError:
-        model = torch.jit.script(network.TrueNet(num_resBlocks=2, num_hidden=128).to(d))
-        for m in model.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
+
+    model = torch.jit.load("tz.pt", map_location=d)
+    model.to(d)
     model.eval()
     with torch.no_grad():
         b = b.to(d)  # bring tensor to device
