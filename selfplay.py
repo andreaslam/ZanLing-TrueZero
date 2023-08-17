@@ -6,6 +6,7 @@ import os
 import pickle  # probably serde in rust impl
 import torch.optim
 import torch.nn.functional as F
+import torch.nn as nn
 
 
 if torch.cuda.is_available():
@@ -14,6 +15,8 @@ else:
     d = torch.device("cpu")
 
 print("Using: " + str(d))
+
+onnx_path = "model.onnx"
 
 
 # create TrueZero class (different from network class)
@@ -24,8 +27,6 @@ class TrueZero:
         self.optimiser = optimiser
         self.num_epochs = epochs
         self.batch_size = batch_size
-        
-        
 
     def self_play(self):
         board = chess.Board()
@@ -33,7 +34,7 @@ class TrueZero:
         pi_list = []
         while not board.is_game_over():
             best_move, memory_piece, pi, move_idx = mcts_trainer.move(
-                board, self.net
+                board
             )  # pi is going to be the target for training
             board.push(chess.Move.from_uci(best_move))
             print(best_move)
@@ -87,18 +88,12 @@ class TrueZero:
             self.optimiser.step()
             loss = loss.item()
             print("current loss:", loss)
-            torch.save(self.net.state_dict(), "tz.pt")
-            # torch.save(self.optimiser.state_dict(), "optimiser.pt")
-            self.net.weights_path = "tz.pt"
-            self.net.optimiser_path = "optimiser.pt"
-
+        # torch.onnx.export(net, training, onnx_path, verbose=False, dynamic_axes=None)
+        torch.jit.save(self.net, "tz.pt")
+        # torch.jit.save(self.optimiser.state_dict(), "optimiser.pt")
+        
     def data_loop(self):
         memory = []
-        try:
-            self.net.load_state_dict(torch.load(net.weights_path, map_location=d))
-            self.optimiser.load_state_dict(torch.load(net.optimiser_path, map_location=d))
-        except FileNotFoundError:
-            pass
         for iteration in range(self.iterations):
             memory.append(self.self_play())
         with open("data.bin", "wb") as f:
@@ -148,15 +143,26 @@ class TrueZero:
         policy_target = torch.stack(policy_target)
         return training_batch, value_target, policy_target
 
+try:
+    net = torch.jit.load("tz.pt", map_location=d)
+except ValueError:
+    net = torch.jit.script(network.TrueNet(num_resBlocks=2, num_hidden=64).to(d))
+    for m in net.modules():
+        if isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(m.weight)
+            if m.bias is not None:
+                nn.init.kaiming_uniform(m.bias)
+    torch.jit.save(net,"tz.pt") # if it doesn't exist
 
-net = network.TrueNet(num_resBlocks=10, device=d, num_hidden=128)
 
-optim = torch.optim.AdamW(lr=1e-3, params=net.parameters(), weight_decay=1e-10)
-tz = TrueZero(net, optim, 20, 25, 100)
+
+# TODO: make a LR scheduler
+
+optim = torch.optim.AdamW(lr=5e-4, params=net.parameters(), weight_decay=1e-10)
+tz = TrueZero(net, optim, 20, 100, 10)
+
 
 while True:
     tz.data_loop()
     tz.training_loop()
     os.remove("data.bin")
-    print(tz.net.weights_path)
-    print(tz.net.optimiser_path)
