@@ -1,3 +1,4 @@
+# NOT TRAINING MCTS, CHECK MCTS_TRAINER.PY
 import torch
 import chess
 import torchvision
