@@ -1,14 +1,21 @@
 use tch::*;
 use cozy_chess::*;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
 
-fn eval_state(board:Tensor) -> anyhow::Result<()> {
+use crate::mvs::get_contents;
+
+fn eval_state(board:Tensor) -> anyhow::Result<Vec<Tensor>> {
     let model = tch::CModule::load("chess_16x128_gen3634.pt")?;
     let b = board.to(Device::cuda_if_available());
-    let output = model.forward_ts(&[board.unsqueeze(0)])?;
-    Ok(())
+    board.unsqueeze(0);
+    let board = IValue::TensorList(vec![board]);
+    let board = [board];
+    let output = model.forward_is(&board)?;
+    let output_tensor_list = match output {
+    IValue::TensorList(tensor_list) => tensor_list,
+    _ => panic!("the output is not a TensorList"),
+};
+    Ok(output_tensor_list)
 }
 
 
@@ -91,7 +98,8 @@ pub fn convert_board(board:Board) -> Tensor{ // not include bigl for now
         for piece in pieces {
             const ROWS: usize = 8;
             const COLS: usize = 8;
-            let mut sq: Vec<Vec<i32>> = vec![vec![0; COLS]; ROWS];
+            // let mut sq: Vec<Vec<i32>> = vec![vec![0; COLS]; ROWS];
+            let mut sq = Tensor::empty([8,8], (Kind::Float, Device::Cpu));
             for tile in board.colored_pieces(colour, piece) {
                 let tile = format!("{:?}",tile);
                 let tile = tile.parse::<i32>().unwrap();
@@ -103,6 +111,15 @@ pub fn convert_board(board:Board) -> Tensor{ // not include bigl for now
             }
         }
     }
+
+    let mut result = Vec::new();
+
+    for inner_vec in pieces_sqs {
+        let inner_tensor = Tensor::from_slice(&inner_vec);
+        result.push(inner_tensor);
+    }
+
+    let (turn,opp) = (result[0], result[1]);
 
     
 
@@ -118,22 +135,10 @@ pub fn convert_board(board:Board) -> Tensor{ // not include bigl for now
         *pieces_sqs,
         sq21
     ];
-    all_data = Tensor::stack(all_data, 0);
+    all_data = Tensor::stack(&all_data, 0);
     all_data 
 }
 
-fn read_file_vec(filename: &str) -> anyhow::Result<()> {
-    let file = File::open(filename)?;
-    let reader = BufReader::new(file);
-    let mut lines = Vec::new();
-
-    for line in reader.lines() {
-        let line = line?;
-        lines.push(line);
-    }
-
-    Ok(lines)
-}
 
 // func to mirror board
 
@@ -185,72 +190,79 @@ fn mirror(fen: &str) -> String {
 }
 
 pub fn eval_board(board:Board) { // ignore bigl and model for now, model is the custom net class
-    let contents = read_file_vec("list.txt");
+    let contents = get_contents();
     let b = convert_board(board);
-    // let mut vs = nn::VarStore::new(Device::cuda_if_available());
-    // ignore try except initialisation for now
-    let output = eval_state(b);
-    // let value = Tensor::tanh(&board_eval);
-    // // ignore getting .item()
-    // let mirrored = false;
-    // if board.side_to_move() == Color::Black {
-    //     let fen_str = format!("{:?}", board);
-    //     let fen_str:&str = &fen_str;
-    //     let reversed_str = mirror(fen_str); // TODO: fix this
-    //     let reversed_str:&str = &reversed_str;
-    //     let board = Board::from_fen(reversed_str, false).unwrap();
-    //     mirrored = true;
-    // }
-    // // tolist()???
-    // let policy = policy.iter::<f32>().collect();
-    // let mut lookup = HashMap::new();
-    // for (p,c) in policy.iter().zip(contents.iter()) { // contents is from the .txt
-    //     lookup.insert(p, c);
+    match eval_state(b) {
+        Ok(output) => {
+            let (board_eval, policy) = (output[0], output[1]);
+            // hmm trying to get them to TensorLists 
+            let value = Tensor::tanh(&board_eval);
+            // ignore getting .item()
+            let mirrored = false;
+            if board.side_to_move() == Color::Black {
+                let fen_str = format!("{:?}", board);
+                let fen_str:&str = &fen_str;
+                let reversed_str = mirror(fen_str); // TODO: fix this
+                let reversed_str:&str = &reversed_str;
+                let board = Board::from_fen(reversed_str, false).unwrap();
+                mirrored = true;
+            }
+            
+            let mut lookup = HashMap::new();
+            for (c,p) in contents.iter().zip(policy.iter()) { // contents is from the .txt
+                lookup.insert(c, p);
 
-    // }
-    // let mut legal_lookup = HashMap::new();
+            }
+            let mut legal_lookup = HashMap::new();
 
-    // let mut legal_moves = Vec::new();
-    // board.generate_moves(|moves| {
-    //     // Unpack dense move set into move list
-    //     legal_moves.extend(moves);
-    //     false
-    // });
+            let mut legal_moves = Vec::new();
+            board.generate_moves(|moves| {
+                // Unpack dense move set into move list
+                legal_moves.extend(moves);
+                false
+            });
 
-    // for m in legal_moves {
-    //     legal_lookup.insert(m, lookup.get(&m));
-    // }
+            for m in legal_moves {
+                let idx_name = format!("{}",m).as_str();
+                legal_lookup.insert(m, lookup.get(&idx_name));
+            }
 
-    // let sm = Vec::new();
+            let sm = Vec::new();
 
-    // for (l,_) in legal_lookup {
-    //     sm.extend(legal_lookup.get(&l));
-    // }
+            for (l,_) in legal_lookup {
+                sm.extend(legal_lookup.get(&l));
+            }
+            
 
-    // sm = Tensor::from(sm);
-    // sm = Tensor::softmax(&sm,0, Kind::Float);
-    // // skip tolist
-    // let sm = sm.to_vec();
-    // for (l, v) in legal_lookup.iter().zip(sm.iter()) {
-    //     legal_lookup.get(&l) = v;
-    // }
+            sm = Tensor::softmax(sm,0, Kind::Float);
+            // skip tolist
+            let sm = sm.to_vec();
+            for (l, v) in legal_lookup.iter().zip(sm.iter()) {
+                let idx_name = format!("{}",l).as_str();
+                legal_lookup.insert(legal_lookup.get(&idx_name), v);
+            }
 
-    // if mirrored {
-    //     let n = {};
-    //     let s = 0;
-    //     for (m, key) in legal_lookup.iter().zip() { // find .items()
-    //         // oh no type conversion shit
-    //         s += key[-1]; // ????
-    //     legal_lookup = n;
-    // }
+            if mirrored {
+                let n = {};
+                let s = 0;
+                for (m, key) in legal_lookup.iter().zip() { // find .items()
+                    // oh no type conversion shit
+                    s += key[-1]; // ????
+                legal_lookup = n;
+            }
 
-    // }
-    // let idx_li  = Vec::new();
+            }
+            let idx_li  = Vec::new();
 
-    // for m in legal_lookup {
-    //     idx_li.extend(contents.index(m)); // contents is opening .txt
-        
-    // }
-    // (value, legal_lookup, idx_li)
+            for m in legal_lookup {
+                idx_li.extend(contents.index(m)); // contents is opening .txt
+                
+            }
+        (value, legal_lookup, idx_li)
+        }
+        Err(err_msg) => {
+            println!("Error: {}", err_msg);
+        }
+    }
 
 }
