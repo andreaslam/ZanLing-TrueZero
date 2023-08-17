@@ -109,8 +109,7 @@ def eval_board(board, bigl):
     try:
         model = torch.jit.load("tz.pt", map_location=d)
     except ValueError:
-        print("SUSSY BAKA")
-        model = torch.jit.script(network.TrueNet(num_resBlocks=2, num_hidden=128))
+        model = torch.jit.script(network.TrueNet(num_resBlocks=2, num_hidden=128).to(d))
         for m in model.modules():
             if isinstance(m, nn.Linear):
                 nn.init.xavier_uniform_(m.weight)
