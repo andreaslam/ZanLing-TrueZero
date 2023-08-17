@@ -2,7 +2,6 @@
 // use tch::*;
 // use crate::decoder::eval_board;
 // use crate::decoder::convert_board;
-// use std::cmp;
 
 // // define tree and node classes
 // #[derive(PartialEq)]
@@ -52,8 +51,8 @@
 //     }
 //     // lol skip __str__ and layer p lol
 
-//     fn eval_and_expand(&self,board:Board, net) -> Vec<u16>{ // net custom class
-//         let (value, policy, idx_li) = eval_board(board, net);
+//     fn eval_and_expand(&self,board:Board) -> Vec<u16>{ 
+//         let (value, policy, idx_li) = eval_board(board);
 //         self.eval_score=  value;
 //         for p in policy {
 //             let x = board.clone();
@@ -100,11 +99,11 @@
 
 //     // skip display full tree
 
-//     fn step(&self, net) { // skip custom net
+//     fn step(&self) { // skip custom net
 //         const EPS:f32 = 0.3;
 //         let selected_node = self.select();
 //         if !selected_node.is_terminal(selected_node.board) {
-//             let idx_li = selected_node.eval_and_expand(selected_node.board, net);
+//             let idx_li = selected_node.eval_and_expand(selected_node.board);
 //             let are_same_instance = std::ptr::eq(&selected_node, &self.root_node);
 //             if are_same_instance {
 //                 // add Dirichlet noise, skip for now
@@ -121,13 +120,13 @@
 
 // pub const MAX_NODES: u32 = 10000;
 
-// pub fn get_move(board:Board, net) -> (PieceMoves, Tensor, Vec<f32>, Vec<u16>){ // net is custom network.rs class
+// pub fn get_move(board:Board) -> (PieceMoves, Tensor, Vec<f32>, Vec<u16>){
 //     let tree = Tree{
 //         board:board,
 //         root_node: Node { parent: (None), children: (Vec<Node>), policy: (0.0), visits: (0), eval_score: (0.0), board: (board), total_action_value: (0.0), move_name: (PieceMoves), move_idx: (Vec<u16>) }};
 
 //     while tree.root_node.visits < MAX_NODES {
-//         tree.step(net);
+//         tree.step();
 //     }
 
 
