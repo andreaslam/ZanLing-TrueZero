@@ -1,7 +1,7 @@
 use tch::*;
 use cozy_chess::*;
 use std::collections::HashMap;
-
+use crate::boardmanager::BoardStack;
 use crate::mvs::get_contents;
 
 fn eval_state(board:Tensor) -> anyhow::Result<Vec<Tensor>> {
@@ -19,7 +19,7 @@ fn eval_state(board:Tensor) -> anyhow::Result<Vec<Tensor>> {
 }
 
 
-pub fn convert_board(board:Board) -> Tensor{ // not include bigl for now
+pub fn convert_board(board:Board, bs:BoardStack) -> Tensor{ // not include bigl for now
     // FULL LIST HERE:
     // sq1 - white's turn
     // sq2 - black's turn
@@ -36,22 +36,21 @@ pub fn convert_board(board:Board) -> Tensor{ // not include bigl for now
     // it seems that creating a Vec, processing everything first is faster than doing Tensor::zeros() and then stacking them
     // so i instead work with Vecs, get all of them together and convert them into a single Tensor at the end
 
-    // here goes all the for loops lmao
 
-    let mut sq1: Vec<f32>;
-    let mut sq2: Vec<f32>;
+    let sq1: Vec<f32>;
+    let sq2: Vec<f32>;
 
     if board.side_to_move() == Color::Black {
-        let mut sq1 = vec![0.0; 64];
-        let mut sq2 = vec![1.0; 64];
+        let sq1 = vec![0.0; 64];
+        let sq2 = vec![1.0; 64];
         let fen_str = format!("{:?}", board);
         let fen_str:&str = &fen_str;
         let reversed_str = mirror(fen_str); // TODO: fix this
         let reversed_str:&str = &reversed_str;
         let board = Board::from_fen(reversed_str, false).unwrap();
     } else {
-        let mut sq1 = vec![1.0; 64];
-        let mut sq2 = vec![0.0; 64];
+        let sq1 = vec![1.0; 64];
+        let sq2 = vec![0.0; 64];
         let fen_str = format!("{:?}", board);
         let fen_str:&str = &fen_str;
         let reversed_str = mirror(fen_str); // TODO: fix this
@@ -65,45 +64,51 @@ pub fn convert_board(board:Board) -> Tensor{ // not include bigl for now
 
     let wl = w_rights.long; // white left, long castling
     let wr = w_rights.short; // white right, short castling
-    let mut sq3: Vec<f32>;
-    let mut sq4: Vec<f32>;
+    let sq3: Vec<f32>;
+    let sq4: Vec<f32>;
     if wl != None { // still have castling
-        let mut sq3 = vec![1.0; 64];
+        let sq3 = vec![1.0; 64];
     } else {
-        let mut sq3 = vec![0.0; 64];
+        let sq3 = vec![0.0; 64];
     }
     if wr != None { // still have castling
-        let mut sq4 = vec![1.0; 64];
+        let sq4 = vec![1.0; 64];
     } else {
-        let mut sq4  = vec![0.0; 64];
+        let sq4  = vec![0.0; 64];
     }
 
     let bl = b_rights.long; // white left, long castling
     let br = b_rights.short; // white right, short castling
 
-    let mut sq5: Vec<f32>;
-    let mut sq6: Vec<f32>;
+    let sq5: Vec<f32>;
+    let sq6: Vec<f32>;
 
 
     if bl != None { // still have castling
-        let mut sq5 = vec![1.0; 64];
+        let sq5 = vec![1.0; 64];
     } else {
-        let mut sq5 = vec![0.0; 64];
+        let sq5 = vec![0.0; 64];
     }
     if br != None { // still have castling
-        let mut sq6 = vec![1.0; 64];
+        let sq6 = vec![1.0; 64];
     } else {
-        let mut sq6 = vec![0.0; 64];
+        let sq6 = vec![0.0; 64];
     }
 
     // skip sq7 and 8 for reps
+    // create b or whatevah
+    let num_reps = bs.get_reps() as f32; 
+
+    let sq7 = vec![num_reps];
+
+    let sq8 = vec![board.halfmove_clock() as f32;64];
 
     let pieces = [Piece::Pawn, Piece::Knight, Piece::Bishop, Piece::Rook, Piece::Queen, Piece::King];
     let mut pieces_sqs = Vec::new();
     for colour in [Color::White, Color::Black] {
         for piece in pieces {
-            let mut sq = vec![vec![0.0; 8]; 8];
-            // let mut sq = Tensor::empty([8,8], (Kind::Float, Device::Cpu));
+            let sq = vec![vec![0.0; 8]; 8];
+            // let sq = Tensor::empty([8,8], (Kind::Float, Device::Cpu));
             for tile in board.colored_pieces(colour, piece) {
                 let tile = format!("{:?}",tile);
                 let tile = tile.parse::<i32>().unwrap();
@@ -117,7 +122,7 @@ pub fn convert_board(board:Board) -> Tensor{ // not include bigl for now
     }
     // still have to flatten sq
 
-    let mut sq_1d = Vec::new();
+    let sq_1d = Vec::new();
 
     for row in pieces_sqs {
         for element in row {
@@ -127,7 +132,7 @@ pub fn convert_board(board:Board) -> Tensor{ // not include bigl for now
 
     let pieces_sqs = sq_1d;
 
-    let mut sq21 = vec![0.0; 64];
+    let sq21 = vec![0.0; 64];
     
     let all_data = [
         sq1,
@@ -136,7 +141,8 @@ pub fn convert_board(board:Board) -> Tensor{ // not include bigl for now
         sq4,
         sq5, 
         sq6, 
-        // skip 7 and 8
+        // skip 7 for now
+        sq8,
         pieces_sqs,
         sq21
     ];
@@ -204,9 +210,10 @@ fn mirror(fen: &str) -> String {
     flipped_fen
 }
 
-pub fn eval_board(board:Board) { // ignore bigl and model for now, model is the custom net class
+pub fn eval_board(board:Board, bs:BoardStack) { // ignore bigl and model for now, model is the custom net class
     let contents = get_contents();
-    let b = convert_board(board);
+    let b = convert_board(board, bs);
+    // convert b into [B,21,8,8] first!
     match eval_state(b) {
         Ok(output) => {
             // reshape and view
@@ -243,43 +250,49 @@ pub fn eval_board(board:Board) { // ignore bigl and model for now, model is the 
                 legal_lookup.insert(idx_name, lookup.get(&idx_name));
             }
 
-            let sm = Vec::new();
+            let sm: Vec<f32> = Vec::new();
 
             for (l,_) in legal_lookup {
-                sm.extend(legal_lookup.get(&l));
+                sm.push(legal_lookup.get(l));
             }
             
-            let sm = Tensor::from_slice(&sm); // is this how turning Vec -> Tensor works???
+            let sm = Tensor::from_slice(&sm); 
 
             let sm = Tensor::softmax(&sm,0, Kind::Float);
+            
+
             // let's try something new
             // refer back to the legal moves generator and redo the formatting, it's easier that way
             
             // attempt to turn Tensor back to vecs
-            
-            
-
-            for (l, v) in legal_moves.iter().zip(sm.iter()) {
+            for (l, v) in legal_moves.iter().zip(sm) {
                 let idx_name = format!("{}",l).as_str();
                 legal_lookup.insert(legal_lookup.get(&idx_name), v);
             }
 
             if mirrored {
-                let n = {};
-                let s = 0;
-                let values = legal_lookup.values().cloned().collect();
-                for (m, key) in legal_lookup.iter().zip(values) { // find .items()
-                    // oh no type conversion shit
-                    s += key[-1]; // ????
-                legal_lookup = n;
-            }
+                let mut n = std::collections::HashMap::new();
+
+                for (move_key, value) in legal_lookup.clone() {
+                    let new_key = format!(
+                        "{}{}{}{}",
+                        &move_key.chars().nth(0).unwrap(),
+                        9 - move_key.chars().nth(1).unwrap().to_digit(10).unwrap(),
+                        &move_key.chars().nth(2).unwrap(),
+                        9 - move_key.chars().nth(3).unwrap().to_digit(10).unwrap()
+                    );
+                    n.insert(new_key, value);
+                }
+
+                let legal_lookup = n;
 
             }
-            let idx_li  = Vec::new();
-
-            for m in legal_lookup {
-                idx_li.push(contents.index(m)); // contents is opening .txt
-                
+            let mut idx_li: Vec<usize> = Vec::new();
+    
+            for mov in contents.iter() {
+                if let Some(&idx) = legal_lookup.get(mov) {
+                    idx_li.push(idx);
+                }
             }
         
         (value, legal_lookup, idx_li)
