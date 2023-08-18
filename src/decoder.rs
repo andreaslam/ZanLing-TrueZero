@@ -32,20 +32,26 @@ pub fn convert_board(board:Board) -> Tensor{ // not include bigl for now
     // sq1 - white's turn
     // sq2 - black's turn
 
-    let sq1: Tensor;
-    let sq2: Tensor;
+
+    // it seems that creating a Vec, processing everything first is faster than doing Tensor::zeros() and then stacking them
+    // so i instead work with Vecs, get all of them together and convert them into a single Tensor at the end
+
+    // here goes all the for loops lmao
+
+    let mut sq1: Vec<f32>;
+    let mut sq2: Vec<f32>;
 
     if board.side_to_move() == Color::Black {
-        sq1 = Tensor::zeros([8,8], (Kind::Float, Device::Cpu));
-        sq2 = Tensor::ones([8,8], (Kind::Float, Device::Cpu));
+        let mut sq1 = vec![0.0; 64];
+        let mut sq2 = vec![1.0; 64];
         let fen_str = format!("{:?}", board);
         let fen_str:&str = &fen_str;
         let reversed_str = mirror(fen_str); // TODO: fix this
         let reversed_str:&str = &reversed_str;
         let board = Board::from_fen(reversed_str, false).unwrap();
     } else {
-        sq1 = Tensor::ones([8,8], (Kind::Float, Device::Cpu));
-        sq2 = Tensor::zeros([8,8], (Kind::Float, Device::Cpu));
+        let mut sq1 = vec![1.0; 64];
+        let mut sq2 = vec![0.0; 64];
         let fen_str = format!("{:?}", board);
         let fen_str:&str = &fen_str;
         let reversed_str = mirror(fen_str); // TODO: fix this
@@ -59,35 +65,35 @@ pub fn convert_board(board:Board) -> Tensor{ // not include bigl for now
 
     let wl = w_rights.long; // white left, long castling
     let wr = w_rights.short; // white right, short castling
-    let sq3: Tensor;
-    let sq4: Tensor;
+    let mut sq3: Vec<f32>;
+    let mut sq4: Vec<f32>;
     if wl != None { // still have castling
-        sq3  = Tensor::full([8,8], 1,(Kind::Float, Device::Cpu));   
+        let mut sq3 = vec![1.0; 64];
     } else {
-        sq3  = Tensor::full([8,8], 0,(Kind::Float, Device::Cpu));   
+        let mut sq3 = vec![0.0; 64];
     }
     if wr != None { // still have castling
-        sq4  = Tensor::full([8,8], 1,(Kind::Float, Device::Cpu));   
+        let mut sq4 = vec![1.0; 64];
     } else {
-        sq4  = Tensor::full([8,8], 0,(Kind::Float, Device::Cpu));   
+        let mut sq4  = vec![0.0; 64];
     }
 
     let bl = b_rights.long; // white left, long castling
     let br = b_rights.short; // white right, short castling
 
-    let sq5: Tensor;
-    let sq6: Tensor;
+    let mut sq5: Vec<f32>;
+    let mut sq6: Vec<f32>;
 
 
     if bl != None { // still have castling
-        sq5  = Tensor::full([8,8], 1,(Kind::Float, Device::Cpu));  
+        let mut sq5 = vec![1.0; 64];
     } else {
-        sq5  = Tensor::full([8,8], 0,(Kind::Float, Device::Cpu));   
+        let mut sq5 = vec![0.0; 64];
     }
     if br != None { // still have castling
-        sq6  = Tensor::full([8,8], 1,(Kind::Float, Device::Cpu));   
+        let mut sq6 = vec![1.0; 64];
     } else {
-        sq6  = Tensor::full([8,8], 0,(Kind::Float, Device::Cpu));   
+        let mut sq6 = vec![0.0; 64];
     }
 
     // skip sq7 and 8 for reps
@@ -96,34 +102,33 @@ pub fn convert_board(board:Board) -> Tensor{ // not include bigl for now
     let mut pieces_sqs = Vec::new();
     for colour in [Color::White, Color::Black] {
         for piece in pieces {
-            const ROWS: usize = 8;
-            const COLS: usize = 8;
-            // let mut sq: Vec<Vec<i32>> = vec![vec![0; COLS]; ROWS];
-            let mut sq = Tensor::empty([8,8], (Kind::Float, Device::Cpu));
+            let mut sq = vec![vec![0.0; 8]; 8];
+            // let mut sq = Tensor::empty([8,8], (Kind::Float, Device::Cpu));
             for tile in board.colored_pieces(colour, piece) {
                 let tile = format!("{:?}",tile);
                 let tile = tile.parse::<i32>().unwrap();
                 let (quotient, remainder) = (tile / 8 as i32, tile % 8);
                 let quotient = quotient as usize;
                 let remainder = remainder as usize;
-                sq[quotient][remainder] = 1;
+                sq[quotient][remainder] = 1.0;
             pieces_sqs.extend(sq);
             }
         }
     }
+    // still have to flatten sq
 
-    let mut result = Vec::new();
+    let mut sq_1d = Vec::new();
 
-    for inner_vec in pieces_sqs {
-        let inner_tensor = Tensor::from_slice(&inner_vec);
-        result.push(inner_tensor);
+    for row in pieces_sqs {
+        for element in row {
+            sq_1d.push(element);
+        }
     }
 
-    let (turn,opp) = (result[0], result[1]);
+    let pieces_sqs = sq_1d;
 
+    let mut sq21 = vec![0.0; 64];
     
-
-    let sq21 = Tensor::zeros([8,8],(Kind::Float, Device::Cpu)); // 0 for now
     let all_data = [
         sq1,
         sq2, 
@@ -132,11 +137,21 @@ pub fn convert_board(board:Board) -> Tensor{ // not include bigl for now
         sq5, 
         sq6, 
         // skip 7 and 8
-        *pieces_sqs,
+        pieces_sqs,
         sq21
     ];
-    all_data = Tensor::stack(&all_data, 0);
-    all_data 
+    
+    let sq_1d: Vec<f32> = Vec::new();
+    
+    for row in all_data {
+        for element in row {
+            sq_1d.push(element);
+        }
+    }
+    let all_data = sq_1d;
+    let all_data = all_data.to_vec();
+    let all_data = Tensor::from_slice(&all_data);
+    all_data // all_data is 1d
 }
 
 
@@ -194,8 +209,9 @@ pub fn eval_board(board:Board) { // ignore bigl and model for now, model is the 
     let b = convert_board(board);
     match eval_state(b) {
         Ok(output) => {
+            // reshape and view
+            
             let (board_eval, policy) = (output[0], output[1]);
-            // hmm trying to get them to TensorLists 
             let value = Tensor::tanh(&board_eval);
             // ignore getting .item()
             let mirrored = false;
@@ -224,7 +240,7 @@ pub fn eval_board(board:Board) { // ignore bigl and model for now, model is the 
 
             for m in legal_moves {
                 let idx_name = format!("{}",m).as_str();
-                legal_lookup.insert(m, lookup.get(&idx_name));
+                legal_lookup.insert(idx_name, lookup.get(&idx_name));
             }
 
             let sm = Vec::new();
@@ -233,11 +249,17 @@ pub fn eval_board(board:Board) { // ignore bigl and model for now, model is the 
                 sm.extend(legal_lookup.get(&l));
             }
             
+            let sm = Tensor::from_slice(&sm); // is this how turning Vec -> Tensor works???
 
-            sm = Tensor::softmax(sm,0, Kind::Float);
-            // skip tolist
-            let sm = sm.to_vec();
-            for (l, v) in legal_lookup.iter().zip(sm.iter()) {
+            let sm = Tensor::softmax(&sm,0, Kind::Float);
+            // let's try something new
+            // refer back to the legal moves generator and redo the formatting, it's easier that way
+            
+            // attempt to turn Tensor back to vecs
+            
+            
+
+            for (l, v) in legal_moves.iter().zip(sm.iter()) {
                 let idx_name = format!("{}",l).as_str();
                 legal_lookup.insert(legal_lookup.get(&idx_name), v);
             }
@@ -245,7 +267,8 @@ pub fn eval_board(board:Board) { // ignore bigl and model for now, model is the 
             if mirrored {
                 let n = {};
                 let s = 0;
-                for (m, key) in legal_lookup.iter().zip() { // find .items()
+                let values = legal_lookup.values().cloned().collect();
+                for (m, key) in legal_lookup.iter().zip(values) { // find .items()
                     // oh no type conversion shit
                     s += key[-1]; // ????
                 legal_lookup = n;
@@ -255,9 +278,10 @@ pub fn eval_board(board:Board) { // ignore bigl and model for now, model is the 
             let idx_li  = Vec::new();
 
             for m in legal_lookup {
-                idx_li.extend(contents.index(m)); // contents is opening .txt
+                idx_li.push(contents.index(m)); // contents is opening .txt
                 
             }
+        
         (value, legal_lookup, idx_li)
         }
         Err(err_msg) => {
