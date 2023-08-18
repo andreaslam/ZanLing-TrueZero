@@ -1,6 +1,6 @@
 use cozy_chess::*;
-use std::collections::HashMap;
-struct BoardStack {
+
+pub struct BoardStack {
     board: Board,
     move_stack: Vec<u64>,
 
@@ -16,23 +16,22 @@ impl BoardStack {
             self.move_stack.push(target_hash); // add hash into stack
         } else { // repetition found!
             self.move_stack.push(target_hash);
-            if self.move_stack.iter().filter(|&x| *x == target_hash).count() >= 3 { // draw by repetition!
+            if self.move_stack.iter().filter(|&x| *x == target_hash).count() == 3 { // draw by repetition!
                 is_over = true;
             }
         }
     is_over
     }
+    
     // get number of repetitions for decoder.rs
-
+    // remember to push current position BEFORE calling on get_reps
     pub fn get_reps(&self) -> u8 {
-        let mut count_map: HashMap<u64, usize> = HashMap::new();
-        for &num in &self.move_stack {
-            *count_map.entry(num).or_insert(0) += 1;
-        }
-        let max_repetitions = count_map.values().cloned().max().unwrap_or(0);
+        // reps only for the current position, not the global maximum of repetitions recorded
+        let max_repetitions = self.move_stack.iter().filter(|&&x| x == self.move_stack[self.move_stack.len()]).count();
         max_repetitions as u8
     }
 
+    // play function to be called in selfplay.rs
     pub fn play(&mut self, mv:&str) {
         let is_over_draws = self.compare();
         let status = self.board.status();
