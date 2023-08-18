@@ -12,14 +12,14 @@ fn eval_state(board:Tensor) -> anyhow::Result<Vec<Tensor>> {
     let board = [board];
     let output = model.forward_is(&board)?;
     let output_tensor_list = match output {
-    IValue::TensorList(tensor_list) => tensor_list,
-    _ => panic!("the output is not a TensorList"),
-};
+        IValue::TensorList(tensor_list) => tensor_list,
+        _ => panic!("the output is not a TensorList"),
+    };
     Ok(output_tensor_list)
 }
 
 
-pub fn convert_board(board:Board, bs:BoardStack) -> Tensor{ // not include bigl for now
+pub fn convert_board(board:&Board) -> Tensor{ // ignore error for bs now
     // FULL LIST HERE:
     // sq1 - white's turn
     // sq2 - black's turn
@@ -41,16 +41,16 @@ pub fn convert_board(board:Board, bs:BoardStack) -> Tensor{ // not include bigl 
     let sq2: Vec<f32>;
 
     if board.side_to_move() == Color::Black {
-        let sq1 = vec![0.0; 64];
-        let sq2 = vec![1.0; 64];
+        let sq1: Vec<f32> = vec![0.0; 64];
+        let sq2: Vec<f32> = vec![1.0; 64];
         let fen_str = format!("{:?}", board);
         let fen_str:&str = &fen_str;
         let reversed_str = mirror(fen_str); // TODO: fix this
         let reversed_str:&str = &reversed_str;
         let board = Board::from_fen(reversed_str, false).unwrap();
     } else {
-        let sq1 = vec![1.0; 64];
-        let sq2 = vec![0.0; 64];
+        let sq1: Vec<f32> = vec![1.0; 64];
+        let sq2: Vec<f32> = vec![0.0; 64];
         let fen_str = format!("{:?}", board);
         let fen_str:&str = &fen_str;
         let reversed_str = mirror(fen_str); // TODO: fix this
@@ -67,14 +67,14 @@ pub fn convert_board(board:Board, bs:BoardStack) -> Tensor{ // not include bigl 
     let sq3: Vec<f32>;
     let sq4: Vec<f32>;
     if wl != None { // still have castling
-        let sq3 = vec![1.0; 64];
+        let sq3: Vec<f32>= vec![1.0; 64];
     } else {
-        let sq3 = vec![0.0; 64];
+        let sq3: Vec<f32>= vec![0.0; 64];
     }
     if wr != None { // still have castling
-        let sq4 = vec![1.0; 64];
+        let sq4: Vec<f32>= vec![1.0; 64];
     } else {
-        let sq4  = vec![0.0; 64];
+        let sq4:  Vec<f32>= vec![0.0; 64];
     }
 
     let bl = b_rights.long; // white left, long castling
@@ -85,23 +85,23 @@ pub fn convert_board(board:Board, bs:BoardStack) -> Tensor{ // not include bigl 
 
 
     if bl != None { // still have castling
-        let sq5 = vec![1.0; 64];
+        let sq5:Vec<f32> = vec![1.0; 64];
     } else {
-        let sq5 = vec![0.0; 64];
+        let sq5:Vec<f32>= vec![0.0; 64];
     }
     if br != None { // still have castling
-        let sq6 = vec![1.0; 64];
+        let sq6:Vec<f32> = vec![1.0; 64];
     } else {
-        let sq6 = vec![0.0; 64];
+        let sq6:Vec<f32> = vec![0.0; 64];
     }
 
     // skip sq7 and 8 for reps
     // create b or whatevah
     let num_reps = bs.get_reps() as f32; 
 
-    let sq7 = vec![num_reps];
+    let sq7 :Vec<f32>= vec![num_reps];
 
-    let sq8 = vec![board.halfmove_clock() as f32;64];
+    let sq8 :Vec<f32> = vec![board.halfmove_clock() as f32;64];
 
     let pieces = [Piece::Pawn, Piece::Knight, Piece::Bishop, Piece::Rook, Piece::Queen, Piece::King];
     let mut pieces_sqs = Vec::new();
@@ -210,96 +210,142 @@ fn mirror(fen: &str) -> String {
     flipped_fen
 }
 
-pub fn eval_board(board:Board, bs:BoardStack) { // ignore bigl and model for now, model is the custom net class
+pub fn eval_board(board:&Board) -> (f32, HashMap<String, f32>, Vec<usize>){ // ignore bigl and model for now, model is the custom net class
     let contents = get_contents();
-    let b = convert_board(board, bs);
+    let b = convert_board(&board);
     // convert b into [B,21,8,8] first!
+    let board_eval:Tensor;
+    let policy:Tensor;
+    let output:Vec<Tensor>;
     match eval_state(b) {
         Ok(output) => {
             // reshape and view
-            
             let (board_eval, policy) = (output[0], output[1]);
-            let value = Tensor::tanh(&board_eval);
-            // ignore getting .item()
-            let mirrored = false;
-            if board.side_to_move() == Color::Black {
-                let fen_str = format!("{:?}", board);
-                let fen_str:&str = &fen_str;
-                let reversed_str = mirror(fen_str); // TODO: fix this
-                let reversed_str:&str = &reversed_str;
-                let board = Board::from_fen(reversed_str, false).unwrap();
-                mirrored = true;
-            }
-            
-            let mut lookup = HashMap::new();
-            for (c,p) in contents.iter().zip(policy.iter()) { // contents is from the .txt
-                lookup.insert(c, p);
-
-            }
-            let mut legal_lookup = HashMap::new();
-
-            let mut legal_moves = Vec::new();
-            board.generate_moves(|moves| {
-                // Unpack dense move set into move list
-                legal_moves.extend(moves);
-                false
-            });
-
-            for m in legal_moves {
-                let idx_name = format!("{}",m).as_str();
-                legal_lookup.insert(idx_name, lookup.get(&idx_name));
-            }
-
-            let sm: Vec<f32> = Vec::new();
-
-            for (l,_) in legal_lookup {
-                sm.push(legal_lookup.get(l));
-            }
-            
-            let sm = Tensor::from_slice(&sm); 
-
-            let sm = Tensor::softmax(&sm,0, Kind::Float);
-            
-
-            // let's try something new
-            // refer back to the legal moves generator and redo the formatting, it's easier that way
-            
-            // attempt to turn Tensor back to vecs
-            for (l, v) in legal_moves.iter().zip(sm) {
-                let idx_name = format!("{}",l).as_str();
-                legal_lookup.insert(legal_lookup.get(&idx_name), v);
-            }
-
-            if mirrored {
-                let mut n = std::collections::HashMap::new();
-
-                for (move_key, value) in legal_lookup.clone() {
-                    let new_key = format!(
-                        "{}{}{}{}",
-                        &move_key.chars().nth(0).unwrap(),
-                        9 - move_key.chars().nth(1).unwrap().to_digit(10).unwrap(),
-                        &move_key.chars().nth(2).unwrap(),
-                        9 - move_key.chars().nth(3).unwrap().to_digit(10).unwrap()
-                    );
-                    n.insert(new_key, value);
-                }
-
-                let legal_lookup = n;
-
-            }
-            let mut idx_li: Vec<usize> = Vec::new();
-    
-            for mov in contents.iter() {
-                if let Some(&idx) = legal_lookup.get(mov) {
-                    idx_li.push(idx);
-                }
-            }
-        
-        (value, legal_lookup, idx_li)
         }
         Err(err_msg) => {
             println!("Error: {}", err_msg);
         }
     }
+    let (board_eval, policy) = (output[0], output[1]);
+    let value = Tensor::tanh(&board_eval);
+    // ignore getting .item()
+    let mirrored = false;
+    if board.side_to_move() == Color::Black {
+        let fen_str = format!("{:?}", board);
+        let fen_str:&str = &fen_str;
+        let reversed_str = mirror(fen_str); // TODO: fix this
+        let reversed_str:&str = &reversed_str;
+        let board = Board::from_fen(reversed_str, false).unwrap();
+        mirrored = true;
+    }
+    
+    // FIRST OCCURENCE HERE
+    let policy: Result<Vec<f32>> = Vec::try_from(policy);
+    let p: Vec<f32>;
+    match policy {
+        Ok(policy) => {
+            let p = policy; 
+        }
+        Err(err_msg) => {
+            println!("Error: {}", err_msg);
+        }
 
+    }
+    let value = f32::try_from(value);
+    let v: f32;
+    match value {
+        Ok(value) => {
+            let v = value; 
+        }
+        Err(err_msg) => {
+            println!("Error: {}", err_msg);
+        }
+
+    }
+    let (policy, value) = (p,v);
+    let mut lookup: HashMap<String, f32> = HashMap::new();
+    for (c,p) in contents.iter().zip(policy.iter()) { // contents is from the .txt
+        lookup.insert(c.to_string(),*p);
+
+    }
+    let mut legal_lookup: HashMap<String, f32> = HashMap::new();
+
+    let mut legal_moves = Vec::new();
+    board.generate_moves(|moves| {
+        // Unpack dense move set into move list
+        legal_moves.extend(moves);
+        false
+    });
+
+    for m in legal_moves {
+        let idx_name = format!("{}",m);
+        let m = match legal_lookup.get(&idx_name) {
+            Some(&value) => value,
+            None => 0.0, // Default value in case of None
+        };
+        legal_lookup.insert(idx_name, m);
+    }
+
+    let sm: Vec<f32> = Vec::new();
+    
+    for (l,_) in legal_lookup {
+        let l = match legal_lookup.get(&l) {
+            Some(&value) => value,
+            None => 0.0, // Default value in case of None
+        };
+        sm.push(l);
+    }
+    
+    let sm = Tensor::from_slice(&sm); 
+
+    let sm = Tensor::softmax(&sm,0, Kind::Float);
+    
+    // let ms: Vec<f32> = sm.into();
+    let sm:Result<Vec<f32>> = Vec::try_from(sm);
+    let s: Vec<f32>;
+    match sm {
+        Ok(sm) => {
+            let s = value; 
+        }
+        Err(err_msg) => {
+            println!("Error: {}", err_msg);
+        }
+
+    }
+    let sm = s;
+    // let's try something new
+    // refer back to the legal moves generator and redo the formatting, it's easier that way
+    
+    // attempt to turn Tensor back to vecs
+    for (l, v) in legal_moves.iter().zip(sm) {
+        let idx_name = format!("{}",l);
+        legal_lookup.insert(idx_name, v);
+    }
+
+    if mirrored {
+        let mut n = std::collections::HashMap::new();
+
+        for (move_key, value) in legal_lookup.clone() {
+            let new_key = format!(
+                "{}{}{}{}",
+                &move_key.chars().nth(0).unwrap(),
+                9 - move_key.chars().nth(1).unwrap().to_digit(10).unwrap(),
+                &move_key.chars().nth(2).unwrap(),
+                9 - move_key.chars().nth(3).unwrap().to_digit(10).unwrap()
+            );
+            n.insert(new_key, value);
+        }
+
+        let legal_lookup = n;
+
+    }
+    let mut idx_li: Vec<usize> = Vec::new();
+
+    for mov in contents.iter() {
+
+        if let Some(&idx) = legal_lookup.get(*mov) {
+            idx_li.push(idx as usize);
+        }
+    }
+    (value, legal_lookup, idx_li)
 }
