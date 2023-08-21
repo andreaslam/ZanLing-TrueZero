@@ -55,7 +55,7 @@ pub fn convert_board(board:&Board, bs:&DataGen) -> Tensor{ // ignore error for b
     let b: Board;
     let fen_str = format!("{}", board);
     let reversed_str: String;
-    // println!("{}",board.side_to_move());
+    // // println!("{}",board.side_to_move());
     if board.side_to_move() == Color::Black {
         sq1  = vec![0.0; 64];
         sq2  = vec![1.0; 64];
@@ -64,7 +64,7 @@ pub fn convert_board(board:&Board, bs:&DataGen) -> Tensor{ // ignore error for b
         let reversed_str:&str = &reversed_str;
         b = Board::from_fen(reversed_str, false).expect("Error");
     } else {
-        // println!("fen string {}", fen_str);
+        // // println!("fen string {}", fen_str);
         b = Board::from_fen(&fen_str, false).expect("Error");
         sq1  = vec![1.0; 64];
         sq2  = vec![0.0; 64];
@@ -216,12 +216,13 @@ pub fn eval_board(board:&Board, bs:&DataGen) -> (f32, HashMap<cozy_chess::Move, 
     let contents = get_contents();
     let b = convert_board(&board, bs);
     // convert b into [B,21,8,8] first!
-    let output = eval_state(b).expect("ERROR output expect statement");
+    let output = eval_state(b).expect("Error");
     
     // let output: Vec<Vec<f32>> = Vec::try_from(output).expect("Error");
 
     let (board_eval, policy) = output; // check policy, eval ordering!
     
+    // println!("       raw policy:{}",policy);
 
     // let board_eval = Tensor::from_slice(board_eval);
 
@@ -238,16 +239,20 @@ pub fn eval_board(board:&Board, bs:&DataGen) -> (f32, HashMap<cozy_chess::Move, 
         b = Board::from_fen(reversed_str, false).expect("Error");
         mirrored = true;
     } else {
-        b = Board::from_fen(&fen_str, false).expect("ERROR");
+        b = Board::from_fen(&fen_str, false).expect("Error");
     }
     let policy = policy.squeeze();
+    // println!("{}", policy);
     let policy: Vec<f32> = Vec::try_from(policy).expect("Error");
     let value = f32::try_from(value).expect("Error");
     let mut lookup: HashMap<String, f32> = HashMap::new();
-    for (c,p) in contents.iter().zip(policy.iter()) { // contents is from the .txt
+    for (c,p) in contents.iter().zip(policy.iter()) {
+        // println!("{}{}", c,p);
         lookup.insert(c.to_string(),*p);
-
     }
+
+    // println!("{:?}", lookup);
+
     let mut legal_lookup: HashMap<String, f32> = HashMap::new();
 
     let mut legal_moves = Vec::new();
@@ -259,13 +264,12 @@ pub fn eval_board(board:&Board, bs:&DataGen) -> (f32, HashMap<cozy_chess::Move, 
 
     for m in &legal_moves {
         let idx_name = format!("{}",m);
-        let m = match legal_lookup.get(&idx_name) {
-            Some(&value) => value,
-            None => 0.0, // Default value in case of None
-        };
-        legal_lookup.insert(idx_name, m);
+        // println!("{}", idx_name);
+        let m = lookup.get(&idx_name).expect("Error");
+        legal_lookup.insert(idx_name, *m);
     }
 
+    // println!("{:?}", legal_lookup);
     let mut sm: Vec<f32> = Vec::new();
     // TODO: check for performance optimisations here
     for (l,_) in &legal_lookup {
@@ -282,6 +286,8 @@ pub fn eval_board(board:&Board, bs:&DataGen) -> (f32, HashMap<cozy_chess::Move, 
     
     let sm:Vec<f32> = Vec::try_from(sm).expect("Error");
 
+    // println!("{:?}",sm);
+
     // let's try something new
     // refer back to the legal moves generator and redo the formatting, it's easier that way
     
@@ -292,6 +298,7 @@ pub fn eval_board(board:&Board, bs:&DataGen) -> (f32, HashMap<cozy_chess::Move, 
     }
     // let legal_lookup: HashMap<String,f32>;
     if mirrored {
+        // println!("YOOOOOO");
         let mut n = std::collections::HashMap::new();
         
         for (move_key, value) in legal_lookup.clone() {
@@ -322,5 +329,7 @@ pub fn eval_board(board:&Board, bs:&DataGen) -> (f32, HashMap<cozy_chess::Move, 
         l.insert(m.parse().unwrap(), v);
     }
     let legal_lookup = l;
+    // println!("{:?}", legal_lookup);
+    // println!("value {}",value);
     (value, legal_lookup, idx_li)
 }
