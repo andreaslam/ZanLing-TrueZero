@@ -1,48 +1,47 @@
 use cozy_chess::*;
 
+#[derive(PartialEq, Clone, Debug)]
 pub struct BoardStack {
-    pub board: Board,
-    pub move_stack: Vec<u64>,
-
+    board: Board,
+    move_stack: Vec<u64>,
+    status: GameStatus,
 }
 
 impl BoardStack {
-
-    pub fn compare(&mut self) -> bool {
-        let target_hash = self.board.hash();
-        let mut is_over = false;
-        let is_found = self.move_stack.contains(&target_hash);
-        if !is_found {
-            self.move_stack.push(target_hash); // add hash into stack
-        } else { // repetition found!
-            self.move_stack.push(target_hash);
-            if self.move_stack.iter().filter(|&x| *x == target_hash).count() == 3 { // draw by repetition!
-                is_over = true;
-            }
+    pub fn new(board: Board) -> Self {
+        Self {
+            status: board.status(),
+            board,
+            move_stack: Vec::new(),
         }
-    is_over
     }
 
-    fn count_occurrences(&self,vec: &Vec<u64>, target: u64) -> usize {
-        vec.iter().filter(|&&x| x == target).count()
-    }
     // get number of repetitions for decoder.rs
     // remember to push current position BEFORE calling on get_reps
-    pub fn get_reps(&self) -> u8 {
+    pub fn get_reps(&self) -> usize {
         // reps only for the current position, not the global maximum of repetitions recorded
-        let max_repetitions = self.count_occurrences(&self.move_stack, self.move_stack[self.move_stack.len()-1]);
-        max_repetitions as u8
+        let target = self.move_stack.last().unwrap();
+        (&self.move_stack).iter().filter(|&x| x == target).count() - 1
+        
     }
 
     // play function to be called in selfplay.rs
-    pub fn play(&mut self, mv:&Move) {
-        let is_over_draws = self.compare();
-        let status = self.board.status();
-        let is_board_over = status != GameStatus::Ongoing;
-        if !is_board_over | !is_over_draws {
-            // convert move to playable ones and play it
-            self.board.play(*mv);
-        } 
+    pub fn play(&mut self, mv: Move) {
+        assert!(self.status == GameStatus::Ongoing); // check if prev board is valid (can play a move)
+        self.board.play(mv);
+        self.move_stack.push(self.board.hash());
+        self.status = if self.get_reps() == 2 {
+            GameStatus::Drawn
+        } else {
+            self.board.status()
+        };
     }
 
+    pub fn board(&self) -> &Board {
+        &self.board
+    }
+
+    pub fn status(&self) -> GameStatus {
+        self.status
+    }
 }
