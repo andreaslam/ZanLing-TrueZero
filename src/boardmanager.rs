@@ -17,24 +17,25 @@ impl BoardStack {
     }
 
     // get number of repetitions for decoder.rs
-    // remember to push current position BEFORE calling on get_reps
+
     pub fn get_reps(&self) -> usize {
         // reps only for the current position, not the global maximum of repetitions recorded
-        let target = self.move_stack.last().unwrap();
-        (&self.move_stack).iter().filter(|&x| x == target).count() - 1
+        let target = self.board.hash();
+        (&self.move_stack).iter().filter(|&x| *x == target).count()
         
     }
 
     // play function to be called in selfplay.rs
     pub fn play(&mut self, mv: Move) {
         assert!(self.status == GameStatus::Ongoing); // check if prev board is valid (can play a move)
-        self.board.play(mv);
         self.move_stack.push(self.board.hash());
+        self.board.play(mv);
         self.status = if self.get_reps() == 2 {
             GameStatus::Drawn
         } else {
             self.board.status()
         };
+        
     }
 
     pub fn board(&self) -> &Board {
