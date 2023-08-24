@@ -126,8 +126,26 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
     // println!("{:?}", pieces_sqs);
     // // println!("{:?}", sq_1d);
 
-    let sq21 = vec![0.0; 64];
-    // println!("21 {:?}", sq21);
+    let is_ep = bs.board().en_passant();
+    let mut sq21 = vec![0.0; 64];
+    match is_ep{
+        Some(is_ep) =>  {
+            if us == Color::White { // 4 for white and 5 for black for victim
+                let row = Rank::Fourth;
+                let ep_sq = Square::new(is_ep, row);
+                sq21[ep_sq.rank() as usize * 8 + ep_sq.file() as usize] = 1.0;
+            }
+            else {
+                let row = Rank::Fifth;
+                let ep_sq = Square::new(is_ep, row);
+                sq21[63 - (ep_sq.rank() as usize * 8 + (7 - ep_sq.file() as usize))] = 1.0;
+            }
+        }
+        None => {
+        }
+    };
+    
+    println!("21 {:?}", sq21);
     let all_data = [sq1, sq2, sq3, sq4, sq5, sq6, sq7, sq8, pieces_sqs, sq21];
 
     let mut sq_1d: Vec<f32> = Vec::new();
@@ -204,7 +222,7 @@ pub fn eval_board(bs: &BoardStack) -> (f32, HashMap<cozy_chess::Move, f32>, Vec<
             })
         }
     } else {
-        println!("SUP");
+        // println!("SUP");
         fm = legal_moves.clone();
     }
 
@@ -212,7 +230,7 @@ pub fn eval_board(bs: &BoardStack) -> (f32, HashMap<cozy_chess::Move, f32>, Vec<
 
     for mov in &fm {
         let mov = format!("{}", mov);
-        println!("{}",mov);
+        // println!("{}",mov);
         if let Some(idx) = contents.iter().position(|x| mov == *x) {
             idx_li.push(idx as usize);
         }
@@ -266,11 +284,11 @@ pub fn eval_board(bs: &BoardStack) -> (f32, HashMap<cozy_chess::Move, f32>, Vec<
                     }, *pol);
                 }
     } else {
-        println!("SUP");
+        // println!("SUP");
         ll = legal_lookup.clone();
     }
     let legal_lookup: HashMap<Move, f32> = ll;
 
-    println!("idxli {:?}",idx_li);
+    // println!("idxli {:?}",idx_li);
     (value, legal_lookup, idx_li)
 }
