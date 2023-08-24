@@ -62,7 +62,7 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
         sq2 = vec![0.0; 64];
     }
 
-    println!("1{:?} \n 2{:?}", sq1, sq2);
+    // println!("1{:?} \n 2{:?}", sq1, sq2);
 
     let li;
     if us == Color::White {
@@ -87,14 +87,14 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
     let sq5: Vec<f32> = vec![scalars[2]; 64];
     let sq6: Vec<f32> = vec![scalars[3]; 64];
 
-    println!("3{:?} \n 4{:?}", sq3, sq4);
+    // println!("3{:?} \n 4{:?}", sq3, sq4);
 
-    println!("5{:?} \n 6{:?}", sq5, sq6);
+    // println!("5{:?} \n 6{:?}", sq5, sq6);
     let num_reps = bs.get_reps() as f32;
 
     let sq7: Vec<f32> = vec![num_reps; 64];
     let sq8: Vec<f32> = vec![bs.board().halfmove_clock() as f32; 64];
-    println!("7{:?} \n 8{:?}", sq7, sq8);
+    // println!("7{:?} \n 8{:?}", sq7, sq8);
     // flatten to 1d
     let pieces = [
         Piece::Pawn,
@@ -123,11 +123,11 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
     }
 
     // still have to flatten sq
-    println!("{:?}", pieces_sqs);
-    // println!("{:?}", sq_1d);
+    // println!("{:?}", pieces_sqs);
+    // // println!("{:?}", sq_1d);
 
     let sq21 = vec![0.0; 64];
-    println!("21 {:?}", sq21);
+    // println!("21 {:?}", sq21);
     let all_data = [sq1, sq2, sq3, sq4, sq5, sq6, sq7, sq8, pieces_sqs, sq21];
 
     let mut sq_1d: Vec<f32> = Vec::new();
@@ -140,7 +140,7 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
 
     let all_data = sq_1d;
     let all_data = all_data.to_vec();
-    println!("{:?}", all_data);
+    // println!("{:?}", all_data);
     let all_data = Tensor::from_slice(&all_data);
     all_data // all_data is 1d
 }
@@ -163,31 +163,31 @@ pub fn eval_board(bs: &BoardStack) -> (f32, HashMap<cozy_chess::Move, f32>, Vec<
 
     let board_eval = Tensor::from_slice(&vec![board_eval[0]]);
 
-    println!("       raw policy:{}", policy);
-    println!("       raw value:{}", board_eval);
+    // println!("       raw policy:{}", policy);
+    // println!("       raw value:{}", board_eval);
 
     // let board_eval = Tensor::from_slice(board_eval);
 
     let value = Tensor::tanh(&board_eval);
 
-    println!("    value after Tanh {}", value);
+    // println!("    value after Tanh {}", value);
 
     let policy = policy.squeeze();
-    println!("{}", policy);
+    // println!("{}", policy);
     let policy: Vec<f32> = Vec::try_from(policy).expect("Error");
     let value = f32::try_from(value).expect("Error");
     let mut lookup: HashMap<String, f32> = HashMap::new();
     for (c, p) in contents.iter().zip(policy.iter()) {
         // full lookup, with str
-        println!("{} {}", c, p);
+        // println!("{} {}", c, p);
         lookup.insert(c.to_string(), *p);
     }
 
-    println!("{:?}", lookup);
+    // println!("{:?}", lookup);
 
-    let mut legal_lookup: HashMap<String, f32> = HashMap::new();
+    let mut legal_lookup: HashMap<Move, f32> = HashMap::new();
 
-    let mut legal_moves = Vec::new();
+    let mut legal_moves:Vec<Move> = Vec::new();
     bs.board().generate_moves(|moves| {
         // Unpack dense move set into move list
         legal_moves.extend(moves);
@@ -204,17 +204,28 @@ pub fn eval_board(bs: &BoardStack) -> (f32, HashMap<cozy_chess::Move, f32>, Vec<
             })
         }
     } else {
+        println!("SUP");
         fm = legal_moves.clone();
     }
 
-    for m in &fm {
-        let idx_name = format!("{}", m);
-        // println!("{}", idx_name);
-        let m = lookup.get(&idx_name).expect("Error");
-        legal_lookup.insert(idx_name, *m);
+    let mut idx_li: Vec<usize> = Vec::new();
+
+    for mov in &fm {
+        let mov = format!("{}", mov);
+        println!("{}",mov);
+        if let Some(idx) = contents.iter().position(|x| mov == *x) {
+            idx_li.push(idx as usize);
+        }
     }
 
-    println!("{:?} ", legal_lookup);
+    for lm in &fm {
+        let idx_name = format!("{}", lm);
+        // // println!("{}", idx_name);
+        let m = lookup.get(&idx_name).expect("Error");
+        legal_lookup.insert(*lm, *m);
+    }
+
+    // println!("{:?} ", legal_lookup);
     let mut sm: Vec<f32> = Vec::new();
     // TODO: check for performance optimisations here
     for (l, _) in &legal_lookup {
@@ -231,52 +242,35 @@ pub fn eval_board(bs: &BoardStack) -> (f32, HashMap<cozy_chess::Move, f32>, Vec<
 
     let sm: Vec<f32> = Vec::try_from(sm).expect("Error");
 
-    // println!("{:?}",sm);
+    // // println!("{:?}",sm);
 
     // let's try something new
     // refer back to the legal moves generator and redo the formatting, it's easier that way
 
     // attempt to turn Tensor back to vecs
-    let mut ll: HashMap<String, f32> = HashMap::new();
+    let mut ll: HashMap<Move, f32> = HashMap::new();
     for (l, v) in legal_lookup.iter().zip(&sm) {
         let (idx_name, _) = l;
-        ll.insert(idx_name.to_string(), *v);
+        ll.insert(*idx_name, *v);
     }
 
-    let mut legal_lookup = ll;
-
+    let legal_lookup = ll;
+    let mut ll:HashMap<Move, f32>  = HashMap::new();
     if bs.board().side_to_move() == Color::Black {
-        // // println!("YOOOOOO");
-        let mut n = std::collections::HashMap::new();
-
-        for (move_key, value) in legal_lookup.clone() {
-            let new_key = format!(
-                "{}{}{}{}",
-                &move_key.chars().nth(0).unwrap(),
-                9 - move_key.chars().nth(1).unwrap().to_digit(10).unwrap(),
-                &move_key.chars().nth(2).unwrap(),
-                9 - move_key.chars().nth(3).unwrap().to_digit(10).unwrap()
-            );
-            n.insert(new_key, value);
-        }
-
-        legal_lookup = n;
+            // flip move
+            for (mv,pol) in &legal_lookup {
+                ll.insert(Move {
+                    from: mv.from.flip_rank(),
+                    to: mv.to.flip_rank(),
+                    promotion: mv.promotion,
+                    }, *pol);
+                }
+    } else {
+        println!("SUP");
+        ll = legal_lookup.clone();
     }
+    let legal_lookup: HashMap<Move, f32> = ll;
 
-    let mut idx_li: Vec<usize> = Vec::new();
-
-    for mov in contents.iter() {
-        if let Some(&idx) = legal_lookup.get(*mov) {
-            idx_li.push(idx as usize);
-        }
-    }
-    // convert moves into Move object
-    let mut l = HashMap::new();
-    for (m, v) in legal_lookup {
-        println!("{},{}", m, v);
-        l.insert(m.parse().unwrap(), v);
-    }
-    let legal_lookup = l;
-    // println!("value {}",value);
+    println!("idxli {:?}",idx_li);
     (value, legal_lookup, idx_li)
 }
