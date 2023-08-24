@@ -12,7 +12,8 @@ fn eval_state(board: Tensor) -> anyhow::Result<(Tensor, Tensor)> {
     // reshape the model (originally from 1D)
     let b = board;
     let b = b.unsqueeze(0);
-    let b = b.reshape([1, 21, 8, 8]);
+    let b = b.reshape([-1, 21, 8, 8]);
+    b.print();
     let b: Tensor = b.to(Device::cuda_if_available());
     let board = IValue::Tensor(b);
     let output = model.forward_is(&[board])?;
@@ -34,7 +35,6 @@ fn eval_state(board: Tensor) -> anyhow::Result<(Tensor, Tensor)> {
 
 pub fn convert_board(bs: &BoardStack) -> Tensor {
     // ignore error for bs now
-    let board = bs.board();
     // FULL LIST HERE:
     // sq1 - white's turn
     // sq2 - black's turn
@@ -52,67 +52,49 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
 
     let sq1: Vec<f32>;
     let sq2: Vec<f32>;
-    let b: Board;
-    let fen_str = format!("{}", board);
-    let reversed_str: String;
-    // // // println!("{}",board.side_to_move());
-    if board.side_to_move() == Color::Black {
+    let us = bs.board().side_to_move();
+    if bs.board().side_to_move() == Color::Black {
         sq1 = vec![0.0; 64];
         sq2 = vec![1.0; 64];
-        let fen_str: &str = &fen_str;
-        reversed_str = mirror(fen_str); // TODO: fix this
-        let reversed_str: &str = &reversed_str;
-        b = Board::from_fen(reversed_str, false).expect("Error");
+        // bs = mirror(bs.clone());
     } else {
-        // // // println!("fen string {}", fen_str);
-        b = Board::from_fen(&fen_str, false).expect("Error");
         sq1 = vec![1.0; 64];
         sq2 = vec![0.0; 64];
     }
-    let w_rights = b.castle_rights(Color::White);
-    let b_rights = b.castle_rights(Color::Black);
 
-    let wl = w_rights.long; // white left, long castling
-    let wr = w_rights.short; // white right, short castling
-    let sq3: Vec<f32>;
-    let sq4: Vec<f32>;
-    if wl != None {
-        // still have castling
-        sq3 = vec![1.0; 64];
+    println!("1{:?} \n 2{:?}", sq1, sq2);
+
+    let li;
+    if us == Color::White {
+        // can't use Colour::ALL since the order of Colour::ALL is always going to be [white, black]
+        li = [Color::White, Color::Black];
     } else {
-        sq3 = vec![0.0; 64];
-    }
-    if wr != None {
-        // still have castling
-        sq4 = vec![1.0; 64];
-    } else {
-        sq4 = vec![0.0; 64];
+        li = [Color::Black, Color::White];
     }
 
-    let bl = b_rights.long; // white left, long castling
-    let br = b_rights.short; // white right, short castling
+    let mut scalars: Vec<f32> = Vec::new();
 
-    let sq5: Vec<f32>;
-    let sq6: Vec<f32>;
+    for color in li {
+        let l_rights = bs.board().castle_rights(color).long;
+        let s_rights = bs.board().castle_rights(color).short;
 
-    if bl != None {
-        // still have castling
-        sq5 = vec![1.0; 64];
-    } else {
-        sq5 = vec![0.0; 64];
-    }
-    if br != None {
-        // still have castling
-        sq6 = vec![1.0; 64];
-    } else {
-        sq6 = vec![0.0; 64];
+        scalars.push(if l_rights.is_some() { 1.0 } else { 0.0 });
+        scalars.push(if s_rights.is_some() { 1.0 } else { 0.0 });
     }
 
-    // let num_reps = bs.stack_manager.get_reps() as f32;
+    let sq3: Vec<f32> = vec![scalars[0]; 64];
+    let sq4: Vec<f32> = vec![scalars[1]; 64];
+    let sq5: Vec<f32> = vec![scalars[2]; 64];
+    let sq6: Vec<f32> = vec![scalars[3]; 64];
 
-    // let sq7 :Vec<f32>= vec![num_reps;64];
-    let sq7: Vec<f32> = vec![0.0; 64]; // hardcode 0.0 for now
-    let sq8: Vec<f32> = vec![b.halfmove_clock() as f32; 64];
+    println!("3{:?} \n 4{:?}", sq3, sq4);
+
+    println!("5{:?} \n 6{:?}", sq5, sq6);
+    let num_reps = bs.get_reps() as f32;
+
+    let sq7: Vec<f32> = vec![num_reps; 64];
+    let sq8: Vec<f32> = vec![bs.board().halfmove_clock() as f32; 64];
+    println!("7{:?} \n 8{:?}", sq7, sq8);
     // flatten to 1d
     let pieces = [
         Piece::Pawn,
@@ -122,32 +104,30 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
         Piece::Queen,
         Piece::King,
     ];
-    let mut pieces_sqs = Vec::new();
-    for colour in Color::ALL {
+
+    let mut counter = 0;
+    let mut pieces_sqs = vec![0.0; 64 * 12];
+    for colour in li {
         for piece in pieces {
-            let mut sq: Vec<Vec<f32>> = vec![vec![0.0; 8]; 8];
-            for tile in b.colored_pieces(colour, piece) {
-                sq[tile.rank() as usize][tile.file() as usize] = 1.0;
+            for tile in bs.board().colored_pieces(colour, piece) {
+                if li[0] == Color::Black {
+                    pieces_sqs[(63 - (tile.rank() as usize * 8 + (7 - tile.file() as usize)))
+                        + (64 * counter)] = 1.0;
+                } else {
+                    pieces_sqs[(tile.rank() as usize * 8 + tile.file() as usize) + 64 * counter] =
+                        1.0;
+                }
             }
-            pieces_sqs.extend(sq);
+            counter += 1
         }
     }
+
     // still have to flatten sq
-
-    let mut sq_1d = Vec::new();
-
-    for row in pieces_sqs {
-        for element in row {
-            sq_1d.push(element);
-        }
-    }
-
-    // // println!("{:?}", sq_1d);
-
-    let pieces_sqs = sq_1d;
+    println!("{:?}", pieces_sqs);
+    // println!("{:?}", sq_1d);
 
     let sq21 = vec![0.0; 64];
-
+    println!("21 {:?}", sq21);
     let all_data = [sq1, sq2, sq3, sq4, sq5, sq6, sq7, sq8, pieces_sqs, sq21];
 
     let mut sq_1d: Vec<f32> = Vec::new();
@@ -157,74 +137,19 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
             sq_1d.push(element);
         }
     }
+
     let all_data = sq_1d;
     let all_data = all_data.to_vec();
-    // // println!("{:?}", all_data);
+    println!("{:?}", all_data);
     let all_data = Tensor::from_slice(&all_data);
     all_data // all_data is 1d
-}
-
-// func to mirror board
-
-fn mirror(fen: &str) -> String {
-    let parts: Vec<&str> = fen.split_whitespace().collect();
-    let board = parts[0];
-    let turn = parts[1];
-    let castling = parts[2];
-    let en_passant = parts[3];
-    let halfmove_clock = parts[4];
-    let fullmove_number = parts[5];
-
-    // Flip the board, reverse ranks <-->
-    let flipped_board: String = board
-        .split('/')
-        .map(|rank| rank.chars().rev().collect::<String>())
-        .rev()
-        .collect::<Vec<String>>()
-        .join("/");
-
-    // turn
-    let flipped_turn = if turn == "b" { "w" } else { "b" };
-
-    // castling
-    let flipped_castling: String = castling
-        .chars()
-        .map(|c| match c {
-            'K' => 'k',
-            'Q' => 'q',
-            'k' => 'K',
-            'q' => 'Q',
-            _ => c,
-        })
-        .collect();
-
-    // en passant
-    let flipped_en_passant = if en_passant != "-" {
-        en_passant.chars().rev().collect::<String>()
-    } else {
-        "-".to_string()
-    };
-
-    let flipped_fen = format!(
-        "{} {} {} {} {} {}",
-        flipped_board,
-        flipped_turn,
-        flipped_castling,
-        flipped_en_passant,
-        halfmove_clock,
-        fullmove_number
-    );
-
-    flipped_fen
 }
 
 pub fn eval_board(bs: &BoardStack) -> (f32, HashMap<cozy_chess::Move, f32>, Vec<usize>) {
     // ignore bigl and model for now, model is the custom net class
 
-    let board = bs.board();
-
     let contents = get_contents();
-    let b = convert_board(&bs);
+    let b = convert_board(bs);
     // convert b into [B,21,8,8] first!
     let output = eval_state(b).expect("Error");
 
@@ -238,57 +163,58 @@ pub fn eval_board(bs: &BoardStack) -> (f32, HashMap<cozy_chess::Move, f32>, Vec<
 
     let board_eval = Tensor::from_slice(&vec![board_eval[0]]);
 
-    // println!("       raw policy:{}", policy);
-    // println!("       raw value:{}", board_eval);
+    println!("       raw policy:{}", policy);
+    println!("       raw value:{}", board_eval);
 
     // let board_eval = Tensor::from_slice(board_eval);
 
     let value = Tensor::tanh(&board_eval);
 
-    // println!("    value after Tanh {}", value);
+    println!("    value after Tanh {}", value);
 
-    let mut mirrored = false;
-    let b: Board;
-    let fen_str = format!("{}", &board);
-    if board.side_to_move() == Color::Black {
-        let fen_str = format!("{:?}", &board);
-        let fen_str: &str = &fen_str;
-        let reversed_str = mirror(fen_str); // TODO: fix this
-        let reversed_str: &str = &reversed_str;
-        b = Board::from_fen(reversed_str, false).expect("Error");
-        mirrored = true;
-    } else {
-        b = Board::from_fen(&fen_str, false).expect("Error");
-    }
     let policy = policy.squeeze();
-    // println!("{}", policy);
+    println!("{}", policy);
     let policy: Vec<f32> = Vec::try_from(policy).expect("Error");
     let value = f32::try_from(value).expect("Error");
     let mut lookup: HashMap<String, f32> = HashMap::new();
     for (c, p) in contents.iter().zip(policy.iter()) {
-        // println!("{}{}", c, p);
+        // full lookup, with str
+        println!("{} {}", c, p);
         lookup.insert(c.to_string(), *p);
     }
 
-    // println!("{:?}", lookup);
+    println!("{:?}", lookup);
 
     let mut legal_lookup: HashMap<String, f32> = HashMap::new();
 
     let mut legal_moves = Vec::new();
-    b.generate_moves(|moves| {
+    bs.board().generate_moves(|moves| {
         // Unpack dense move set into move list
         legal_moves.extend(moves);
         false
     });
+    let mut fm: Vec<Move> = Vec::new();
+    if bs.board().side_to_move() == Color::Black {
+        // flip move
+        for mv in &legal_moves {
+            fm.push(Move {
+                from: mv.from.flip_rank(),
+                to: mv.to.flip_rank(),
+                promotion: mv.promotion,
+            })
+        }
+    } else {
+        fm = legal_moves.clone();
+    }
 
-    for m in &legal_moves {
+    for m in &fm {
         let idx_name = format!("{}", m);
-        // // println!("{}", idx_name);
+        // println!("{}", idx_name);
         let m = lookup.get(&idx_name).expect("Error");
         legal_lookup.insert(idx_name, *m);
     }
 
-    // println!("{:?}", legal_lookup);
+    println!("{:?} ", legal_lookup);
     let mut sm: Vec<f32> = Vec::new();
     // TODO: check for performance optimisations here
     for (l, _) in &legal_lookup {
@@ -305,18 +231,21 @@ pub fn eval_board(bs: &BoardStack) -> (f32, HashMap<cozy_chess::Move, f32>, Vec<
 
     let sm: Vec<f32> = Vec::try_from(sm).expect("Error");
 
-    // // println!("{:?}",sm);
+    // println!("{:?}",sm);
 
     // let's try something new
     // refer back to the legal moves generator and redo the formatting, it's easier that way
 
     // attempt to turn Tensor back to vecs
-    for (l, v) in legal_moves.iter().zip(sm) {
-        let idx_name = format!("{}", l);
-        legal_lookup.insert(idx_name, v);
+    let mut ll: HashMap<String, f32> = HashMap::new();
+    for (l, v) in legal_lookup.iter().zip(&sm) {
+        let (idx_name, _) = l;
+        ll.insert(idx_name.to_string(), *v);
     }
-    // let legal_lookup: HashMap<String,f32>;
-    if mirrored {
+
+    let mut legal_lookup = ll;
+
+    if bs.board().side_to_move() == Color::Black {
         // // println!("YOOOOOO");
         let mut n = std::collections::HashMap::new();
 
@@ -333,6 +262,7 @@ pub fn eval_board(bs: &BoardStack) -> (f32, HashMap<cozy_chess::Move, f32>, Vec<
 
         legal_lookup = n;
     }
+
     let mut idx_li: Vec<usize> = Vec::new();
 
     for mov in contents.iter() {
@@ -343,10 +273,10 @@ pub fn eval_board(bs: &BoardStack) -> (f32, HashMap<cozy_chess::Move, f32>, Vec<
     // convert moves into Move object
     let mut l = HashMap::new();
     for (m, v) in legal_lookup {
+        println!("{},{}", m, v);
         l.insert(m.parse().unwrap(), v);
     }
     let legal_lookup = l;
-    // // println!("{:?}", legal_lookup);
-    // // println!("value {}",value);
+    // println!("value {}",value);
     (value, legal_lookup, idx_li)
 }
