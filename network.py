@@ -29,8 +29,8 @@ class TrueNet(nn.Module):
             nn.ReLU(),
             nn.Flatten(),
             nn.Linear(
-                1000 * 64, 1
-            ),  # input w*h, the size of the output can be smaller for value
+                1000 * 64, 5
+            ), 
             nn.Tanh(),
         )
 
@@ -41,7 +41,7 @@ class TrueNet(nn.Module):
         policy = policy.squeeze(0)
         value = self.valueHead(x)
         value = value.squeeze(0)
-        return policy, value
+        return value, policy
 
 
 class ResBlock(nn.Module):
