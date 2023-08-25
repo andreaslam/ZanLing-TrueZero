@@ -22,7 +22,6 @@ impl BoardStack {
         // reps only for the current position, not the global maximum of repetitions recorded
         let target = self.board.hash();
         (&self.move_stack).iter().filter(|&x| *x == target).count()
-        
     }
 
     // play function to be called in selfplay.rs
@@ -30,14 +29,15 @@ impl BoardStack {
         assert!(self.status == GameStatus::Ongoing); // check if prev board is valid (can play a move)
         self.move_stack.push(self.board.hash());
         self.board.play(mv);
-        self.status = if self.get_reps() == 2 {
+        let is_all_gone = self.board.occupied().len() == 2;
+        let is_sure_draw = self.board.occupied().len() <= 3 && (self.board.pieces(Piece::Bishop).len() as u8 == 1 || self.board.pieces(Piece::Knight).len() as u8 == 1); // (K or K+N or K+B) vs (K or K+N or K+B)  
+        self.status = if self.get_reps() == 2 || self.board.halfmove_clock() == 100 || is_all_gone || is_sure_draw {
             GameStatus::Drawn
         } else {
             self.board.status()
         };
-        
     }
-
+    
     pub fn board(&self) -> &Board {
         &self.board
     }
