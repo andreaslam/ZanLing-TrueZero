@@ -343,5 +343,6 @@ pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
     }
 
     println!("{:?}", &pi);
+    println!("best move: {}", best_move.unwrap());
     (best_move.unwrap(), pi, tree.nodes[0].clone().move_idx)
 }
