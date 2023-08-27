@@ -1,6 +1,6 @@
 use crate::boardmanager::BoardStack;
 use crate::{mcts_trainer::Net, mvs::get_contents};
-use cozy_chess::{Board, Color, Move, Piece, Rank, Square};
+use cozy_chess::{Color, Move, Piece, Rank, Square};
 use std::collections::HashMap;
 use std::vec;
 use tch::{IValue, Kind, Tensor};
@@ -152,10 +152,10 @@ pub fn eval_board(bs: &BoardStack, net: &Net) -> (f32, HashMap<cozy_chess::Move,
     let policy = policy.squeeze();
     let policy: Vec<f32> = Vec::try_from(policy).expect("Error");
     let value = f32::try_from(value).expect("Error");
-    let mut lookup: HashMap<String, f32> = HashMap::new();
+    let mut lookup: HashMap<Move, f32> = HashMap::new();
     for (c, p) in contents.iter().zip(policy.iter()) {
         // full lookup, with str
-        lookup.insert(c.to_string(), *p);
+        lookup.insert(*c, *p);
     }
 
     let mut legal_lookup: HashMap<Move, f32> = HashMap::new();
@@ -183,15 +183,15 @@ pub fn eval_board(bs: &BoardStack, net: &Net) -> (f32, HashMap<cozy_chess::Move,
     let mut idx_li: Vec<usize> = Vec::new();
 
     for mov in &fm {
-        let mov = format!("{}", mov);
-        if let Some(idx) = contents.iter().position(|x| mov == *x) {
+        // let mov = format!("{}", mov);
+        if let Some(idx) = contents.iter().position(|x| mov == x) {
             idx_li.push(idx as usize);
         }
     }
 
     for lm in &fm {
-        let idx_name = format!("{}", lm);
-        let m = lookup.get(&idx_name).expect("Error");
+        // let idx_name = format!("{}", lm);
+        let m = lookup.get(&lm).expect("Error");
         legal_lookup.insert(*lm, *m);
     }
 
