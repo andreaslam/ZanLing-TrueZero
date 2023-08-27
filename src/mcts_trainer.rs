@@ -1,19 +1,34 @@
 use crate::boardmanager::BoardStack;
 use crate::decoder::eval_board;
 use crate::dirichlet::StableDirichlet;
-use cozy_chess::*;
+use cozy_chess::{GameStatus, Move};
 use rand::SeedableRng;
 use rand::{rngs::StdRng, Rng};
 use std::{fmt, thread};
+use tch::{CModule, Device, Kind};
 
 // define tree and node classes
-#[derive(PartialEq, Clone, Debug)] // maybe display and debug as helper funcs to check impl
 
 // struct Packet {
 //     visits: i32,
 //     top: Option<Move>,
 // }
 
+pub struct Net {
+    pub net: CModule,
+    pub device: Device,
+}
+
+impl Net {
+    pub fn new() -> Self {
+        Self {
+            net: tch::CModule::load("chess_16x128_gen3634.pt").expect("ERROR"),
+            device: Device::cuda_if_available(),
+        }
+    }
+}
+
+#[derive(PartialEq, Clone, Debug)] // maybe display and debug as helper funcs to check impl
 struct Node {
     parent: Option<usize>,
     children: Vec<usize>,
@@ -53,11 +68,7 @@ impl Node {
         status != GameStatus::Ongoing // returns true if game is over (not ongoing)
     }
 
-    fn new(
-        policy: f32,
-        parent: Option<usize>,
-        mv: Option<cozy_chess::Move>,
-    ) -> Node {
+    fn new(policy: f32, parent: Option<usize>, mv: Option<cozy_chess::Move>) -> Node {
         Node {
             parent,
             children: vec![],
@@ -147,8 +158,9 @@ impl Tree {
         &mut self,
         selected_node_idx: usize,
         bs: &mut BoardStack,
+        net: &Net,
     ) -> (usize, Vec<usize>) {
-        let (value, policy, idx_li) = eval_board(&bs);
+        let (value, policy, idx_li) = eval_board(&bs, &net);
         let fenstr = format!("{}", bs.board());
         println!("    board FEN: {}", fenstr);
         println!("    ran NN:");
@@ -217,7 +229,7 @@ impl Tree {
             n = -n;
         }
     }
-    fn step(&mut self) {
+    fn step(&mut self, net: &Net) {
         println!("root node: {}", &self.nodes[0]);
         const EPS: f32 = 0.3; // 0.3 for chess
                               // self.display_full_tree();
@@ -229,19 +241,17 @@ impl Tree {
         let idx_li: Vec<usize>;
 
         if !self.nodes[selected_node].is_terminal(&self.board) {
-            (selected_node, idx_li) = self.eval_and_expand(selected_node, &mut input_b);
+            (selected_node, idx_li) = self.eval_and_expand(selected_node, &mut input_b, &net);
             println!("{}", self);
             self.nodes[0].move_idx = Some(idx_li);
             let mut legal_moves: Vec<Move>;
             if self.nodes[selected_node] == self.nodes[0] {
                 legal_moves = Vec::new();
-                self.board
-                    .board()
-                    .generate_moves(|moves| {
-                        // Unpack dense move set into move list
-                        legal_moves.extend(moves);
-                        false
-                    });
+                self.board.board().generate_moves(|moves| {
+                    // Unpack dense move set into move list
+                    legal_moves.extend(moves);
+                    false
+                });
                 // add Dirichlet noise
                 // let mut std_rng = StdRng::from_entropy();
                 // let distr = StableDirichlet::new(0.3, legal_moves.len()).expect("wrong params");
@@ -297,10 +307,16 @@ pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
     //     visits:0,
     //     top:None,
     // }
+
+    // load nn and pass to eval if needed
+
+    let mut net = Net::new();
+    net.net.set_eval();
+    net.net.to(net.device, Kind::Float, true);
     let mut tree = Tree::new(bs); // change if needed, maybe take a &mut of it
     while tree.nodes[0].visits < MAX_NODES {
         println!("step {}", tree.nodes[0].visits);
-        tree.step();
+        tree.step(&net);
     }
 
     let best_move_node = &tree.nodes[0]
