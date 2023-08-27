@@ -1,20 +1,20 @@
 use crate::boardmanager::BoardStack;
-use crate::mvs::get_contents;
-use cozy_chess::*;
+use crate::{mcts_trainer::Net, mvs::get_contents};
+use cozy_chess::{Board, Color, Move, Piece, Rank, Square};
 use std::collections::HashMap;
 use std::vec;
-use tch::*;
+use tch::{IValue, Kind, Tensor};
 
-fn eval_state(board: Tensor) -> anyhow::Result<(Tensor, Tensor)> {
-    let mut model = tch::CModule::load("chess_16x128_gen3634.pt")?;
-    model.set_eval(); // set to eval!
-    model.to(Device::cuda_if_available(), Kind::Float, true);
+fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> {
+    let model = &net.net;
+    // model.set_eval(); // set to eval!
+    // model.to(net.device, Kind::Float, true);
     // reshape the model (originally from 1D)
     let b = board;
     let b = b.unsqueeze(0);
     let b = b.reshape([-1, 21, 8, 8]);
     // b.print();
-    let b: Tensor = b.to(Device::cuda_if_available());
+    let b: Tensor = b.to(net.device);
     let board = IValue::Tensor(b);
     let output = model.forward_is(&[board])?;
     let output_tensor = match output {
@@ -131,13 +131,13 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
     all_data // all_data is 1d
 }
 
-pub fn eval_board(bs: &BoardStack) -> (f32, HashMap<cozy_chess::Move, f32>, Vec<usize>) {
+pub fn eval_board(bs: &BoardStack, net: &Net) -> (f32, HashMap<cozy_chess::Move, f32>, Vec<usize>) {
     // ignore bigl and model for now, model is the custom net class
 
     let contents = get_contents();
     let b = convert_board(bs);
 
-    let output = eval_state(b).expect("Error");
+    let output = eval_state(b, &net).expect("Error");
 
     let (board_eval, policy) = output; // check policy, eval ordering!
 
