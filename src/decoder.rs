@@ -1,4 +1,5 @@
 use crate::boardmanager::BoardStack;
+use crate::mcts_trainer::{Node, Tree};
 use crate::{mcts_trainer::Net, mvs::get_contents};
 use cozy_chess::{Color, Move, Piece, Rank, Square};
 use std::collections::HashMap;
@@ -131,7 +132,12 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
     all_data // all_data is 1d
 }
 
-pub fn eval_board(bs: &BoardStack, net: &Net) -> (f32, HashMap<cozy_chess::Move, f32>, Vec<usize>) {
+pub fn eval_board(
+    bs: &BoardStack,
+    net: &Net,
+    tree: &mut Tree,
+    selected_node_idx: &usize,
+) -> Vec<usize> {
     // ignore bigl and model for now, model is the custom net class
 
     let contents = get_contents();
@@ -152,13 +158,8 @@ pub fn eval_board(bs: &BoardStack, net: &Net) -> (f32, HashMap<cozy_chess::Move,
     let policy = policy.squeeze();
     let policy: Vec<f32> = Vec::try_from(policy).expect("Error");
     let value = f32::try_from(value).expect("Error");
-    let mut lookup: HashMap<Move, f32> = HashMap::new();
-    for (c, p) in contents.iter().zip(policy.iter()) {
-        // full lookup, with str
-        lookup.insert(*c, *p);
-    }
 
-    let mut legal_lookup: HashMap<Move, f32> = HashMap::new();
+    // step 1 - get the corresponding idx for legal moves
 
     let mut legal_moves: Vec<Move> = Vec::new();
     bs.board().generate_moves(|moves| {
@@ -166,76 +167,47 @@ pub fn eval_board(bs: &BoardStack, net: &Net) -> (f32, HashMap<cozy_chess::Move,
         legal_moves.extend(moves);
         false
     });
-    let mut fm: Vec<Move> = Vec::new();
-    if bs.board().side_to_move() == Color::Black {
-        // flip move
-        for mv in &legal_moves {
-            fm.push(Move {
-                from: mv.from.flip_rank(),
-                to: mv.to.flip_rank(),
-                promotion: mv.promotion,
-            })
-        }
-    } else {
-        fm = legal_moves.clone();
-    }
 
     let mut idx_li: Vec<usize> = Vec::new();
 
-    for mov in &fm {
+    for mov in &legal_moves {
         // let mov = format!("{}", mov);
         if let Some(idx) = contents.iter().position(|x| mov == x) {
             idx_li.push(idx as usize);
         }
     }
 
-    for lm in &fm {
-        // let idx_name = format!("{}", lm);
-        let m = lookup.get(&lm).expect("Error");
-        legal_lookup.insert(*lm, *m);
+    // step 2 - using the idx in step 1, index all the policies involved
+    let mut pol_list: Vec<f32> = Vec::new();
+    for id in &idx_li {
+        pol_list.push(policy[*id]);
     }
 
-    let mut sm: Vec<f32> = Vec::new();
-    // TODO: check for performance optimisations here
-    for (l, _) in &legal_lookup {
-        let l = match &legal_lookup.get(l) {
-            Some(&value) => value,
-            None => 0.0, // default value in case of None
-        };
-        sm.push(l);
-    }
+    // step 3 - softmax?
 
-    let sm = Tensor::from_slice(&sm);
+    let sm = Tensor::from_slice(&pol_list);
 
     let sm = Tensor::softmax(&sm, 0, Kind::Float);
 
-    let sm: Vec<f32> = Vec::try_from(sm).expect("Error");
+    let pol_list: Vec<f32> = Vec::try_from(sm).expect("Error");
 
-    // attempt to turn Tensor back to vecs
-    let mut ll: HashMap<Move, f32> = HashMap::new();
-    for (l, v) in legal_lookup.iter().zip(&sm) {
-        let (idx_name, _) = l;
-        ll.insert(*idx_name, *v);
+    println!("        V={}", &value);
+
+    // step 4 - iteratively append nodes into class
+    let mut counter = 0;
+    let ct = tree.nodes.len();
+    for (mv, pol) in legal_moves.iter().zip(pol_list.iter()) {
+        tree.nodes[*selected_node_idx].eval_score = value;
+        let mut bc = bs.clone();
+        // bc.play(tree.nodes[*selected_node_idx].mv.unwrap());
+        // println!("{:?}", bc);
+        bc.play(*mv);
+        let child = Node::new(*pol, Some(*selected_node_idx), Some(*mv));
+        tree.nodes.push(child); // push child to the tree Vec<Node>
+        tree.nodes[*selected_node_idx].children.push(counter + ct); // push numbers
+        println!("        move={:?}, policy={:?}", &mv, &pol);
+        counter += 1
     }
 
-    let legal_lookup = ll;
-    let mut ll: HashMap<Move, f32> = HashMap::new();
-    if bs.board().side_to_move() == Color::Black {
-        // flip move
-        for (mv, pol) in &legal_lookup {
-            ll.insert(
-                Move {
-                    from: mv.from.flip_rank(),
-                    to: mv.to.flip_rank(),
-                    promotion: mv.promotion,
-                },
-                *pol,
-            );
-        }
-    } else {
-        ll = legal_lookup.clone();
-    }
-    let legal_lookup: HashMap<Move, f32> = ll;
-
-    (value, legal_lookup, idx_li)
+    idx_li
 }
