@@ -1,348 +1,241 @@
 use crate::boardmanager::BoardStack;
-use crate::decoder::eval_board;
-use crate::dirichlet::StableDirichlet;
-use cozy_chess::{GameStatus, Move};
-use rand::SeedableRng;
-use rand::{rngs::StdRng, Rng};
-use std::{fmt, thread};
-use tch::{CModule, Device, Kind};
+use crate::{mcts_trainer::Net, mvs::get_contents};
+use cozy_chess::{Board, Color, Move, Piece, Rank, Square};
+use std::collections::HashMap;
+use std::vec;
+use tch::{IValue, Kind, Tensor};
 
-// define tree and node classes
-
-// struct Packet {
-//     visits: i32,
-//     top: Option<Move>,
-// }
-
-pub struct Net {
-    pub net: CModule,
-    pub device: Device,
+fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> {
+    let model = &net.net;
+    // model.set_eval(); // set to eval!
+    // model.to(net.device, Kind::Float, true);
+    // reshape the model (originally from 1D)
+    let b = board;
+    let b = b.unsqueeze(0);
+    let b = b.reshape([-1, 21, 8, 8]);
+    // b.print();
+    let b: Tensor = b.to(net.device);
+    let board = IValue::Tensor(b);
+    let output = model.forward_is(&[board])?;
+    let output_tensor = match output {
+        IValue::Tuple(b) => b,
+        a => panic!("the output is not a TensorList {:?}", a),
+    };
+    let (board_eval, policy) = (&output_tensor[0], &output_tensor[1]);
+    let board_eval = match board_eval {
+        IValue::Tensor(b) => b,
+        a => panic!("the output is not a TensorList {:?}", a),
+    };
+    let policy = match policy {
+        IValue::Tensor(b) => b,
+        a => panic!("the output is not a TensorList {:?}", a),
+    };
+    Ok((board_eval.clone(board_eval), policy.clone(policy)))
 }
 
-impl Net {
-    pub fn new() -> Self {
-        Self {
-            net: tch::CModule::load("chess_16x128_gen3634.pt").expect("ERROR"),
-            device: Device::cuda_if_available(),
-        }
-    }
-}
+pub fn convert_board(bs: &BoardStack) -> Tensor {
+    // FULL LIST HERE:
+    // sq1 - white's turn
+    // sq2 - black's turn
+    // sq3, sq4 - castling pos l + r (us)
+    // sq5, sq6 - castling pos l + r (opponent)
+    // sql7, sql8 -  sqs for binary digits for the repetition counter
+    // sq9 - sq20 - sqs for turn to move + non-turn to move's pieces
+    // sq21 - en passant square if any
 
-#[derive(PartialEq, Clone, Debug)] // maybe display and debug as helper funcs to check impl
-struct Node {
-    parent: Option<usize>,
-    children: Vec<usize>,
-    policy: f32,
-    visits: u32,
-    eval_score: f32,
-    total_action_value: f32,
-    mv: Option<cozy_chess::Move>,
-    move_idx: Option<Vec<usize>>,
-}
+    // sq1 - white's turn
+    // sq2 - black's turn
 
-impl Node {
-    // fn is_leaf(&self) -> bool {
-    //     self.visits == 0
-    // }
+    // it seems that creating a Vec, processing everything first is faster than doing Tensor::zeros() and then stacking them
+    // so i instead work with Vecs, get all of them together and convert them into a single Tensor at the end
 
-    fn get_q_val(&self) -> f32 {
-        let fpu = 0.0; // First Player Urgency
-        if self.visits > 0 {
-            self.total_action_value / (self.visits as f32)
-        } else {
-            fpu
-        }
+    let us = bs.board().side_to_move();
+    let mut scalar_data = vec![0.0; 8];
+    if bs.board().side_to_move() == Color::Black {
+        scalar_data[1] = 1.0;
+    } else {
+        scalar_data[0] = 1.0;
     }
 
-    fn puct_formula(&self, parent_visits: u32) -> f32 {
-        let c_puct = 2.0; // "constant determining the level of exploration"
-        let u =
-            c_puct * self.policy * ((parent_visits - 1) as f32).sqrt() / (1.0 + self.visits as f32);
-        let q = self.get_q_val();
-        // println!("{},{}", self, -q+u);
-        -q + u
+    let li;
+    if us == Color::White {
+        // can't use Colour::ALL since the order of Colour::ALL is always going to be [white, black]
+        li = [Color::White, Color::Black];
+    } else {
+        li = [Color::Black, Color::White];
     }
 
-    fn is_terminal(&self, board: &BoardStack) -> bool {
-        let status = board.status();
-        status != GameStatus::Ongoing // returns true if game is over (not ongoing)
+    let mut c = 2;
+
+    for color in li {
+        let l_rights = bs.board().castle_rights(color).long;
+        let s_rights = bs.board().castle_rights(color).short;
+
+        scalar_data[c] = if l_rights.is_some() { 1.0 } else { 0.0 };
+        scalar_data[c + 1] = if s_rights.is_some() { 1.0 } else { 0.0 };
+        c += 2
     }
 
-    fn new(policy: f32, parent: Option<usize>, mv: Option<cozy_chess::Move>) -> Node {
-        Node {
-            parent,
-            children: vec![],
-            policy,
-            visits: 0,
-            eval_score: 0.0,
-            total_action_value: 0.0,
-            mv,
-            move_idx: None,
-        }
-    }
-}
+    scalar_data[6] = bs.get_reps() as f32;
+    scalar_data[7] = bs.board().halfmove_clock() as f32;
 
-impl fmt::Display for Node {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // let u: f32;
-        // let puct: f32;
+    // flatten to 1d
 
-        // match &self.parent {
-        //     Some(parent) => {
-        //         u = 2.0 * self.policy * ((parent.visits - 1) as f32).sqrt()
-        //             / (1.0 + self.visits as f32);
-        //         puct = self.puct_formula(parent.visits);
-        //     }
-        //     None => {
-        //         u = f32::NAN;
-        //         puct = f32::NAN;
-        //     }
-        // }
-        let mv_n: String;
-        match &self.mv {
-            Some(mv) => {
-                mv_n = format!("{}", mv);
+    let mut counter = 0;
+    let mut pieces_sqs: Vec<f32> = vec![0.0; 64 * 12];
+    for colour in li {
+        for piece in Piece::ALL {
+            for tile in bs.board().colored_pieces(colour, piece) {
+                if li[0] == Color::Black {
+                    pieces_sqs[(63 - (tile.rank() as usize * 8 + (7 - tile.file() as usize)))
+                        + (64 * counter)] = 1.0;
+                } else {
+                    pieces_sqs[(tile.rank() as usize * 8 + tile.file() as usize) + 64 * counter] =
+                        1.0;
+                }
             }
-            None => {
-                mv_n = "Null".to_string();
-            }
-        }
-
-        write!(
-            f,
-            "Node(action= {}, V= {}, N={}, W={}, P={}, Q={}, len_children={})",
-            mv_n,
-            self.eval_score,
-            self.visits,
-            self.total_action_value,
-            self.policy,
-            self.get_q_val(),
-            // u,
-            // puct,
-            self.children.len()
-        )
-    }
-}
-
-#[derive(PartialEq, Debug)]
-struct Tree {
-    board: BoardStack,
-    nodes: Vec<Node>,
-}
-
-impl Tree {
-    //     fn layer_p(&self, depth: u8, max_tree_print_depth: u8,index:usize) {
-    //         let indent = "    ".repeat(depth as usize);
-    //         if depth <= max_tree_print_depth {
-    //             println!("{}{}", indent, self.nodes[index]);
-
-    //             for (index, _) in self.nodes.iter().enumerate() {
-    //                 if index > 0 {
-    //                     self.layer_p(depth + 1, max_tree_print_depth, index);
-    //                 }
-    //             }
-    //         }
-    // }
-
-    fn new(board: BoardStack) -> Tree {
-        let root_node = Node::new(0.0, None, None);
-        let mut container: Vec<Node> = Vec::new();
-        container.push(root_node);
-        Tree {
-            board,
-            nodes: container,
-        }
-    }
-
-    fn eval_and_expand(
-        &mut self,
-        selected_node_idx: usize,
-        bs: &mut BoardStack,
-        net: &Net,
-    ) -> (usize, Vec<usize>) {
-        let (value, policy, idx_li) = eval_board(&bs, &net);
-        let fenstr = format!("{}", bs.board());
-        println!("    board FEN: {}", fenstr);
-        println!("    ran NN:");
-        println!("        V={}, \n        policy={:?}", &value, &policy);
-        self.nodes[selected_node_idx].eval_score = value;
-        let ct = self.nodes[selected_node_idx].children.len();
-        let mut counter = self.nodes.len();
-
-        for (p, pol) in &policy {
-            let mut bc = bs.clone();
-            // let fenstr = format!("{}", bc.board());
-            // println!("    board FEN: {}", fenstr);
-            if self.nodes[selected_node_idx].mv != None {
-                bc.play(*p);
-            }
-            let child = Node::new(*pol, Some(selected_node_idx), Some(*p));
-            self.nodes.push(child); // push child to the tree Vec<Node>
-            self.nodes[selected_node_idx].children.push(counter + ct); // push numbers
             counter += 1
         }
-        // println!("        children:");
-        (selected_node_idx, idx_li)
     }
 
-    fn select(&mut self) -> (usize, BoardStack) {
-        let mut curr: usize = 0;
-        println!("    selection:");
-        let mut input_b: BoardStack;
-        input_b = self.board.clone();
-        loop {
-            let curr_node = &self.nodes[curr];
-            if curr_node.children.is_empty() {
-                break;
-            }
-            // get number of visits for children
-            // step 1, use curr.children vec<usize> to index tree.nodes (get a slice)
-            let children = &curr_node.children;
-            // step 2, iterate over them and get the child with most visits
-            curr = *children
-                .iter()
-                .max_by(|a, b| {
-                    self.nodes[**a]
-                        .puct_formula(curr_node.visits)
-                        .partial_cmp(&self.nodes[**b].puct_formula(curr_node.visits))
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                })
-                .unwrap();
-            println!("{:?}", self.nodes[curr].mv);
-            input_b.play(self.nodes[curr].mv.expect("Error"));
-        }
-        // println!("    {}", curr);
-        println!("        children:");
-
-        (curr, input_b)
-    }
-
-    fn backpropagate(&mut self, node: usize) {
-        println!("    backup:");
-        let mut n = self.nodes[node].eval_score;
-        let mut curr: Option<usize> = Some(node); // used to index parent
-        while let Some(current) = curr {
-            self.nodes[current].visits += 1;
-            self.nodes[current].total_action_value += n;
-            curr = self.nodes[current].parent;
-            println!("        updated node to {}", self.nodes[current]);
-            n = -n;
-        }
-    }
-    fn step(&mut self, net: &Net) {
-        println!("root node: {}", &self.nodes[0]);
-        const EPS: f32 = 0.3; // 0.3 for chess
-                              // self.display_full_tree();
-        let selected_node: usize;
-        let mut input_b: BoardStack;
-        (selected_node, input_b) = self.select();
-        // println!("{:p},{:p}", &selected_node, &self);
-        let mut selected_node = selected_node;
-        let idx_li: Vec<usize>;
-
-        if !self.nodes[selected_node].is_terminal(&self.board) {
-            (selected_node, idx_li) = self.eval_and_expand(selected_node, &mut input_b, &net);
-            println!("{}", self);
-            self.nodes[0].move_idx = Some(idx_li);
-            let mut legal_moves: Vec<Move>;
-            if self.nodes[selected_node] == self.nodes[0] {
-                legal_moves = Vec::new();
-                self.board.board().generate_moves(|moves| {
-                    // Unpack dense move set into move list
-                    legal_moves.extend(moves);
-                    false
-                });
-                // add Dirichlet noise
-                // let mut std_rng = StdRng::from_entropy();
-                // let distr = StableDirichlet::new(0.3, legal_moves.len()).expect("wrong params");
-                // let sample = std_rng.sample(distr);
-                // println!("noise: {:?}", sample);
-                // for i in 0..self.nodes[0].children.len() {
-                //     let child = self.nodes[0].children[i];
-                //     self.nodes[child].policy =
-                //         (1.0 - EPS) * self.nodes[child].policy + (EPS * sample[i]);
-                // }
-                // self.display_full_tree();
+    let is_ep = bs.board().en_passant();
+    let mut sq21: Vec<f32> = vec![0.0; 64];
+    match is_ep {
+        Some(is_ep) => {
+            if us == Color::White {
+                // 4 for white and 5 for black for victim
+                let row = Rank::Fourth;
+                let ep_sq = Square::new(is_ep, row);
+                sq21[ep_sq.rank() as usize * 8 + ep_sq.file() as usize] = 1.0;
+            } else {
+                let row = Rank::Fifth;
+                let ep_sq = Square::new(is_ep, row);
+                sq21[63 - (ep_sq.rank() as usize * 8 + (7 - ep_sq.file() as usize))] = 1.0;
             }
         }
-        // println!("        root node: {}", &self.nodes[0]);
-        self.backpropagate(selected_node);
-        // println!("{:?}", self);
-        // self.display_full_tree();
+        None => {}
+    };
+
+    let mut all_data: Vec<f32> = Vec::new();
+
+    for v in &scalar_data {
+        for _ in 0..64 {
+            all_data.push(*v);
+        }
     }
-    // fn display_full_tree(&self) {
-    //     // println!("        root node:");
-    //     // println!("            {}", self.nodes[0]);
-    //     // println!("        children:");
-    //     let max_tree_print_depth: u8 = 10;
-    //     println!("    {}", self.nodes[0]);
-    //     self.layer_p(0, max_tree_print_depth, 0);
-    // }
+
+    all_data.extend(pieces_sqs);
+    all_data.extend(sq21);
+
+    let all_data = Tensor::from_slice(&all_data);
+    all_data // all_data is 1d
 }
 
-impl fmt::Display for Tree {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let msg: String;
-        match &self.nodes[0].mv {
-            Some(mv) => {
-                let m1 = "This is object of type Node and represents action ";
-                let m2 = format!("{}", mv);
-                msg = m1.to_string() + &m2;
-            }
-            None => {
-                msg = "Node at starting board position".to_string();
-            }
+pub fn eval_board(bs: &BoardStack, net: &Net) -> (f32, HashMap<cozy_chess::Move, f32>, Vec<usize>) {
+    // ignore bigl and model for now, model is the custom net class
+
+    let contents = get_contents();
+    let b = convert_board(bs);
+
+    let output = eval_state(b, &net).expect("Error");
+
+    let (board_eval, policy) = output; // check policy, eval ordering!
+
+    let board_eval = board_eval.squeeze();
+
+    let board_eval: Vec<f32> = Vec::try_from(board_eval).expect("Error");
+
+    let board_eval = Tensor::from_slice(&vec![board_eval[0]]);
+
+    let value = Tensor::tanh(&board_eval);
+
+    let policy = policy.squeeze();
+    let policy: Vec<f32> = Vec::try_from(policy).expect("Error");
+    let value = f32::try_from(value).expect("Error");
+    let mut lookup: HashMap<String, f32> = HashMap::new();
+    for (c, p) in contents.iter().zip(policy.iter()) {
+        // full lookup, with str
+        lookup.insert(c.to_string(), *p);
+    }
+
+    let mut legal_lookup: HashMap<Move, f32> = HashMap::new();
+
+    let mut legal_moves: Vec<Move> = Vec::new();
+    bs.board().generate_moves(|moves| {
+        // Unpack dense move set into move list
+        legal_moves.extend(moves);
+        false
+    });
+    let mut fm: Vec<Move> = Vec::new();
+    if bs.board().side_to_move() == Color::Black {
+        // flip move
+        for mv in &legal_moves {
+            fm.push(Move {
+                from: mv.from.flip_rank(),
+                to: mv.to.flip_rank(),
+                promotion: mv.promotion,
+            })
         }
-        write!(f, "{}", msg)
-    }
-}
-
-pub const MAX_NODES: u32 = 100;
-
-pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
-    // equiv to move() in mcts_trainer.py
-    // println!("{}", board);
-    // spawn processes
-    // let mut pack = Packet{
-    //     visits:0,
-    //     top:None,
-    // }
-
-    // load nn and pass to eval if needed
-
-    let mut net = Net::new();
-    net.net.set_eval();
-    net.net.to(net.device, Kind::Float, true);
-    let mut tree = Tree::new(bs); // change if needed, maybe take a &mut of it
-    while tree.nodes[0].visits < MAX_NODES {
-        println!("step {}", tree.nodes[0].visits);
-        tree.step(&net);
+    } else {
+        fm = legal_moves.clone();
     }
 
-    let best_move_node = &tree.nodes[0]
-        .children
-        .iter()
-        .max_by_key(|&n| tree.nodes[*n].visits)
-        .expect("Error");
-    let best_move = tree.nodes[**best_move_node].mv;
-    let mut total_visits_list = Vec::new();
+    let mut idx_li: Vec<usize> = Vec::new();
 
-    for child in &tree.nodes[0].children {
-        total_visits_list.push(tree.nodes[*child].visits);
+    for mov in &fm {
+        let mov = format!("{}", mov);
+        if let Some(idx) = contents.iter().position(|x| mov == *x) {
+            idx_li.push(idx as usize);
+        }
     }
 
-    let total_visits: u32 = total_visits_list.iter().sum();
-
-    let mut pi: Vec<f32> = Vec::new();
-
-    println!("{:?}", &total_visits_list);
-
-    for &t in &total_visits_list {
-        let prob = t as f32 / total_visits as f32;
-        pi.push(prob);
+    for lm in &fm {
+        let idx_name = format!("{}", lm);
+        let m = lookup.get(&idx_name).expect("Error");
+        legal_lookup.insert(*lm, *m);
     }
 
-    println!("{:?}", &pi);
-    println!("best move: {}", best_move.unwrap());
-    (best_move.unwrap(), pi, tree.nodes[0].clone().move_idx)
+    let mut sm: Vec<f32> = Vec::new();
+    // TODO: check for performance optimisations here
+    for (l, _) in &legal_lookup {
+        let l = match &legal_lookup.get(l) {
+            Some(&value) => value,
+            None => 0.0, // default value in case of None
+        };
+        sm.push(l);
+    }
+
+    let sm = Tensor::from_slice(&sm);
+
+    let sm = Tensor::softmax(&sm, 0, Kind::Float);
+
+    let sm: Vec<f32> = Vec::try_from(sm).expect("Error");
+
+    // attempt to turn Tensor back to vecs
+    let mut ll: HashMap<Move, f32> = HashMap::new();
+    for (l, v) in legal_lookup.iter().zip(&sm) {
+        let (idx_name, _) = l;
+        ll.insert(*idx_name, *v);
+    }
+
+    let legal_lookup = ll;
+    let mut ll: HashMap<Move, f32> = HashMap::new();
+    if bs.board().side_to_move() == Color::Black {
+        // flip move
+        for (mv, pol) in &legal_lookup {
+            ll.insert(
+                Move {
+                    from: mv.from.flip_rank(),
+                    to: mv.to.flip_rank(),
+                    promotion: mv.promotion,
+                },
+                *pol,
+            );
+        }
+    } else {
+        ll = legal_lookup.clone();
+    }
+    let legal_lookup: HashMap<Move, f32> = ll;
+
+    (value, legal_lookup, idx_li)
 }
