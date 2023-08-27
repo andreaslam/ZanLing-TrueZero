@@ -4,6 +4,7 @@ use crate::dirichlet::StableDirichlet;
 use cozy_chess::{GameStatus, Move};
 use rand::SeedableRng;
 use rand::{rngs::StdRng, Rng};
+use std::ops::Range;
 use std::{fmt, thread};
 use tch::{CModule, Device, Kind};
 
@@ -29,14 +30,14 @@ impl Net {
 }
 
 #[derive(PartialEq, Clone, Debug)] // maybe display and debug as helper funcs to check impl
-struct Node {
+pub struct Node {
     parent: Option<usize>,
-    children: Vec<usize>,
+    pub children: Vec<usize>,
     policy: f32,
     visits: u32,
-    eval_score: f32,
+    pub eval_score: f32,
     total_action_value: f32,
-    mv: Option<cozy_chess::Move>,
+    pub mv: Option<cozy_chess::Move>,
     move_idx: Option<Vec<usize>>,
 }
 
@@ -68,7 +69,7 @@ impl Node {
         status != GameStatus::Ongoing // returns true if game is over (not ongoing)
     }
 
-    fn new(policy: f32, parent: Option<usize>, mv: Option<cozy_chess::Move>) -> Node {
+    pub fn new(policy: f32, parent: Option<usize>, mv: Option<cozy_chess::Move>) -> Node {
         Node {
             parent,
             children: vec![],
@@ -125,9 +126,9 @@ impl fmt::Display for Node {
 }
 
 #[derive(PartialEq, Debug)]
-struct Tree {
-    board: BoardStack,
-    nodes: Vec<Node>,
+pub struct Tree {
+    pub board: BoardStack,
+    pub nodes: Vec<Node>,
 }
 
 impl Tree {
@@ -160,28 +161,10 @@ impl Tree {
         bs: &mut BoardStack,
         net: &Net,
     ) -> (usize, Vec<usize>) {
-        let (value, policy, idx_li) = eval_board(&bs, &net);
         let fenstr = format!("{}", bs.board());
         println!("    board FEN: {}", fenstr);
         println!("    ran NN:");
-        println!("        V={}, \n        policy={:?}", &value, &policy);
-        self.nodes[selected_node_idx].eval_score = value;
-        let ct = self.nodes[selected_node_idx].children.len();
-        let mut counter = self.nodes.len();
-
-        for (p, pol) in &policy {
-            let mut bc = bs.clone();
-            // let fenstr = format!("{}", bc.board());
-            // println!("    board FEN: {}", fenstr);
-            if self.nodes[selected_node_idx].mv != None {
-                bc.play(*p);
-            }
-            let child = Node::new(*pol, Some(selected_node_idx), Some(*p));
-            self.nodes.push(child); // push child to the tree Vec<Node>
-            self.nodes[selected_node_idx].children.push(counter + ct); // push numbers
-            counter += 1
-        }
-        // println!("        children:");
+        let idx_li = eval_board(&bs, &net, self, &selected_node_idx);
         (selected_node_idx, idx_li)
     }
 
@@ -208,6 +191,8 @@ impl Tree {
                         .unwrap_or(std::cmp::Ordering::Equal)
                 })
                 .unwrap();
+            // let fenstr = format!("{}", input_b.board());
+            // println!("{}", fenstr);
             println!("{:?}", self.nodes[curr].mv);
             input_b.play(self.nodes[curr].mv.expect("Error"));
         }
@@ -297,7 +282,7 @@ impl fmt::Display for Tree {
     }
 }
 
-pub const MAX_NODES: u32 = 100;
+pub const MAX_NODES: u32 = 10;
 
 pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
     // equiv to move() in mcts_trainer.py
