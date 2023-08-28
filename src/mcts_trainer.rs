@@ -293,7 +293,7 @@ impl fmt::Display for Tree {
     }
 }
 
-pub const MAX_NODES: u32 = 50;
+pub const MAX_NODES: u32 = 100;
 
 pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
     // equiv to move() in mcts_trainer.py
