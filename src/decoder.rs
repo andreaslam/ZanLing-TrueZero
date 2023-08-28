@@ -2,7 +2,6 @@ use crate::boardmanager::BoardStack;
 use crate::mcts_trainer::{Node, Tree};
 use crate::{mcts_trainer::Net, mvs::get_contents};
 use cozy_chess::{Color, Move, Piece, Rank, Square};
-use std::collections::HashMap;
 use std::vec;
 use tch::{IValue, Kind, Tensor};
 
@@ -14,7 +13,7 @@ fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> {
     let b = board;
     let b = b.unsqueeze(0);
     let b = b.reshape([-1, 21, 8, 8]);
-    // b.print();
+    b.print();
     let b: Tensor = b.to(net.device);
     let board = IValue::Tensor(b);
     let output = model.forward_is(&[board])?;
@@ -99,23 +98,26 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
         }
     }
 
-    // let is_ep = bs.board().en_passant();
+    let is_ep = bs.board().en_passant();
+    let fenstr = format!("{}", bs.board());
+    println!("    board FEN: {}", fenstr);
+    println!("En passant status: {:?}", is_ep);
     let mut sq21: Vec<f32> = vec![0.0; 64];
-    // match is_ep {
-    //     Some(is_ep) => {
-    //         if us == Color::White {
-    //             // 4 for white and 5 for black for victim
-    //             let row = Rank::Fourth;
-    //             let ep_sq = Square::new(is_ep, row);
-    //             sq21[ep_sq.rank() as usize * 8 + ep_sq.file() as usize] = 1.0;
-    //         } else {
-    //             let row = Rank::Fifth;
-    //             let ep_sq = Square::new(is_ep, row);
-    //             sq21[63 - (ep_sq.rank() as usize * 8 + (7 - ep_sq.file() as usize))] = 1.0;
-    //         }
-    //     }
-    //     None => {}
-    // };
+    match is_ep {
+        Some(is_ep) => {
+            if us == Color::White {
+                // 4 for white and 5 for black for victim
+                let row = Rank::Fourth;
+                let ep_sq = Square::new(is_ep, row);
+                sq21[ep_sq.rank() as usize * 8 + ep_sq.file() as usize] = 1.0;
+            } else {
+                let row = Rank::Fifth;
+                let ep_sq = Square::new(is_ep, row);
+                sq21[63 - (ep_sq.rank() as usize * 8 + (7 - ep_sq.file() as usize))] = 1.0;
+            }
+        }
+        None => {}
+    };
 
     let mut all_data: Vec<f32> = Vec::new();
 
@@ -127,7 +129,7 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
 
     all_data.extend(pieces_sqs);
     all_data.extend(sq21);
-
+    println!("{:?}", all_data);
     let all_data = Tensor::from_slice(&all_data);
     all_data // all_data is 1d
 }
