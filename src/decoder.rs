@@ -99,23 +99,23 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
         }
     }
 
-    let is_ep = bs.board().en_passant();
+    // let is_ep = bs.board().en_passant();
     let mut sq21: Vec<f32> = vec![0.0; 64];
-    match is_ep {
-        Some(is_ep) => {
-            if us == Color::White {
-                // 4 for white and 5 for black for victim
-                let row = Rank::Fourth;
-                let ep_sq = Square::new(is_ep, row);
-                sq21[ep_sq.rank() as usize * 8 + ep_sq.file() as usize] = 1.0;
-            } else {
-                let row = Rank::Fifth;
-                let ep_sq = Square::new(is_ep, row);
-                sq21[63 - (ep_sq.rank() as usize * 8 + (7 - ep_sq.file() as usize))] = 1.0;
-            }
-        }
-        None => {}
-    };
+    // match is_ep {
+    //     Some(is_ep) => {
+    //         if us == Color::White {
+    //             // 4 for white and 5 for black for victim
+    //             let row = Rank::Fourth;
+    //             let ep_sq = Square::new(is_ep, row);
+    //             sq21[ep_sq.rank() as usize * 8 + ep_sq.file() as usize] = 1.0;
+    //         } else {
+    //             let row = Rank::Fifth;
+    //             let ep_sq = Square::new(is_ep, row);
+    //             sq21[63 - (ep_sq.rank() as usize * 8 + (7 - ep_sq.file() as usize))] = 1.0;
+    //         }
+    //     }
+    //     None => {}
+    // };
 
     let mut all_data: Vec<f32> = Vec::new();
 
@@ -168,6 +168,22 @@ pub fn eval_board(
         false
     });
 
+    let mut fm: Vec<Move> = Vec::new();
+    if bs.board().side_to_move() == Color::Black {
+        // flip move
+        for mv in &legal_moves {
+            fm.push(Move {
+                from: mv.from.flip_rank(),
+                to: mv.to.flip_rank(),
+                promotion: mv.promotion,
+            })
+        }
+    } else {
+        fm = legal_moves.clone();
+    }
+
+    legal_moves = fm;
+
     let mut idx_li: Vec<usize> = Vec::new();
 
     for mov in &legal_moves {
@@ -183,13 +199,17 @@ pub fn eval_board(
         pol_list.push(policy[*id]);
     }
 
-    // step 3 - softmax?
+    println!("{:?}", pol_list);
+
+    // step 3 - softmax
 
     let sm = Tensor::from_slice(&pol_list);
 
     let sm = Tensor::softmax(&sm, 0, Kind::Float);
 
     let pol_list: Vec<f32> = Vec::try_from(sm).expect("Error");
+
+    println!("{:?}", pol_list);
 
     println!("        V={}", &value);
 
@@ -201,8 +221,22 @@ pub fn eval_board(
         let mut bc = bs.clone();
         // bc.play(tree.nodes[*selected_node_idx].mv.unwrap());
         // println!("{:?}", bc);
-        bc.play(*mv);
-        let child = Node::new(*pol, Some(*selected_node_idx), Some(*mv));
+        ///////////////////////////////
+        ///
+        let fm: Move;
+        if bs.board().side_to_move() == Color::Black {
+            // flip move
+            println!("{:?}, {:?}", mv, pol);
+
+            fm = Move {
+                from: mv.from.flip_rank(),
+                to: mv.to.flip_rank(),
+                promotion: mv.promotion,
+            };
+        } else {
+            fm = *mv;
+        }
+        let child = Node::new(*pol, Some(*selected_node_idx), Some(fm));
         tree.nodes.push(child); // push child to the tree Vec<Node>
         tree.nodes[*selected_node_idx].children.push(counter + ct); // push numbers
         println!("        move={:?}, policy={:?}", &mv, &pol);
