@@ -185,15 +185,26 @@ impl Tree {
             curr = *children
                 .iter()
                 .max_by(|a, b| {
-                    self.nodes[**a]
-                        .puct_formula(curr_node.visits)
-                        .partial_cmp(&self.nodes[**b].puct_formula(curr_node.visits))
-                        .unwrap_or(std::cmp::Ordering::Equal)
+                    let a_node = &self.nodes[**a];
+                    let b_node = &self.nodes[**b];
+                    let a_puct = a_node.puct_formula(curr_node.visits);
+                    let b_puct = b_node.puct_formula(curr_node.visits);
+
+                    if a_puct == b_puct {
+                        // if PUCT values are equal, use largest policy as tiebreaker
+                        let a_policy = a_node.policy;
+                        let b_policy = b_node.policy;
+                        a_policy
+                            .partial_cmp(&b_policy)
+                            .unwrap_or(std::cmp::Ordering::Greater)
+                    } else {
+                        a_puct
+                            .partial_cmp(&b_puct)
+                            .unwrap_or(std::cmp::Ordering::Greater)
+                    }
                 })
                 .unwrap();
-            // let fenstr = format!("{}", input_b.board());
-            // println!("{}", fenstr);
-            println!("{:?}", self.nodes[curr].mv);
+            println!("{:?}", self.nodes[curr]);
             input_b.play(self.nodes[curr].mv.expect("Error"));
         }
         // println!("    {}", curr);
@@ -282,7 +293,7 @@ impl fmt::Display for Tree {
     }
 }
 
-pub const MAX_NODES: u32 = 10;
+pub const MAX_NODES: u32 = 50;
 
 pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
     // equiv to move() in mcts_trainer.py
@@ -300,7 +311,7 @@ pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
     net.net.to(net.device, Kind::Float, true);
     let mut tree = Tree::new(bs); // change if needed, maybe take a &mut of it
     while tree.nodes[0].visits < MAX_NODES {
-        println!("step {}", tree.nodes[0].visits);
+        println!("step {} :", tree.nodes[0].visits);
         tree.step(&net);
     }
 
@@ -329,5 +340,10 @@ pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
 
     println!("{:?}", &pi);
     println!("best move: {}", best_move.unwrap());
+
+    for child in &tree.nodes[0].children {
+        println!("{}", tree.nodes[*child]);
+    }
+
     (best_move.unwrap(), pi, tree.nodes[0].clone().move_idx)
 }
