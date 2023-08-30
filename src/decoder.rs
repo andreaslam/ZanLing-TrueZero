@@ -1,6 +1,7 @@
 use crate::boardmanager::BoardStack;
 use crate::mcts_trainer::{Node, Tree};
 use crate::{mcts_trainer::Net, mvs::get_contents};
+use cozy_chess::GameStatus;
 use cozy_chess::{Color, Move, Piece, Rank, Square};
 use std::vec;
 use tch::{IValue, Kind, Tensor};
@@ -13,7 +14,7 @@ fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> {
     let b = board;
     let b = b.unsqueeze(0);
     let b = b.reshape([-1, 21, 8, 8]);
-    b.print();
+    // b.print();
     let b: Tensor = b.to(net.device);
     let board = IValue::Tensor(b);
     let output = model.forward_is(&[board])?;
@@ -99,9 +100,9 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
     }
 
     let is_ep = bs.board().en_passant();
-    let fenstr = format!("{}", bs.board());
-    println!("    board FEN: {}", fenstr);
-    println!("En passant status: {:?}", is_ep);
+    // let fenstr = format!("{}", bs.board());
+    // println!("    board FEN: {}", fenstr);
+    // println!("En passant status: {:?}", is_ep);
     let mut sq21: Vec<f32> = vec![0.0; 64];
     match is_ep {
         Some(is_ep) => {
@@ -129,7 +130,7 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
 
     all_data.extend(pieces_sqs);
     all_data.extend(sq21);
-    println!("{:?}", all_data);
+
     let all_data = Tensor::from_slice(&all_data);
     all_data // all_data is 1d
 }
@@ -201,7 +202,7 @@ pub fn eval_board(
         pol_list.push(policy[*id]);
     }
 
-    println!("{:?}", pol_list);
+    // println!("{:?}", pol_list);
 
     // step 3 - softmax
 
@@ -211,9 +212,9 @@ pub fn eval_board(
 
     let pol_list: Vec<f32> = Vec::try_from(sm).expect("Error");
 
-    println!("{:?}", pol_list);
+    // println!("{:?}", pol_list);
 
-    println!("        V={}", &value);
+    // println!("        V={}", &value);
 
     // step 4 - iteratively append nodes into class
     let mut counter = 0;
@@ -221,29 +222,36 @@ pub fn eval_board(
     for (mv, pol) in legal_moves.iter().zip(pol_list.iter()) {
         tree.nodes[*selected_node_idx].eval_score = value;
         let mut bc = bs.clone();
-        // bc.play(tree.nodes[*selected_node_idx].mv.unwrap());
-        // println!("{:?}", bc);
-        ///////////////////////////////
-        ///
         let fm: Move;
         if bs.board().side_to_move() == Color::Black {
             // flip move
-            println!("{:?}, {:?}", mv, pol);
 
             fm = Move {
                 from: mv.from.flip_rank(),
                 to: mv.to.flip_rank(),
                 promotion: mv.promotion,
             };
+            bc.play(fm);
         } else {
             fm = *mv;
+            bc.play(fm);
         }
-        let child = Node::new(*pol, Some(*selected_node_idx), Some(fm));
+        let mut child = Node::new(*pol, Some(*selected_node_idx), Some(fm));
+        if bc.status() != GameStatus::Ongoing {
+            if bs.board().side_to_move() == Color::Black {
+                child.eval_score = -1.0;
+            } else {
+                child.eval_score = 1.0;
+            }
+        } else {
+            child.eval_score = value;
+        };
+        // println!("{:?}, {:?}, {:?}", mv, child.policy, child.eval_score);
         tree.nodes.push(child); // push child to the tree Vec<Node>
         tree.nodes[*selected_node_idx].children.push(counter + ct); // push numbers
-        println!("        move={:?}, policy={:?}", &mv, &pol);
+                                                                    // println!("        move={:?}, policy={:?}", &mv, &pol);
         counter += 1
     }
-
+    // println!("{:?}", tree.nodes.len());
     idx_li
 }
