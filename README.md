@@ -1,7 +1,6 @@
 # ZanLing-TrueZero [V2 IN PROGRESS] <-- THIS IS STILL V1 README
 A Python chess engine that starts from Zero 0. This project is still very much work-in-progress.
 
-This repository contains the latest and greatest code for the chess AI but previous-generation code can be accessed through the `archives` folder.
 
 ## About the Engine 
 The name of the Engine is Zan1Ling4, which is taken from , which is Chinese for "True Zero" and romanised using [Jyutping](https://en.wikipedia.org/wiki/Jyutping) for Cantonese.
