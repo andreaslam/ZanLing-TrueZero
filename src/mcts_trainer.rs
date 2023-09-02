@@ -1,7 +1,7 @@
 use crate::boardmanager::BoardStack;
 use crate::decoder::eval_board;
 use crate::dirichlet::StableDirichlet;
-use cozy_chess::{GameStatus, Move};
+use cozy_chess::{Color, GameStatus, Move};
 use rand::SeedableRng;
 use rand::{rngs::StdRng, Rng};
 use std::ops::Range;
@@ -20,9 +20,12 @@ pub struct Net {
 
 impl Net {
     pub fn new() -> Self {
+        // let path = "chess_16x128_gen3634.pt";
+        let path = "tz.pt";
+        println!("{}", path);
         Self {
-            net: tch::CModule::load("chess_16x128_gen3634.pt").expect("ERROR"),
-            // net: tch::CModule::load("tz.pt").expect("ERROR"),
+            net: tch::CModule::load(path).expect("ERROR"),
+            // device: Device::Cpu,
             device: Device::cuda_if_available(),
         }
     }
@@ -51,10 +54,8 @@ impl Tree {
         let display_str = self.display_node(0);
         println!("root node: {}", &display_str);
         const EPS: f32 = 0.3; // 0.3 for chess
-        let selected_node: usize;
-        let mut input_b: BoardStack;
-        (selected_node, input_b) = self.select();
-    
+        let (selected_node, input_b) = self.select();
+
         self.nodes[0].display_full_tree(self);
 
         let mut selected_node = selected_node;
@@ -62,11 +63,11 @@ impl Tree {
 
         // check for terminal state
         if !input_b.is_terminal() {
-            (selected_node, idx_li) = self.eval_and_expand(selected_node, &mut input_b, &net);
+            (selected_node, idx_li) = self.eval_and_expand(selected_node, &input_b, &net);
             println!("{}", self);
             self.nodes[0].move_idx = Some(idx_li);
             let mut legal_moves: Vec<Move>;
-            if self.nodes[selected_node] == self.nodes[0] {
+            if selected_node == 0 {
                 legal_moves = Vec::new();
                 self.board.board().generate_moves(|moves| {
                     // Unpack dense move set into move list
@@ -83,12 +84,21 @@ impl Tree {
                 //     self.nodes[child].policy =
                 //         (1.0 - EPS) * self.nodes[child].policy + (EPS * sample[i]);
                 // }
-                // self.display_full_tree();
-            self.nodes[0].display_full_tree(self);
+                self.nodes[0].display_full_tree(self);
+            }
+        } else {
+
+            self.nodes[selected_node].eval_score = match input_b.status() {
+                GameStatus::Drawn => 0.0,
+                GameStatus::Won => match !input_b.board().side_to_move() { // winner is NOT side to move, loser is side to move
+                    Color::White => -1.0, // winner is black
+                    Color::Black => -1.0, // winner is white
+                },
+                GameStatus::Ongoing => {
+                    unreachable!()
+                }
             }
         }
-        let display_str = self.display_node(0);
-        println!("        root node: {}", &display_str);
         self.backpropagate(selected_node);
         // for child in &self.nodes[0].children {
         //     let display_str = self.display_node(*child);
@@ -109,29 +119,33 @@ impl Tree {
             if curr_node.children.is_empty() || input_b.is_terminal() {
                 break;
             }
+            println!("{:?}", curr);
             // get number of visits for children
             // step 1, use curr.children vec<usize> to index tree.nodes (get a slice)
             let children = &curr_node.children;
-            // step 2, iterate over them and get the child with most visits
+            // step 2, iterate over them and get the child with highest PUCT value
             curr = *children
                 .iter()
                 .max_by(|a, b| {
                     let a_node = &self.nodes[**a];
                     let b_node = &self.nodes[**b];
-                    let a_puct = a_node.puct_formula(curr_node.visits);
-                    let b_puct = b_node.puct_formula(curr_node.visits);
-
+                    let a_puct =
+                        a_node.puct_formula(curr_node.visits, input_b.board().side_to_move());
+                    let b_puct =
+                        b_node.puct_formula(curr_node.visits, input_b.board().side_to_move());
+                   println!("{}, {}", self.display_node(**a), self.display_node(**b));
+                    println!("{}, {}", a_puct, b_puct);
                     if a_puct == b_puct {
                         // if PUCT values are equal, use largest policy as tiebreaker
                         let a_policy = a_node.policy;
                         let b_policy = b_node.policy;
                         a_policy
                             .partial_cmp(&b_policy)
-                            .unwrap_or(std::cmp::Ordering::Greater)
+                            .unwrap()
                     } else {
                         a_puct
                             .partial_cmp(&b_puct)
-                            .unwrap_or(std::cmp::Ordering::Greater)
+                            .unwrap()
                     }
                 })
                 .expect("Error");
@@ -152,7 +166,7 @@ impl Tree {
     fn eval_and_expand(
         &mut self,
         selected_node_idx: usize,
-        bs: &mut BoardStack,
+        bs: &BoardStack,
         net: &Net,
     ) -> (usize, Vec<usize>) {
         let fenstr = format!("{}", bs.board());
@@ -164,13 +178,13 @@ impl Tree {
 
     fn backpropagate(&mut self, node: usize) {
         println!("    backup:");
-        let mut n = self.nodes[node].eval_score;
+        let n = self.nodes[node].eval_score;
         let mut curr: Option<usize> = Some(node); // used to index parent
+        println!("{:?}", curr);
         while let Some(current) = curr {
             self.nodes[current].visits += 1;
             self.nodes[current].total_action_value += n;
             curr = self.nodes[current].parent;
-            n = -n;
             let display_str = self.display_node(current);
             println!("        updated node to {}", display_str);
         }
@@ -186,11 +200,11 @@ impl Tree {
                     u = f32::NAN;
                     puct = f32::NAN;
                 } else {
-                    u = 2.0
-                        * self.nodes[id].policy
-                        * ((self.nodes[*parent].visits - 1) as f32).sqrt()
-                        / (1.0 + self.nodes[id].visits as f32);
-                    puct = self.nodes[id].puct_formula(self.nodes[*parent].visits);
+                    u = self.nodes[id].get_u_val(self.nodes[*parent].visits);
+                    puct = self.nodes[id].puct_formula(
+                        self.nodes[*parent].visits,
+                        self.board.board().side_to_move(),
+                    );
                 }
             }
             None => {
@@ -221,7 +235,6 @@ impl Tree {
             self.nodes[id].children.len()
         )
     }
-
 }
 
 impl fmt::Display for Tree {
@@ -247,7 +260,7 @@ pub struct Node {
     pub children: Vec<usize>,
     pub policy: f32,
     pub visits: u32,
-    pub eval_score: f32,
+    pub eval_score: f32, // -1 for black and 1 for white
     total_action_value: f32,
     pub mv: Option<cozy_chess::Move>,
     move_idx: Option<Vec<usize>>,
@@ -267,12 +280,18 @@ impl Node {
         }
     }
 
-    fn puct_formula(&self, parent_visits: u32) -> f32 {
+    fn get_u_val(&self, parent_visits: u32) -> f32 {
         let c_puct = 2.0; // "constant determining the level of exploration"
-        let u =
-            c_puct * self.policy * ((parent_visits - 1) as f32).sqrt() / (1.0 + self.visits as f32);
+        c_puct * self.policy * ((parent_visits - 1) as f32).sqrt() / (1.0 + self.visits as f32)
+    }
+
+    fn puct_formula(&self, parent_visits: u32, player: Color) -> f32 {
+        let u = self.get_u_val(parent_visits);
         let q = self.get_q_val();
-        -q + u
+        match player {
+            Color::Black => -q + u,
+            Color::White => q + u,
+        }
     }
 
     pub fn new(policy: f32, parent: Option<usize>, mv: Option<cozy_chess::Move>) -> Node {
@@ -281,12 +300,13 @@ impl Node {
             children: vec![],
             policy,
             visits: 0,
-            eval_score: 0.0,
-            total_action_value: 0.0,
+            eval_score: f32::NAN,
+            total_action_value: f32::NAN,
             mv,
             move_idx: None,
         }
     }
+
     fn layer_p(&self, depth: u8, max_tree_print_depth: u8, tree: &Tree) {
         let indent = "    ".repeat(depth as usize + 2);
         if depth <= max_tree_print_depth {
@@ -311,11 +331,10 @@ impl Node {
     }
 }
 
-pub const MAX_NODES: u32 = 55;
+pub const MAX_NODES: u32 = 100000;
 
 pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
     // equiv to move() in mcts_trainer.py
-    // println!("{}", board);
     // spawn processes
     // let mut pack = Packet{
     //     visits:0,
@@ -335,7 +354,6 @@ pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
         println!("step {} :", tree.nodes[0].visits);
         tree.step(&net);
     }
-
     let best_move_node = &tree.nodes[0]
         .children
         .iter()
@@ -343,11 +361,13 @@ pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
         .expect("Error");
     let best_move = tree.nodes[**best_move_node].mv;
     let mut total_visits_list = Vec::new();
-    println!("{:?}", &tree.nodes[0].children);
+    println!("{:#}", best_move.unwrap());
     for child in &tree.nodes[0].children {
         total_visits_list.push(tree.nodes[*child].visits);
     }
 
+    let display_str = tree.display_node(0); // print root node
+    println!("{}", display_str);
     let total_visits: u32 = total_visits_list.iter().sum();
 
     let mut pi: Vec<f32> = Vec::new();
@@ -360,6 +380,7 @@ pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
     }
 
     println!("{:?}", &pi);
+    println!("{}", best_move.expect("Error").to_string());
     println!("best move: {}", best_move.expect("Error").to_string());
 
     for child in &tree.nodes[0].children {
