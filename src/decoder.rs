@@ -141,8 +141,6 @@ pub fn eval_board(
     tree: &mut Tree,
     selected_node_idx: &usize,
 ) -> Vec<usize> {
-    // ignore bigl and model for now, model is the custom net class
-
     let contents = get_contents();
     let b = convert_board(bs);
 
@@ -161,6 +159,11 @@ pub fn eval_board(
     let policy = policy.squeeze();
     let policy: Vec<f32> = Vec::try_from(policy).expect("Error");
     let value = f32::try_from(value).expect("Error");
+
+    let value = match bs.board().side_to_move() {
+            Color::Black => -value,
+            Color::White => value,
+    };
 
     // step 1 - get the corresponding idx for legal moves
 
@@ -221,35 +224,24 @@ pub fn eval_board(
     let ct = tree.nodes.len();
     for (mv, pol) in legal_moves.iter().zip(pol_list.iter()) {
         tree.nodes[*selected_node_idx].eval_score = value;
-        let mut bc = bs.clone();
+        // tree.nodes[*selected_node_idx].eval_score = 0.0;
         let fm: Move;
         if bs.board().side_to_move() == Color::Black {
             // flip move
-
             fm = Move {
                 from: mv.from.flip_rank(),
                 to: mv.to.flip_rank(),
                 promotion: mv.promotion,
             };
-            bc.play(fm);
         } else {
             fm = *mv;
-            bc.play(fm);
         }
-        let mut child = Node::new(*pol, Some(*selected_node_idx), Some(fm));
-        if bc.status() != GameStatus::Ongoing {
-            if bs.board().side_to_move() == Color::Black {
-                child.eval_score = -1.0;
-            } else {
-                child.eval_score = 1.0;
-            }
-        } else {
-            child.eval_score = value;
-        };
+        // FLAT POLICY VER
+        let child = Node::new(0.0, Some(*selected_node_idx), Some(fm));
+        // let mut child = Node::new(*pol, Some(*selected_node_idx), Some(fm));
         // println!("{:?}, {:?}, {:?}", mv, child.policy, child.eval_score);
         tree.nodes.push(child); // push child to the tree Vec<Node>
         tree.nodes[*selected_node_idx].children.push(counter + ct); // push numbers
-                                                                    // println!("        move={:?}, policy={:?}", &mv, &pol);
         counter += 1
     }
     // println!("{:?}", tree.nodes.len());
