@@ -20,9 +20,9 @@ pub struct Net {
 
 impl Net {
     pub fn new() -> Self {
-        let path = "chess_16x128_gen3634.pt";
-        // let path = "tz.pt";
-        println!("{}", path);
+        // let path = "chess_16x128_gen3634.pt";
+        let path = "tz.pt";
+        // println!("{}", path);
         Self {
             net: tch::CModule::load(path).expect("ERROR"),
             // device: Device::Cpu,
@@ -65,7 +65,7 @@ impl Tree {
         if !input_b.is_terminal() {
             (selected_node, idx_li) = self.eval_and_expand(selected_node, &input_b, &net);
             // println!("{}", self);
-            self.nodes[0].move_idx = Some(idx_li);
+            self.nodes[selected_node].move_idx = Some(idx_li);
             let mut legal_moves: Vec<Move>;
             if selected_node == 0 {
                 legal_moves = Vec::new();
@@ -179,9 +179,6 @@ impl Tree {
         let mut curr: Option<usize> = Some(node); // used to index parent
         // println!("    curr: {:?}", curr);
         while let Some(current) = curr {
-            if f32::is_nan(self.nodes[current].total_action_value) {
-                self.nodes[current].total_action_value = 0.0;
-            }
             self.nodes[current].visits += 1;
             self.nodes[current].total_action_value += n;
             // println!("    updated total action value: {}", self.nodes[current].total_action_value);
@@ -302,7 +299,7 @@ impl Node {
             policy,
             visits: 0,
             eval_score: f32::NAN,
-            total_action_value: f32::NAN,
+            total_action_value: 0.0,
             mv,
             move_idx: None,
         }
@@ -362,13 +359,13 @@ pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
         .expect("Error");
     let best_move = tree.nodes[**best_move_node].mv;
     let mut total_visits_list = Vec::new();
-    println!("{:#}", best_move.unwrap());
+    // println!("{:#}", best_move.unwrap());
     for child in &tree.nodes[0].children {
         total_visits_list.push(tree.nodes[*child].visits);
     }
 
     let display_str = tree.display_node(0); // print root node
-    println!("{}", display_str);
+    // println!("{}", display_str);
     let total_visits: u32 = total_visits_list.iter().sum();
 
     let mut pi: Vec<f32> = Vec::new();
@@ -386,7 +383,7 @@ pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
 
     for child in &tree.nodes[0].children {
         let display_str = tree.display_node(*child);
-        println!("{}", display_str);
+        // println!("{}", display_str);
     }
 
     (
