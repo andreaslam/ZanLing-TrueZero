@@ -20,8 +20,8 @@ pub struct Net {
 
 impl Net {
     pub fn new() -> Self {
-        // let path = "chess_16x128_gen3634.pt";
-        let path = "tz.pt";
+        let path = "chess_16x128_gen3634.pt";
+        // let path = "tz.pt";
         println!("{}", path);
         Self {
             net: tch::CModule::load(path).expect("ERROR"),
@@ -52,11 +52,11 @@ impl Tree {
 
     fn step(&mut self, net: &Net) {
         let display_str = self.display_node(0);
-        println!("root node: {}", &display_str);
+        // println!("root node: {}", &display_str);
         const EPS: f32 = 0.3; // 0.3 for chess
         let (selected_node, input_b) = self.select();
 
-        self.nodes[0].display_full_tree(self);
+        // self.nodes[0].display_full_tree(self);
 
         let mut selected_node = selected_node;
         let idx_li: Vec<usize>;
@@ -64,7 +64,7 @@ impl Tree {
         // check for terminal state
         if !input_b.is_terminal() {
             (selected_node, idx_li) = self.eval_and_expand(selected_node, &input_b, &net);
-            println!("{}", self);
+            // println!("{}", self);
             self.nodes[0].move_idx = Some(idx_li);
             let mut legal_moves: Vec<Move>;
             if selected_node == 0 {
@@ -78,13 +78,13 @@ impl Tree {
                 // let mut std_rng = StdRng::from_entropy();
                 // let distr = StableDirichlet::new(0.3, legal_moves.len()).expect("wrong params");
                 // let sample = std_rng.sample(distr);
-                // println!("noise: {:?}", sample);
+                // // println!("noise: {:?}", sample);
                 // for i in 0..self.nodes[0].children.len() {
                 //     let child = self.nodes[0].children[i];
                 //     self.nodes[child].policy =
                 //         (1.0 - EPS) * self.nodes[child].policy + (EPS * sample[i]);
                 // }
-                self.nodes[0].display_full_tree(self);
+                // self.nodes[0].display_full_tree(self);
             }
         } else {
             self.nodes[selected_node].eval_score = match input_b.status() {
@@ -102,24 +102,24 @@ impl Tree {
         self.backpropagate(selected_node);
         // for child in &self.nodes[0].children {
         //     let display_str = self.display_node(*child);
-        //     println!("children: {}", &display_str);
+        //     // println!("children: {}", &display_str);
         // }
-        self.nodes[0].display_full_tree(self);
+        // self.nodes[0].display_full_tree(self);
     }
 
     fn select(&mut self) -> (usize, BoardStack) {
         let mut curr: usize = 0;
-        println!("    selection:");
+        // println!("    selection:");
         let mut input_b: BoardStack;
         input_b = self.board.clone();
         let fenstr = format!("{}", &input_b.board());
-        println!("    board FEN: {}", fenstr);
+        // println!("    board FEN: {}", fenstr);
         loop {
             let curr_node = &self.nodes[curr];
             if curr_node.children.is_empty() || input_b.is_terminal() {
                 break;
             }
-            println!("{:?}", curr);
+            // println!("{:?}", curr);
             // get number of visits for children
             // step 1, use curr.children vec<usize> to index tree.nodes (get a slice)
             let children = &curr_node.children;
@@ -133,8 +133,9 @@ impl Tree {
                         a_node.puct_formula(curr_node.visits, input_b.board().side_to_move());
                     let b_puct =
                         b_node.puct_formula(curr_node.visits, input_b.board().side_to_move());
-                    println!("{}, {}", self.display_node(**a), self.display_node(**b));
-                    println!("{}, {}", a_puct, b_puct);
+                    // println!("{}, {}", self.display_node(**a), self.display_node(**b));
+                    // println!("{}, {}", a_puct, b_puct);
+
                     if a_puct == b_puct || curr_node.visits == 0 {
                         // if PUCT values are equal or parent visits == 0, use largest policy as tiebreaker
                         let a_policy = a_node.policy;
@@ -147,14 +148,14 @@ impl Tree {
                 .expect("Error");
 
             let display_str = self.display_node(curr);
-            println!("    {}", display_str);
+            // println!("    {}", display_str);
             let fenstr = format!("{}", &input_b.board());
-            println!("    board FEN: {}", fenstr);
+            // println!("    board FEN: {}", fenstr);
             input_b.play(self.nodes[curr].mv.expect("Error"));
         }
         let display_str = self.display_node(curr);
-        println!("    {}", display_str);
-        println!("        children:");
+        // println!("    {}", display_str);
+        // println!("        children:");
 
         (curr, input_b)
     }
@@ -166,23 +167,27 @@ impl Tree {
         net: &Net,
     ) -> (usize, Vec<usize>) {
         let fenstr = format!("{}", bs.board());
-        println!("    board FEN: {}", fenstr);
-        println!("    ran NN:");
+        // println!("    board FEN: {}", fenstr);
+        // println!("    ran NN:");
         let idx_li = eval_board(&bs, &net, self, &selected_node_idx);
         (selected_node_idx, idx_li)
     }
 
     fn backpropagate(&mut self, node: usize) {
-        println!("    backup:");
+        // println!("    backup:");
         let n = self.nodes[node].eval_score;
         let mut curr: Option<usize> = Some(node); // used to index parent
-        println!("{:?}", curr);
+        // println!("    curr: {:?}", curr);
         while let Some(current) = curr {
+            if f32::is_nan(self.nodes[current].total_action_value) {
+                self.nodes[current].total_action_value = 0.0;
+            }
             self.nodes[current].visits += 1;
             self.nodes[current].total_action_value += n;
+            // println!("    updated total action value: {}", self.nodes[current].total_action_value);
             curr = self.nodes[current].parent;
             let display_str = self.display_node(current);
-            println!("        updated node to {}", display_str);
+            // println!("        updated node to {}", display_str);
         }
     }
 
@@ -303,28 +308,28 @@ impl Node {
         }
     }
 
-    fn layer_p(&self, depth: u8, max_tree_print_depth: u8, tree: &Tree) {
-        let indent = "    ".repeat(depth as usize + 2);
-        if depth <= max_tree_print_depth {
-            if !self.children.is_empty() {
-                for c in &self.children {
-                    let display_str = tree.display_node(*c);
-                    println!("{}{}", indent, display_str);
-                    tree.nodes[*c].layer_p(depth + 1, max_tree_print_depth, tree);
-                }
-            }
-        }
-    }
+    // fn layer_p(&self, depth: u8, max_tree_print_depth: u8, tree: &Tree) {
+    //     let indent = "    ".repeat(depth as usize + 2);
+    //     if depth <= max_tree_print_depth {
+    //         if !self.children.is_empty() {
+    //             for c in &self.children {
+    //                 let display_str = tree.display_node(*c);
+    //                 // println!("{}{}", indent, display_str);
+    //                 tree.nodes[*c].layer_p(depth + 1, max_tree_print_depth, tree);
+    //             }
+    //         }
+    //     }
+    // }
 
-    fn display_full_tree(&self, tree: &Tree) {
-        println!("        root node:");
-        let display_str = tree.display_node(0);
-        println!("            {}", display_str);
-        println!("        children:");
-        let max_tree_print_depth: u8 = 5;
-        println!("    {}", display_str);
-        self.layer_p(0, max_tree_print_depth, tree);
-    }
+    // fn display_full_tree(&self, tree: &Tree) {
+    //     // println!("        root node:");
+    //     let display_str = tree.display_node(0);
+    //     // println!("            {}", display_str);
+    //     // println!("        children:");
+    //     let max_tree_print_depth: u8 = 5;
+    //     // println!("    {}", display_str);
+    //     self.layer_p(0, max_tree_print_depth, tree);
+    // }
 }
 
 pub const MAX_NODES: u32 = 100000;
@@ -347,7 +352,7 @@ pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
         panic!("No valid move!/Board is already game over!");
     }
     while tree.nodes[0].visits < MAX_NODES {
-        println!("step {} :", tree.nodes[0].visits);
+        // println!("step {} :", tree.nodes[0].visits);
         tree.step(&net);
     }
     let best_move_node = &tree.nodes[0]
@@ -368,16 +373,16 @@ pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
 
     let mut pi: Vec<f32> = Vec::new();
 
-    println!("{:?}", &total_visits_list);
+    // println!("{:?}", &total_visits_list);
 
     for &t in &total_visits_list {
         let prob = t as f32 / total_visits as f32;
         pi.push(prob);
     }
 
-    println!("{:?}", &pi);
-    println!("{}", best_move.expect("Error").to_string());
-    println!("best move: {}", best_move.expect("Error").to_string());
+    // println!("{:?}", &pi);
+    // println!("{}", best_move.expect("Error").to_string());
+    // println!("best move: {}", best_move.expect("Error").to_string());
 
     for child in &tree.nodes[0].children {
         let display_str = tree.display_node(*child);
