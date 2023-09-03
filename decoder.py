@@ -1,7 +1,7 @@
 import torch
 import chess
 import torch.nn.functional as F
-import torch.nn as nn
+import torch.nn as nnw
 import torchvision
 import network
 

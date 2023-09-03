@@ -1,0 +1,3 @@
+cargo:rustc-link-arg=-Wl,--no-as-needed
+cargo:rustc-link-arg=-Wl,--copy-dt-needed-entries
+cargo:rustc-link-arg=-ltorch
