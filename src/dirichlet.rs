@@ -1,5 +1,4 @@
-use rand::distributions::Distribution;
-use rand::Rng;
+use rand::{distributions::Distribution, Rng};
 use rand_distr::Gamma;
 
 /// Variant of [rand::distributions::Dirichlet] that never generates NaNs, even when `alpha` is low

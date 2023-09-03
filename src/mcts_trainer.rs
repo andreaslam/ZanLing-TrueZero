@@ -87,10 +87,10 @@ impl Tree {
                 self.nodes[0].display_full_tree(self);
             }
         } else {
-
             self.nodes[selected_node].eval_score = match input_b.status() {
                 GameStatus::Drawn => 0.0,
-                GameStatus::Won => match !input_b.board().side_to_move() { // winner is NOT side to move, loser is side to move
+                GameStatus::Won => match !input_b.board().side_to_move() {
+                    // winner is NOT side to move, loser is side to move
                     Color::White => -1.0, // winner is black
                     Color::Black => -1.0, // winner is white
                 },
@@ -133,19 +133,15 @@ impl Tree {
                         a_node.puct_formula(curr_node.visits, input_b.board().side_to_move());
                     let b_puct =
                         b_node.puct_formula(curr_node.visits, input_b.board().side_to_move());
-                   println!("{}, {}", self.display_node(**a), self.display_node(**b));
+                    println!("{}, {}", self.display_node(**a), self.display_node(**b));
                     println!("{}, {}", a_puct, b_puct);
-                    if a_puct == b_puct {
-                        // if PUCT values are equal, use largest policy as tiebreaker
+                    if a_puct == b_puct || curr_node.visits == 0 {
+                        // if PUCT values are equal or parent visits == 0, use largest policy as tiebreaker
                         let a_policy = a_node.policy;
                         let b_policy = b_node.policy;
-                        a_policy
-                            .partial_cmp(&b_policy)
-                            .unwrap()
+                        a_policy.partial_cmp(&b_policy).unwrap()
                     } else {
-                        a_puct
-                            .partial_cmp(&b_puct)
-                            .unwrap()
+                        a_puct.partial_cmp(&b_puct).unwrap()
                     }
                 })
                 .expect("Error");
@@ -313,7 +309,7 @@ impl Node {
             if !self.children.is_empty() {
                 for c in &self.children {
                     let display_str = tree.display_node(*c);
-                    println!("{}{}", indent,display_str);
+                    println!("{}{}", indent, display_str);
                     tree.nodes[*c].layer_p(depth + 1, max_tree_print_depth, tree);
                 }
             }

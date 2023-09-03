@@ -161,8 +161,8 @@ pub fn eval_board(
     let value = f32::try_from(value).expect("Error");
 
     let value = match bs.board().side_to_move() {
-            Color::Black => -value,
-            Color::White => value,
+        Color::Black => -value,
+        Color::White => value,
     };
 
     // step 1 - get the corresponding idx for legal moves
