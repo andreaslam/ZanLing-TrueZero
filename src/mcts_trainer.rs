@@ -22,7 +22,7 @@ impl Net {
     pub fn new() -> Self {
         // let path = "chess_16x128_gen3634.pt";
         let path = "tz.pt";
-        // println!("{}", path);
+        println!("{}", path);
         Self {
             net: tch::CModule::load(path).expect("ERROR"),
             // device: Device::Cpu,
@@ -383,7 +383,7 @@ pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
 
     for child in &tree.nodes[0].children {
         let display_str = tree.display_node(*child);
-        // println!("{}", display_str);
+        println!("{}", display_str);
     }
 
     (
