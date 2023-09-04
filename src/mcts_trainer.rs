@@ -177,7 +177,7 @@ impl Tree {
         // println!("    backup:");
         let n = self.nodes[node].eval_score;
         let mut curr: Option<usize> = Some(node); // used to index parent
-        // println!("    curr: {:?}", curr);
+                                                  // println!("    curr: {:?}", curr);
         while let Some(current) = curr {
             self.nodes[current].visits += 1;
             self.nodes[current].total_action_value += n;
@@ -365,7 +365,7 @@ pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
     }
 
     let display_str = tree.display_node(0); // print root node
-    // println!("{}", display_str);
+                                            // println!("{}", display_str);
     let total_visits: u32 = total_visits_list.iter().sum();
 
     let mut pi: Vec<f32> = Vec::new();
