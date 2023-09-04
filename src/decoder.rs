@@ -160,7 +160,7 @@ pub fn eval_board(
     let policy: Vec<f32> = Vec::try_from(policy).expect("Error");
     let value = f32::try_from(value).expect("Error");
 
-    let mut value = match bs.board().side_to_move() {
+    let value = match bs.board().side_to_move() {
         Color::Black => -value,
         Color::White => value,
     };
@@ -221,10 +221,11 @@ pub fn eval_board(
 
     // step 4 - iteratively append nodes into class
     let mut counter = 0;
+    tree.nodes[*selected_node_idx].eval_score = value;
+    // tree.nodes[*selected_node_idx].eval_score = 0.0;
     let ct = tree.nodes.len();
         for (mv, pol) in legal_moves.iter().zip(pol_list.iter()) {
             // println!("VAL {}", value);
-            tree.nodes[*selected_node_idx].eval_score = value;
             let fm: Move;
             if bs.board().side_to_move() == Color::Black {
                 // flip move
@@ -237,7 +238,7 @@ pub fn eval_board(
                 fm = *mv;
             }
             // FLAT POLICY VER
-            // let child = Node::new(0.0, Some(*selected_node_idx), Some(fm));
+            // let child = Node::new(1.0/legal_moves.len() as f32, Some(*selected_node_idx), Some(fm));
             let child = Node::new(*pol, Some(*selected_node_idx), Some(fm));
             // println!("{:?}, {:?}, {:?}", mv, child.policy, child.eval_score);
             tree.nodes.push(child); // push child to the tree Vec<Node>

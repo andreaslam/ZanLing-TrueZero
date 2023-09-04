@@ -90,9 +90,8 @@ impl Tree {
             self.nodes[selected_node].eval_score = match input_b.status() {
                 GameStatus::Drawn => 0.0,
                 GameStatus::Won => match !input_b.board().side_to_move() {
-                    // winner is NOT side to move, loser is side to move
-                    Color::White => 1.0, // winner is black
-                    Color::Black => 1.0, // winner is white
+                    Color::White => 1.0,
+                    Color::Black => -1.0,
                 },
                 GameStatus::Ongoing => {
                     unreachable!()
