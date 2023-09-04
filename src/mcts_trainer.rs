@@ -20,8 +20,8 @@ pub struct Net {
 
 impl Net {
     pub fn new() -> Self {
-        // let path = "chess_16x128_gen3634.pt";
-        let path = "tz.pt";
+        let path = "chess_16x128_gen3634.pt";
+        // let path = "tz.pt";
         println!("{}", path);
         Self {
             net: tch::CModule::load(path).expect("ERROR"),
@@ -91,8 +91,8 @@ impl Tree {
                 GameStatus::Drawn => 0.0,
                 GameStatus::Won => match !input_b.board().side_to_move() {
                     // winner is NOT side to move, loser is side to move
-                    Color::White => -1.0, // winner is black
-                    Color::Black => -1.0, // winner is white
+                    Color::White => 1.0, // winner is black
+                    Color::Black => 1.0, // winner is white
                 },
                 GameStatus::Ongoing => {
                     unreachable!()
@@ -309,28 +309,28 @@ impl Node {
         }
     }
 
-    // fn layer_p(&self, depth: u8, max_tree_print_depth: u8, tree: &Tree) {
-    //     let indent = "    ".repeat(depth as usize + 2);
-    //     if depth <= max_tree_print_depth {
-    //         if !self.children.is_empty() {
-    //             for c in &self.children {
-    //                 let display_str = tree.display_node(*c);
-    //                 // println!("{}{}", indent, display_str);
-    //                 tree.nodes[*c].layer_p(depth + 1, max_tree_print_depth, tree);
-    //             }
-    //         }
-    //     }
-    // }
+    fn layer_p(&self, depth: u8, max_tree_print_depth: u8, tree: &Tree) {
+        let indent = "    ".repeat(depth as usize + 2);
+        if depth <= max_tree_print_depth {
+            if !self.children.is_empty() {
+                for c in &self.children {
+                    let display_str = tree.display_node(*c);
+                    println!("{}{}", indent, display_str);
+                    tree.nodes[*c].layer_p(depth + 1, max_tree_print_depth, tree);
+                }
+            }
+        }
+    }
 
-    // fn display_full_tree(&self, tree: &Tree) {
-    //     // println!("        root node:");
-    //     let display_str = tree.display_node(0);
-    //     // println!("            {}", display_str);
-    //     // println!("        children:");
-    //     let max_tree_print_depth: u8 = 5;
-    //     // println!("    {}", display_str);
-    //     self.layer_p(0, max_tree_print_depth, tree);
-    // }
+    fn display_full_tree(&self, tree: &Tree) {
+        // println!("        root node:");
+        let display_str = tree.display_node(0);
+        // println!("            {}", display_str);
+        // println!("        children:");
+        let max_tree_print_depth: u8 = 3;
+        // println!("    {}", display_str);
+        self.layer_p(0, max_tree_print_depth, tree);
+    }
 }
 
 pub const MAX_NODES: u32 = 100000;
@@ -389,7 +389,7 @@ pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
         let display_str = tree.display_node(*child);
         println!("{}", display_str);
     }
-
+    tree.nodes[0].display_full_tree(&tree);
     (
         best_move.expect("Error"),
         pi,
