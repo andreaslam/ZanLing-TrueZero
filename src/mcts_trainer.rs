@@ -124,6 +124,10 @@ impl Tree {
             // step 1, use curr.children vec<usize> to index tree.nodes (get a slice)
             let children = &curr_node.children;
             // step 2, iterate over them and get the child with highest PUCT value
+            let mut total_visits = 0;
+            for child in children {
+                total_visits += &self.nodes[*child].visits;
+            }
             curr = *children
                 .iter()
                 .max_by(|a, b| {
@@ -135,7 +139,6 @@ impl Tree {
                         b_node.puct_formula(curr_node.visits, input_b.board().side_to_move());
                     // println!("{}, {}", self.display_node(**a), self.display_node(**b));
                     // println!("{}, {}", a_puct, b_puct);
-
                     if a_puct == b_puct || curr_node.visits == 0 {
                         // if PUCT values are equal or parent visits == 0, use largest policy as tiebreaker
                         let a_policy = a_node.policy;
@@ -146,12 +149,13 @@ impl Tree {
                     }
                 })
                 .expect("Error");
-
+            // println!("{}, {}", total_visits + 1, curr_node.visits);
+            assert!(total_visits + 1 == curr_node.visits);
             let display_str = self.display_node(curr);
-            // println!("    {}", display_str);
+            // println!("    selected: {}", display_str);
+            input_b.play(self.nodes[curr].mv.expect("Error"));
             let fenstr = format!("{}", &input_b.board());
             // println!("    board FEN: {}", fenstr);
-            input_b.play(self.nodes[curr].mv.expect("Error"));
         }
         let display_str = self.display_node(curr);
         // println!("    {}", display_str);
@@ -359,7 +363,7 @@ pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
         .expect("Error");
     let best_move = tree.nodes[**best_move_node].mv;
     let mut total_visits_list = Vec::new();
-    // println!("{:#}", best_move.unwrap());
+    println!("{:#}", best_move.unwrap());
     for child in &tree.nodes[0].children {
         total_visits_list.push(tree.nodes[*child].visits);
     }
