@@ -224,27 +224,27 @@ pub fn eval_board(
     tree.nodes[*selected_node_idx].eval_score = value;
     // tree.nodes[*selected_node_idx].eval_score = 0.0;
     let ct = tree.nodes.len();
-        for (mv, pol) in legal_moves.iter().zip(pol_list.iter()) {
-            // println!("VAL {}", value);
-            let fm: Move;
-            if bs.board().side_to_move() == Color::Black {
-                // flip move
-                fm = Move {
-                    from: mv.from.flip_rank(),
-                    to: mv.to.flip_rank(),
-                    promotion: mv.promotion,
-                };
-            } else {
-                fm = *mv;
-            }
-            // FLAT POLICY VER
-            // let child = Node::new(1.0/legal_moves.len() as f32, Some(*selected_node_idx), Some(fm));
-            let child = Node::new(*pol, Some(*selected_node_idx), Some(fm));
-            // println!("{:?}, {:?}, {:?}", mv, child.policy, child.eval_score);
-            tree.nodes.push(child); // push child to the tree Vec<Node>
-            tree.nodes[*selected_node_idx].children.push(counter + ct); // push numbers
-            counter += 1
+    for (mv, pol) in legal_moves.iter().zip(pol_list.iter()) {
+        // println!("VAL {}", value);
+        let fm: Move;
+        if bs.board().side_to_move() == Color::Black {
+            // flip move
+            fm = Move {
+                from: mv.from.flip_rank(),
+                to: mv.to.flip_rank(),
+                promotion: mv.promotion,
+            };
+        } else {
+            fm = *mv;
         }
-        // println!("{:?}", tree.nodes.len());
-        idx_li
+        // FLAT POLICY VER
+        // let child = Node::new(1.0/legal_moves.len() as f32, Some(*selected_node_idx), Some(fm));
+        let child = Node::new(*pol, Some(*selected_node_idx), Some(fm));
+        // println!("{:?}, {:?}, {:?}", mv, child.policy, child.eval_score);
+        tree.nodes.push(child); // push child to the tree Vec<Node>
+        counter += 1
     }
+    tree.nodes[*selected_node_idx].children = ct..ct+counter; // push numbers
+    // println!("{:?}", tree.nodes.len());
+    idx_li
+}

@@ -20,8 +20,8 @@ pub struct Net {
 
 impl Net {
     pub fn new() -> Self {
-        let path = "chess_16x128_gen3634.pt";
-        // let path = "tz.pt";
+        // let path = "chess_16x128_gen3634.pt";
+        let path = "tz.pt";
         println!("{}", path);
         Self {
             net: tch::CModule::load(path).expect("ERROR"),
@@ -124,14 +124,14 @@ impl Tree {
             let children = &curr_node.children;
             // step 2, iterate over them and get the child with highest PUCT value
             let mut total_visits = 0;
-            for child in children {
-                total_visits += &self.nodes[*child].visits;
+            for child in children.clone() {
+                total_visits += &self.nodes[child].visits;
             }
-            curr = *children
-                .iter()
+            curr = children
+                .clone()
                 .max_by(|a, b| {
-                    let a_node = &self.nodes[**a];
-                    let b_node = &self.nodes[**b];
+                    let a_node = &self.nodes[*a];
+                    let b_node = &self.nodes[*b];
                     let a_puct =
                         a_node.puct_formula(curr_node.visits, input_b.board().side_to_move());
                     let b_puct =
@@ -258,7 +258,7 @@ impl fmt::Display for Tree {
 #[derive(PartialEq, Clone, Debug)] // maybe display and debug as helper funcs to check impl
 pub struct Node {
     parent: Option<usize>,
-    pub children: Vec<usize>,
+    pub children: Range<usize>,
     pub policy: f32,
     pub visits: u32,
     pub eval_score: f32, // -1 for black and 1 for white
@@ -298,7 +298,7 @@ impl Node {
     pub fn new(policy: f32, parent: Option<usize>, mv: Option<cozy_chess::Move>) -> Node {
         Node {
             parent,
-            children: vec![],
+            children: 0..0,
             policy,
             visits: 0,
             eval_score: f32::NAN,
@@ -312,10 +312,10 @@ impl Node {
         let indent = "    ".repeat(depth as usize + 2);
         if depth <= max_tree_print_depth {
             if !self.children.is_empty() {
-                for c in &self.children {
-                    let display_str = tree.display_node(*c);
+                for c in self.children.clone() {
+                    let display_str = tree.display_node(c);
                     println!("{}{}", indent, display_str);
-                    tree.nodes[*c].layer_p(depth + 1, max_tree_print_depth, tree);
+                    tree.nodes[c].layer_p(depth + 1, max_tree_print_depth, tree);
                 }
             }
         }
@@ -332,7 +332,7 @@ impl Node {
     }
 }
 
-pub const MAX_NODES: u32 = 100000;
+pub const MAX_NODES: u32 = 2000;
 
 pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
     // equiv to move() in mcts_trainer.py
@@ -355,16 +355,16 @@ pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
         // println!("step {} :", tree.nodes[0].visits);
         tree.step(&net);
     }
-    let best_move_node = &tree.nodes[0]
+    let best_move_node = tree.nodes[0]
         .children
-        .iter()
-        .max_by_key(|&n| tree.nodes[*n].visits)
+        .clone()
+        .max_by_key(|&n| tree.nodes[n].visits)
         .expect("Error");
-    let best_move = tree.nodes[**best_move_node].mv;
+    let best_move = tree.nodes[best_move_node].mv;
     let mut total_visits_list = Vec::new();
     println!("{:#}", best_move.unwrap());
-    for child in &tree.nodes[0].children {
-        total_visits_list.push(tree.nodes[*child].visits);
+    for child in tree.nodes[0].children.clone() {
+        total_visits_list.push(tree.nodes[child].visits);
     }
 
     let display_str = tree.display_node(0); // print root node
@@ -384,8 +384,8 @@ pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
     // println!("{}", best_move.expect("Error").to_string());
     // println!("best move: {}", best_move.expect("Error").to_string());
 
-    for child in &tree.nodes[0].children {
-        let display_str = tree.display_node(*child);
+    for child in tree.nodes[0].children.clone() {
+        let display_str = tree.display_node(child);
         println!("{}", display_str);
     }
     tree.nodes[0].display_full_tree(&tree);
