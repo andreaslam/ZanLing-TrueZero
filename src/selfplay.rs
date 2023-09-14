@@ -1,8 +1,9 @@
 use crate::boardmanager::BoardStack;
 use crate::mcts_trainer::get_move;
 use cozy_chess::{Board, Color, GameStatus, Move};
+use rand_distr::WeightedIndex;
 use tch::Tensor;
-
+use rand::prelude::*;
 // selfplay code
 #[derive(PartialEq, Clone, Debug)]
 pub struct DataGen {
@@ -22,20 +23,33 @@ impl DataGen {
         let mut pi: Vec<Vec<f32>> = Vec::new();
         let mut move_idx: Vec<Vec<usize>> = Vec::new();
         let mut counter = 0;
-        let mut tau = 1;
         let board = Board::default();
         let mut bs = BoardStack::new(board);
 
         while bs.status() == GameStatus::Ongoing {
-            if counter == 30 {
-                tau = 0
-            }
             let (mv, pi_piece, move_idx_piece) = get_move(bs.clone());
             memory.push(bs.clone());
-            pi.push(pi_piece);
+            pi.push(pi_piece.clone());
             move_idx.push(move_idx_piece.unwrap());
-            bs.play(mv);
+            if counter > 30 { // when tau is "infinitesimally small", pick the best move
+                println!("{:#}", mv);
+                bs.play(mv);
+            } else {
+                let weighted_index = WeightedIndex::new(&pi_piece).unwrap();
+
+                let mut rng = rand::thread_rng();
+                let sampled_idx = weighted_index.sample(&mut rng);
+                let mut legal_moves: Vec<Move> = Vec::new();
+                bs.board().generate_moves(|moves| {
+                    // Unpack dense move set into move list
+                    legal_moves.extend(moves);
+                    false
+                });
+                println!("{:#}", legal_moves[sampled_idx]);
+                bs.play(legal_moves[sampled_idx]);
+            }
             counter += 1;
+
         }
         let outcome: Option<Color> = match bs.status() {
             GameStatus::Drawn => None,

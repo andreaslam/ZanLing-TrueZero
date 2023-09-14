@@ -10,6 +10,6 @@ fn main() {
         false,
     )
     .unwrap();
-    let mut dg = DataGen { iterations: 1 };
+    let mut dg = DataGen { iterations: 10 };
     (_, _, _, _) = dg.generate_batch();
 }
