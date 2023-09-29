@@ -1,13 +1,49 @@
-use std::env;
+use std::{env, io};
+use std::str::FromStr;
+use cozy_chess::{Board, GameStatus, Move};
+use tz_rust::{boardmanager::BoardStack, mcts_trainer::get_move};
 
-use cozy_chess::Board;
-use tz_rust::{boardmanager::BoardStack, mcts_trainer::get_move, selfplay::DataGen};
+fn get_input(bs:&BoardStack) -> Move {
+    let mut mv;
+    loop {
+        let mut input = String::new();
+        println!("Enter move:");
+        io::stdin()
+            .read_line(&mut input)
+            .expect("Failed to read line");
+        let tb = bs.clone(); // test legality, play move
+        let input = input.replace("\r\n", "");
+        mv = Move::from_str(&input);
+        match mv {
+            Ok(valid_move) =>{
+                let result = tb.board().clone().try_play(valid_move); // TODO: use try_play instead
+                match result {
+                    Ok(legal_move) => {
+                        break
+                    }
+                    Err(_) =>{
+                        continue
+                    }
+                }
+            }
+            Err(_) => {
+                continue
+            }
+        }
+    }
+
+    mv.unwrap()
+}
 
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
-    // let mut board =
-    //     Board::from_fen("3Q4/p3b1k1/2p2rPp/2q5/4B3/P2P4/7P/6RK w - - 1 1", false).unwrap();
     let board = Board::default();
-    let mut dg = DataGen { iterations: 30 };
-    (_, _, _, _) = dg.generate_batch();
+    let mut bs = BoardStack::new(board);
+    while bs.status() == GameStatus::Ongoing {
+        let mv = get_input(&bs);
+        bs.play(mv);
+        let (mv, _, _,_) = get_move(bs.clone());
+        println!("{:#}", mv);
+        bs.play(mv);
+    }
 }
