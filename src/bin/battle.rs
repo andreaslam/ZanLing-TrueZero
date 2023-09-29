@@ -1,5 +1,4 @@
-use std::{env, io};
-use std::str::FromStr;
+use std::{env, io, str::FromStr};
 use cozy_chess::{Board, GameStatus, Move};
 use tz_rust::{boardmanager::BoardStack, mcts_trainer::get_move};
 
