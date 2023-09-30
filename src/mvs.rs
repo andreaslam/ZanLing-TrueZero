@@ -185,6 +185,6 @@ lazy_static! {
     };
 }
 
-pub fn get_contents() -> Vec<Move> {
-    (&CONTENTS_COZY).to_vec()
+pub fn get_contents() -> &'static [Move] {
+    &**&*CONTENTS_COZY
 }

@@ -1,4 +1,5 @@
 use crate::boardmanager::BoardStack;
+use crate::dataformat::ZeroEvaluation;
 use crate::decoder::eval_board;
 use crate::dirichlet::StableDirichlet;
 use cozy_chess::{Color, GameStatus, Move};
@@ -107,7 +108,7 @@ impl Tree {
 
     fn select(&mut self) -> (usize, BoardStack) {
         let mut curr: usize = 0;
-        // // println!("    selection:");
+        // println!("    selection:");
         let mut input_b: BoardStack;
         input_b = self.board.clone();
         let fenstr = format!("{}", &input_b.board());
@@ -117,7 +118,6 @@ impl Tree {
             if curr_node.children.is_empty() || input_b.is_terminal() {
                 break;
             }
-            // // println!("{:?}", curr);
             // get number of visits for children
             // step 1, use curr.children vec<usize> to index tree.nodes (get a slice)
             let children = &curr_node.children;
@@ -137,6 +137,7 @@ impl Tree {
                         b_node.puct_formula(curr_node.visits, input_b.board().side_to_move());
                     // // println!("{}, {}", self.display_node(**a), self.display_node(**b));
                     // // println!("{}, {}", a_puct, b_puct);
+                    // println!("    CURRENT {:?}, {:?}", &a_node, &b_node);
                     if a_puct == b_puct || curr_node.visits == 0 {
                         // if PUCT values are equal or parent visits == 0, use largest policy as tiebreaker
                         let a_policy = a_node.policy;
@@ -150,7 +151,7 @@ impl Tree {
             // // println!("{}, {}", total_visits + 1, curr_node.visits);
             assert!(total_visits + 1 == curr_node.visits);
             let display_str = self.display_node(curr);
-            // // println!("    selected: {}", display_str);
+            // println!("    selected: {}", display_str);
             input_b.play(self.nodes[curr].mv.expect("Error"));
             let fenstr = format!("{}", &input_b.board());
             // // println!("    board FEN: {}", fenstr);
@@ -169,8 +170,8 @@ impl Tree {
         net: &Net,
     ) -> (usize, Vec<usize>) {
         let fenstr = format!("{}", bs.board());
-        // // println!("    board FEN: {}", fenstr);
-        // // println!("    ran NN:");
+        // println!("    board FEN: {}", fenstr);
+        // println!("    ran NN:");
         let idx_li = eval_board(&bs, &net, self, &selected_node_idx);
         (selected_node_idx, idx_li)
     }
@@ -331,9 +332,17 @@ impl Node {
     }
 }
 
-pub const MAX_NODES: u32 = 100;
+pub const MAX_NODES: u32 = 500;
 
-pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
+pub fn get_move(
+    bs: BoardStack,
+) -> (
+    Move,
+    ZeroEvaluation,
+    Option<Vec<usize>>,
+    ZeroEvaluation,
+    u32,
+) {
     // equiv to move() in mcts_trainer.py
     // spawn processes
     // let mut pack = Packet{
@@ -346,12 +355,13 @@ pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
     let mut net = Net::new();
     net.net.set_eval();
     net.net.to(net.device, Kind::Float, true);
+    // // println!("{:?}", &bs);
     let mut tree = Tree::new(bs);
     if tree.board.is_terminal() {
         panic!("No valid move!/Board is already game over!");
     }
     while tree.nodes[0].visits < MAX_NODES {
-        // // println!("step {} :", tree.nodes[0].visits);
+        // println!("step {} :", tree.nodes[0].visits);
         tree.step(&net);
     }
     let best_move_node = tree.nodes[0]
@@ -388,9 +398,30 @@ pub fn get_move(bs: BoardStack) -> (Move, Vec<f32>, Option<Vec<usize>>) {
     //     // println!("{}", display_str);
     // }
     tree.nodes[0].display_full_tree(&tree);
+
+    let mut all_pol = Vec::new();
+
+    for child in tree.nodes[0].children {
+        all_pol.push(tree.nodes[child].policy);
+    }
+
+    let v_p = ZeroEvaluation {
+        // network evaluation, NOT search/empirical data
+        values: tree.nodes[0].eval_score,
+        policy: all_pol,
+    };
+
+    let search_data = ZeroEvaluation {
+        // search data
+        values: tree.nodes[0].get_q_val(),
+        policy: pi,
+    };
+
     (
         best_move.expect("Error"),
-        pi,
+        v_p,
         tree.nodes[0].clone().move_idx,
+        search_data,
+        tree.nodes[0].visits,
     )
 }

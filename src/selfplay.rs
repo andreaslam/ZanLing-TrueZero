@@ -1,41 +1,34 @@
-use crate::boardmanager::BoardStack;
+use crate::dataformat::{Position, ZeroEvaluation};
 use crate::mcts_trainer::get_move;
+use crate::{boardmanager::BoardStack, dataformat::Simulation};
 use cozy_chess::{Board, Color, GameStatus, Move};
-use rand_distr::WeightedIndex;
-use tch::Tensor;
 use rand::prelude::*;
+use rand_distr::WeightedIndex;
+use rayon::prelude::*;
+use std::{
+    sync::{Arc, Mutex},
+    thread,
+};
 // selfplay code
 #[derive(PartialEq, Clone, Debug)]
+
 pub struct DataGen {
     pub iterations: u32, // number of games needed per batch of training data
 }
 
 impl DataGen {
-    fn play_game(
-        &mut self,
-    ) -> (
-        Vec<BoardStack>,
-        Vec<Vec<f32>>,
-        Vec<Vec<usize>>,
-        Option<cozy_chess::Color>,
-    ) {
-        let mut memory: Vec<BoardStack> = Vec::new();
-        let mut pi: Vec<Vec<f32>> = Vec::new();
-        let mut move_idx: Vec<Vec<usize>> = Vec::new();
-        let mut counter = 0;
-        let board = Board::default();
-        let mut bs = BoardStack::new(board);
-
+    pub fn play_game(&self) -> Simulation {
+        let mut bs = BoardStack::new(Board::default());
+        // let mut value: Vec<f32> = Vec::new();
+        let mut positions: Vec<Position> = Vec::new();
         while bs.status() == GameStatus::Ongoing {
-            let (mv, pi_piece, move_idx_piece) = get_move(bs.clone());
-            memory.push(bs.clone());
-            pi.push(pi_piece.clone());
-            move_idx.push(move_idx_piece.unwrap());
-            if counter > 30 { // when tau is "infinitesimally small", pick the best move
+            let (mv, v_p, move_idx_piece, search_data, visits) = get_move(bs.clone());
+            let final_mv = if positions.len() > 30 {
+                // when tau is "infinitesimally small", pick the best move
                 println!("{:#}", mv);
-                bs.play(mv);
+                mv
             } else {
-                let weighted_index = WeightedIndex::new(&pi_piece).unwrap();
+                let weighted_index = WeightedIndex::new(&search_data.policy).unwrap();
 
                 let mut rng = rand::thread_rng();
                 let sampled_idx = weighted_index.sample(&mut rng);
@@ -46,40 +39,53 @@ impl DataGen {
                     false
                 });
                 println!("{:#}", legal_moves[sampled_idx]);
-                bs.play(legal_moves[sampled_idx]);
-            }
-            counter += 1;
+                legal_moves[sampled_idx]
+            };
 
+            let pos = Position {
+                board: bs.clone(),
+                is_full_search: true,
+                played_mv: final_mv,
+                zero_visits: visits as u64,
+                zero_evaluation: search_data, // q
+                net_evaluation: v_p,          // v
+            };
+            bs.play(final_mv);
+            positions.push(pos);
         }
-        let outcome: Option<Color> = match bs.status() {
-            GameStatus::Drawn => None,
-            GameStatus::Won => Some(!bs.board().side_to_move()),
-            GameStatus::Ongoing => panic!("Game is still ongoing!"),
+        // let outcome: Option<Color> = match bs.status() {
+        //     GameStatus::Drawn => None,
+        //     GameStatus::Won => Some(!bs.board().side_to_move()),
+        //     GameStatus::Ongoing => panic!("Game is still ongoing!"),
+        // };
+        let tz = Simulation {
+            positions,
+            final_board: bs,
         };
-        (memory, pi, move_idx, outcome)
+
+        tz
     }
 
-    pub fn generate_batch(
-        &mut self,
-    ) -> (
-        Vec<Vec<BoardStack>>,
-        Vec<Vec<Vec<f32>>>,
-        Vec<Vec<Vec<usize>>>,
-        Vec<Option<Color>>,
-    ) {
-        let mut pi_list: Vec<Vec<Vec<f32>>> = Vec::new();
-        let mut move_idx_list = Vec::new();
-        let mut results_list: Vec<Option<Color>> = Vec::new(); // None for draw
-        let mut boardstack_list: Vec<Vec<BoardStack>> = Vec::new();
-        for _ in 0..self.iterations {
-            let (memory, pi, move_idx, outcome) = self.play_game(); // z is final game result
-                                                                    // memory in the form of boardstack
-            println!("{:?}", outcome);
-            boardstack_list.push(memory);
-            pi_list.push(pi);
-            move_idx_list.push(move_idx);
-            results_list.push(outcome); // raw outcome of who won, not accounting for POV yet
+    pub fn generate_batch(&mut self) -> Vec<Simulation> {
+        // get number of cpu threads
+
+        let threads_available = rayon::current_num_threads();
+        // let threads_available = 3;
+
+        println!("{}", threads_available);
+
+        let tz_data: Arc<Mutex<Vec<Simulation>>> = Arc::new(Mutex::new(Vec::new()));
+        while tz_data.lock().unwrap().len() < self.iterations.try_into().unwrap() {
+            // easiest to compare
+            let mut tz_data = tz_data.lock().unwrap();
+            let batch: Vec<Simulation> = (0..threads_available)
+                .into_par_iter()
+                .map(|_| self.play_game())
+                .collect();
+
+            tz_data.extend(batch);
         }
-        (boardstack_list, pi_list, move_idx_list, results_list)
+        let tz_data = Arc::try_unwrap(tz_data).unwrap().into_inner().unwrap();
+        tz_data
     }
 }
