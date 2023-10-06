@@ -1,8 +1,8 @@
-use std::{env, io, str::FromStr};
 use cozy_chess::{Board, GameStatus, Move};
+use std::{env, io, str::FromStr};
 use tz_rust::{boardmanager::BoardStack, mcts_trainer::get_move};
 
-fn get_input(bs:&BoardStack) -> Move {
+fn get_input(bs: &BoardStack) -> Move {
     let mut mv;
     loop {
         let mut input = String::new();
@@ -14,20 +14,14 @@ fn get_input(bs:&BoardStack) -> Move {
         let input = input.replace("\r\n", "");
         mv = Move::from_str(&input);
         match mv {
-            Ok(valid_move) =>{
+            Ok(valid_move) => {
                 let result = tb.board().clone().try_play(valid_move); // TODO: use try_play instead
                 match result {
-                    Ok(legal_move) => {
-                        break
-                    }
-                    Err(_) =>{
-                        continue
-                    }
+                    Ok(legal_move) => break,
+                    Err(_) => continue,
                 }
             }
-            Err(_) => {
-                continue
-            }
+            Err(_) => continue,
         }
     }
 
@@ -41,7 +35,7 @@ fn main() {
     while bs.status() == GameStatus::Ongoing {
         let mv = get_input(&bs);
         bs.play(mv);
-        let (mv, _, _,_) = get_move(bs.clone());
+        let (mv, _, _, _) = get_move(bs.clone());
         println!("{:#}", mv);
         bs.play(mv);
     }

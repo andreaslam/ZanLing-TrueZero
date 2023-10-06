@@ -244,7 +244,7 @@ pub fn eval_board(
         tree.nodes.push(child); // push child to the tree Vec<Node>
         counter += 1
     }
-    tree.nodes[*selected_node_idx].children = ct..ct+counter; // push numbers
-    // println!("{:?}", tree.nodes.len());
+    tree.nodes[*selected_node_idx].children = ct..ct + counter; // push numbers
+                                                                // println!("{:?}", tree.nodes.len());
     idx_li
 }
