@@ -1,16 +1,12 @@
-use crate::dataformat::{Position, ZeroEvaluation};
+use crate::dataformat::Position;
 use crate::mcts_trainer::get_move;
 use crate::{boardmanager::BoardStack, dataformat::Simulation};
-use cozy_chess::{Board, Color, GameStatus, Move};
+use cozy_chess::{Board, GameStatus, Move};
 use rand::prelude::*;
 use rand_distr::WeightedIndex;
-use rayon::prelude::*;
-use std::{
-    sync::{Arc, Mutex},
-    thread,
-};
 // selfplay code
-#[derive(PartialEq, Clone, Debug)]
+
+#[derive(PartialEq, Clone, Debug, Copy)]
 
 pub struct DataGen {
     pub iterations: u32, // number of games needed per batch of training data
@@ -62,30 +58,16 @@ impl DataGen {
             positions,
             final_board: bs,
         };
-
+        println!("one done!");
         tz
     }
 
     pub fn generate_batch(&mut self) -> Vec<Simulation> {
-        // get number of cpu threads
-
-        let threads_available = rayon::current_num_threads();
-        // let threads_available = 3;
-
-        println!("{}", threads_available);
-
-        let tz_data: Arc<Mutex<Vec<Simulation>>> = Arc::new(Mutex::new(Vec::new()));
-        while tz_data.lock().unwrap().len() < self.iterations.try_into().unwrap() {
-            // easiest to compare
-            let mut tz_data = tz_data.lock().unwrap();
-            let batch: Vec<Simulation> = (0..threads_available)
-                .into_par_iter()
-                .map(|_| self.play_game())
-                .collect();
-
-            tz_data.extend(batch);
+        let mut sims: Vec<Simulation> = Vec::new();
+        while sims.len() < self.iterations as usize {
+            let sim = self.play_game();
+            sims.push(sim);
         }
-        let tz_data = Arc::try_unwrap(tz_data).unwrap().into_inner().unwrap();
-        tz_data
+        sims
     }
 }
