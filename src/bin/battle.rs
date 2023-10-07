@@ -17,7 +17,7 @@ fn get_input(bs: &BoardStack) -> Move {
             Ok(valid_move) => {
                 let result = tb.board().clone().try_play(valid_move); // TODO: use try_play instead
                 match result {
-                    Ok(legal_move) => break,
+                    Ok(_) => break,
                     Err(_) => continue,
                 }
             }
@@ -35,7 +35,11 @@ fn main() {
     while bs.status() == GameStatus::Ongoing {
         let mv = get_input(&bs);
         bs.play(mv);
+<<<<<<< HEAD
+        let (mv, _, _, _, _) = get_move(bs.clone());
+=======
         let (mv, _, _, _) = get_move(bs.clone());
+>>>>>>> refs/remotes/origin/main
         println!("{:#}", mv);
         bs.play(mv);
     }
