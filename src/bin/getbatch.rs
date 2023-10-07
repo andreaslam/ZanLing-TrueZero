@@ -11,5 +11,5 @@ fn main() {
     )
     .unwrap();
     let mut dg = DataGen { iterations: 10 };
-    (_, _, _, _) = dg.generate_batch();
+    _ = dg.generate_batch();
 }
