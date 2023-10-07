@@ -44,6 +44,8 @@ impl BoardStack {
         };
     }
 
+<<<<<<< HEAD
+=======
     // pub fn generate_moves(&self) -> bool {
     //     // let mut legal_moves: Vec<Move> = Vec::new();
     //     assert!(self.status == GameStatus::Ongoing); // check if prev board is valid (can play a move)
@@ -55,6 +57,7 @@ impl BoardStack {
     //     // legal_moves
     // }
 
+>>>>>>> refs/remotes/origin/main
     pub fn is_terminal(&self) -> bool {
         let status = self.status();
         status != GameStatus::Ongoing // returns true if game is over (not ongoing)
