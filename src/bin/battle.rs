@@ -35,11 +35,7 @@ fn main() {
     while bs.status() == GameStatus::Ongoing {
         let mv = get_input(&bs);
         bs.play(mv);
-<<<<<<< HEAD
         let (mv, _, _, _, _) = get_move(bs.clone());
-=======
-        let (mv, _, _, _) = get_move(bs.clone());
->>>>>>> refs/remotes/origin/main
         println!("{:#}", mv);
         bs.play(mv);
     }
