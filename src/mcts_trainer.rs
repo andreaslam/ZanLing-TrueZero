@@ -401,11 +401,7 @@ pub fn get_move(
 
     let mut all_pol = Vec::new();
 
-<<<<<<< HEAD
     for child in tree.nodes[0].clone().children {
-=======
-    for child in tree.nodes[0].children {
->>>>>>> refs/remotes/origin/main
         all_pol.push(tree.nodes[child].policy);
     }
 
