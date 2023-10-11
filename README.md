@@ -31,10 +31,6 @@ Rewrite in progress! After careful consideration, TrueZero will be written in Ru
 - `getdecode.rs` - used for internal testing. Used for obtaining the encoded NN inputs.
 - `getmove.rs` - used for internal testing. Used for obtaining a single tree search.
 - `getgame.rs` - used for internal testing. Used for obtaining a game.
-### Prototype UCI compliant code
-- `main.py` - run this file for the "work-in-progress" experience of the UCI Engine 
-- `aiucieval.py` - UCI compliant version of the code that handles move search and evaluation
-- `aiuci.py` - UCI compliant, contains the logic for handling UCI commands
 ### Source code for AI
 - `decoder.rs` - used to decode and encode inputs for AI. Also handles the creation of child nodes. This is where NN inference happens.
 - `mcts_trainer.rs` - used for MCTS tree search. Initialises the NN and manages the entire tree search. Adds Dirichlet noise .
