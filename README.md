@@ -40,13 +40,6 @@ Rewrite in progress! After careful consideration, TrueZero will be written in Ru
 - `selfplay.rs` - facilitates selfplay. This is where search is initialised. Contains temperature management.
 - `fileformat.rs` - contains the code for binary encoding.
 - `dataformat.rs` - contains necessary abstractions for `fileformat.rs`.
-### Training data code and code for the Data Engine
-- `aigamesdb.pyx` - used for turning PGNs from Lichess to UCI notation and storing it to the SQL database (with parameterised inputs)
-- `aigamesrand.pyx` - turning random game PGNs to UCI notation and storing it to the SQL database (with parameterised inputs)
-- `randmovegen.pyx` - used for generating random games in PGN notation. Saves games as .pgn file
-- `aitraitgen.pyx` - used for generating and storing initial traits for the agents for genetic algorithm
-- `fracchess.db` - a sample, smaller database that mirrors the actual database used in training containing a smaller number of games from Lichess
-- `aidatacombiner.py` - code to combine databases together
 
 ## Libraries/technologies used 
 This Python and Rust Engine uses the following:
