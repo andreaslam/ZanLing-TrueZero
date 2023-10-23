@@ -29,6 +29,6 @@ fn main() {
         println!("Evaluations per second: {}", eps);
         avg.push(eps);
     }
-    println!("Average evaluations per second: {}", avg.iter().sum::<f32>() as f32 / avg.len() as f32);
+    println!("Average evaluations per second: {} (batch size {})", avg.iter().sum::<f32>() as f32 / avg.len() as f32, BATCH_SIZE);
     println!("{:?}", avg);
 }
