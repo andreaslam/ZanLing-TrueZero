@@ -8,14 +8,24 @@ fn main() {
     let net = Net::new();
     let mut avg = Vec::new();
     const BATCH_SIZE: usize = 2048;
+
+    // warmup loop 
+
+    for _ in 0..10 {
+        let data = Tensor::from_slice(&[0.0 as f32;1344*BATCH_SIZE]); // 8*8*21 = 1344
+        (_, _) = eval_state(data, &net).expect("Error");   
+    }
+
+    // timed, benchmarked loop
+
     for _ in 0..100 {
         let mut sw = Stopwatch::new();
-        let data = Tensor::from_slice(&[0.0 as f32;1344*batch_size]); // 8*8*21 = 1344
+        let data = Tensor::from_slice(&[0.0 as f32;1344*BATCH_SIZE]); // 8*8*21 = 1344
         sw.start();
         (_, _) = eval_state(data, &net).expect("Error");   
         sw.stop();
         println!("Elapsed time: {}ms", sw.elapsed_ms());
-        let eps = batch_size.clone() as f32/ (sw.elapsed_ms() as f32 / 1000.0);
+        let eps = BATCH_SIZE.clone() as f32/ (sw.elapsed_ms() as f32 / 1000.0);
         println!("Evaluations per second: {}", eps);
         avg.push(eps);
     }
