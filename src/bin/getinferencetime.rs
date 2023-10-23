@@ -7,7 +7,7 @@ fn main() {
     env::set_var("RUST_BACKTRACE", "1");
     let net = Net::new();
     let mut avg = Vec::new();
-    const batch_size: usize = 128;
+    const BATCH_SIZE: usize = 2048;
     for _ in 0..100 {
         let mut sw = Stopwatch::new();
         let data = Tensor::from_slice(&[0.0 as f32;1344*batch_size]); // 8*8*21 = 1344
