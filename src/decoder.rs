@@ -2,17 +2,14 @@ use crate::boardmanager::BoardStack;
 use crate::mcts_trainer::{Node, Tree};
 use crate::{mcts_trainer::Net, mvs::get_contents};
 use cozy_chess::{Color, Move, Piece, Rank, Square};
-use std::vec;
 use tch::{IValue, Kind, Tensor};
 
-fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> {
-    // model.set_eval(); // set to eval!
-    // model.to(net.device, Kind::Float, true);
+pub fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> {
     // reshape the model (originally from 1D)
     let b = board;
     let b = b.unsqueeze(0);
     let b = b.reshape([-1, 21, 8, 8]);
-    // b.print();
+    // println!("{:?}", b.size());
     let b: Tensor = b.to(net.device);
     let board = IValue::Tensor(b);
     let output = net.net.forward_is(&[board])?;
