@@ -136,11 +136,23 @@ pub fn eval_board(
     tree: &mut Tree,
     selected_node_idx: &usize,
 ) -> Vec<usize> {
-    let contents = get_contents();
+    let output = get_evaluation(bs, net);
+    process_board_output(output, selected_node_idx, tree, &bs)
+}
+
+fn get_evaluation(bs: &BoardStack, net: &Net) -> (Tensor, Tensor) {
     let b = convert_board(bs);
 
-    let output = eval_state(b, &net).expect("Error");
+    eval_state(b, &net).expect("Error")
+}
 
+pub fn process_board_output(
+    output: (Tensor, Tensor),
+    selected_node_idx: &usize,
+    tree: &mut Tree,
+    bs: &BoardStack,
+) -> Vec<usize> {
+    let contents = get_contents();
     let (board_eval, policy) = output; // check policy, eval ordering!
 
     let board_eval = board_eval.squeeze();
