@@ -12,7 +12,7 @@ use tz_rust::{
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
     let (game_sender, game_receiver) = flume::bounded::<Simulation>(1);
-    let num_threads = 10;
+    let num_threads = 2;
 
     thread::scope(|s| {
         let mut selfplay_masters: Vec<DataGen> = Vec::new();
