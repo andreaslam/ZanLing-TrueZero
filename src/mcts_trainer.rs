@@ -1,13 +1,15 @@
 use crate::boardmanager::BoardStack;
 use crate::dataformat::ZeroEvaluation;
-use crate::decoder::eval_board;
+use crate::decoder::{convert_board, eval_board, process_board_output};
 use crate::dirichlet::StableDirichlet;
+use crate::executor::Message;
 use cozy_chess::{Color, GameStatus, Move};
+use flume::{Receiver, Sender};
 use rand::SeedableRng;
 use rand::{rngs::StdRng, Rng};
 use std::ops::Range;
 use std::{fmt, thread};
-use tch::{CModule, Device, Kind};
+use tch::{CModule, Device, Kind, Tensor};
 
 // struct Packet {
 //     visits: i32,
@@ -20,8 +22,7 @@ pub struct Net {
 }
 
 impl Net {
-    pub fn new() -> Self {
-        let path = "chess_16x128_gen3634.pt";
+    pub fn new(path: &str) -> Self {
         // let path = "tz.pt";
         // println!("{}", path);
         Self {
@@ -51,7 +52,12 @@ impl Tree {
         }
     }
 
-    fn step(&mut self, net: &Net) {
+    fn step(
+        &mut self,
+        net: &Net,
+        tensor_exe_send: Sender<Tensor>,
+        eval_exe_recv: Receiver<Message>,
+    ) {
         let display_str = self.display_node(0);
         // // println!("root node: {}", &display_str);
         const EPS: f32 = 0.3; // 0.3 for chess
@@ -64,7 +70,13 @@ impl Tree {
 
         // check for terminal state
         if !input_b.is_terminal() {
-            (selected_node, idx_li) = self.eval_and_expand(selected_node, &input_b, &net);
+            (selected_node, idx_li) = self.eval_and_expand(
+                selected_node,
+                &input_b,
+                &net,
+                tensor_exe_send,
+                eval_exe_recv,
+            );
             // // println!("{}", self);
             self.nodes[selected_node].move_idx = Some(idx_li);
             let mut legal_moves: Vec<Move>;
@@ -168,11 +180,29 @@ impl Tree {
         selected_node_idx: usize,
         bs: &BoardStack,
         net: &Net,
+        tensor_exe_send: Sender<Tensor>,
+        eval_exe_recv: Receiver<Message>,
     ) -> (usize, Vec<usize>) {
         let fenstr = format!("{}", bs.board());
         // println!("    board FEN: {}", fenstr);
         // println!("    ran NN:");
-        let idx_li = eval_board(&bs, &net, self, &selected_node_idx);
+
+        let input_tensor = convert_board(&bs);
+
+        let _ = tensor_exe_send.send(input_tensor).unwrap();
+
+        let output = eval_exe_recv.recv().unwrap();
+
+        let output = match output {
+            Message::ReturnMessage(Ok(output)) => output,
+            Message::JobTensor(_) => panic!("wrong output! JobTensor is impossible!"),
+            Message::NewNetwork(_) => panic!("wrong output! NewNetwork is impossible!"),
+            Message::ReturnMessage(Err(_)) => panic!("error in returning!"),
+        };
+
+        let idx_li = process_board_output(output, &selected_node_idx, self, &bs);
+
+        // let idx_li = eval_board(&bs, &net, self, &selected_node_idx);
         (selected_node_idx, idx_li)
     }
 
@@ -332,10 +362,12 @@ impl Node {
     }
 }
 
-pub const MAX_NODES: u32 = 500;
+pub const MAX_NODES: u32 = 1600;
 
 pub fn get_move(
     bs: BoardStack,
+    tensor_exe_send: Sender<Tensor>,
+    eval_exe_recv: Receiver<Message>,
 ) -> (
     Move,
     ZeroEvaluation,
@@ -352,7 +384,7 @@ pub fn get_move(
 
     // load nn and pass to eval if needed
 
-    let mut net = Net::new();
+    let mut net = Net::new("chess_16x128_gen3634.pt");
     net.net.set_eval();
     net.net.to(net.device, Kind::Float, true);
     // // println!("{:?}", &bs);
@@ -362,7 +394,7 @@ pub fn get_move(
     }
     while tree.nodes[0].visits < MAX_NODES {
         // println!("step {} :", tree.nodes[0].visits);
-        tree.step(&net);
+        tree.step(&net, tensor_exe_send.clone(), eval_exe_recv.clone());
     }
     let best_move_node = tree.nodes[0]
         .children
