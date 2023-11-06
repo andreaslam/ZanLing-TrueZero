@@ -1,5 +1,5 @@
 use crossbeam::thread;
-use flume::{Receiver, RecvError, Sender};
+use flume::{Receiver, Sender};
 use std::{env, thread::sleep, time::Duration};
 use tch::Tensor;
 use tz_rust::{
@@ -12,7 +12,7 @@ use tz_rust::{
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
     let (game_sender, game_receiver) = flume::bounded::<Simulation>(1);
-    let num_threads = 2;
+    let num_threads = 512;
 
     thread::scope(|s| {
         let mut selfplay_masters: Vec<DataGen> = Vec::new();
@@ -120,6 +120,7 @@ fn commander_main(exe_sender: Sender<String>) {
         exe_sender
             .send("chess_16x128_gen3634.pt".to_string())
             .unwrap();
+        // println!("SENT!");
         sleep(Duration::from_secs(10));
     }
 }
