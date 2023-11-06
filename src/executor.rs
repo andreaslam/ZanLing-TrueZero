@@ -1,11 +1,10 @@
 use crate::{decoder::eval_state, mcts_trainer::Net};
-use flume::{Receiver, RecvError, Selector, Sender, TryRecvError};
+use flume::{Receiver, RecvError, Selector, Sender};
 use std::{
     cmp::min,
     collections::VecDeque,
-    fmt::{Debug, Formatter},
 };
-use tch::{Device, Tensor};
+use tch::Tensor;
 
 pub enum Message {
     NewNetwork(Result<String, RecvError>),
