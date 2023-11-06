@@ -54,7 +54,6 @@ impl Tree {
 
     fn step(
         &mut self,
-        net: &Net,
         tensor_exe_send: Sender<Tensor>,
         eval_exe_recv: Receiver<Message>,
     ) {
@@ -73,7 +72,6 @@ impl Tree {
             (selected_node, idx_li) = self.eval_and_expand(
                 selected_node,
                 &input_b,
-                &net,
                 tensor_exe_send,
                 eval_exe_recv,
             );
@@ -179,7 +177,6 @@ impl Tree {
         &mut self,
         selected_node_idx: usize,
         bs: &BoardStack,
-        net: &Net,
         tensor_exe_send: Sender<Tensor>,
         eval_exe_recv: Receiver<Message>,
     ) -> (usize, Vec<usize>) {
@@ -384,9 +381,9 @@ pub fn get_move(
 
     // load nn and pass to eval if needed
 
-    let mut net = Net::new("chess_16x128_gen3634.pt");
-    net.net.set_eval();
-    net.net.to(net.device, Kind::Float, true);
+    // let mut net = Net::new("chess_16x128_gen3634.pt");
+    // net.net.set_eval();
+    // net.net.to(net.device, Kind::Float, true);
     // // println!("{:?}", &bs);
     let mut tree = Tree::new(bs);
     if tree.board.is_terminal() {
@@ -394,7 +391,7 @@ pub fn get_move(
     }
     while tree.nodes[0].visits < MAX_NODES {
         // println!("step {} :", tree.nodes[0].visits);
-        tree.step(&net, tensor_exe_send.clone(), eval_exe_recv.clone());
+        tree.step(tensor_exe_send.clone(), eval_exe_recv.clone());
     }
     let best_move_node = tree.nodes[0]
         .children
