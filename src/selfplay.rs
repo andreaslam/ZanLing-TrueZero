@@ -1,16 +1,27 @@
-pub fn play_game(&self,tensor_exe_send:Sender<Tensor>, eval_exe_recv :Receiver<Message>) -> Simulation {
+use crate::dataformat::Position;
+use crate::mcts_trainer::get_move;
+use crate::{boardmanager::BoardStack, dataformat::Simulation};
+use cozy_chess::{Board, GameStatus, Move};
+use rand::prelude::*;
+use rand_distr::WeightedIndex;
+// selfplay code
+
+#[derive(PartialEq, Clone, Debug, Copy)]
+
+pub struct DataGen {
+    pub iterations: u32, // number of games needed per batch of training data
+}
+
+impl DataGen {
+    pub fn play_game(&self) -> Simulation {
         let mut bs = BoardStack::new(Board::default());
         // let mut value: Vec<f32> = Vec::new();
         let mut positions: Vec<Position> = Vec::new();
         while bs.status() == GameStatus::Ongoing {
-            let mut sw = Stopwatch::new();
-            sw.start();
-            let (mv, v_p, move_idx_piece, search_data, visits) = get_move(bs.clone(),tensor_exe_send.clone(), eval_exe_recv.clone());
-            sw.stop();
+            let (mv, v_p, move_idx_piece, search_data, visits) = get_move(bs.clone());
             let final_mv = if positions.len() > 30 {
                 // when tau is "infinitesimally small", pick the best move
-                let nps = MAX_NODES as f32 / (sw.elapsed_ms() as f32 / 1000.0);
-                println!("{:#}, {}nps", mv, nps);
+                println!("{:#}", mv);
                 mv
             } else {
                 let weighted_index = WeightedIndex::new(&search_data.policy).unwrap();
@@ -23,8 +34,7 @@ pub fn play_game(&self,tensor_exe_send:Sender<Tensor>, eval_exe_recv :Receiver<M
                     legal_moves.extend(moves);
                     false
                 });
-                let nps = MAX_NODES as f32 / (sw.elapsed_ms() as f32 / 1000.0);
-                println!("{:#}, {}nps", mv, nps);
+                println!("{:#}", legal_moves[sampled_idx]);
                 legal_moves[sampled_idx]
             };
 
@@ -51,3 +61,13 @@ pub fn play_game(&self,tensor_exe_send:Sender<Tensor>, eval_exe_recv :Receiver<M
         println!("one done!");
         tz
     }
+
+    pub fn generate_batch(&mut self) -> Vec<Simulation> {
+        let mut sims: Vec<Simulation> = Vec::new();
+        while sims.len() < self.iterations as usize {
+            let sim = self.play_game();
+            sims.push(sim);
+        }
+        sims
+    }
+}
