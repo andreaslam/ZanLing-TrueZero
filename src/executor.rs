@@ -16,7 +16,7 @@ pub enum Message {
 fn handle_new_graph(network: &mut Option<Net>, graph: Option<String>, thread_name: &str) {
     // drop previous network if any to save GPU memory
     if let Some(network) = network.take() {
-        println!("{} dropping network", thread_name);
+        // println!("{} dropping network", thread_name);
         drop(network);
     }
 
@@ -44,11 +44,11 @@ pub fn executor_main(
     let mut output_senders = VecDeque::from(sender_vec.clone()); // clone the sender vector to avoid disconnection
     let mut debug_counter = 0;
 
-    println!("num_threads: {}", num_threads);
+    // println!("num_threads: {}", num_threads);
 
     loop {
-        println!("loop {}:", debug_counter);
-        println!("    graph_disconnected: {}", graph_disconnected);
+        // println!("loop {}:", debug_counter);
+        // println!("    graph_disconnected: {}", graph_disconnected);
         assert!(network.is_some() || !graph_disconnected);
 
         let mut selector = Selector::new();
@@ -70,7 +70,7 @@ pub fn executor_main(
         let message = selector.wait();
         match message {
             Message::NewNetwork(Ok(graph)) => {
-                println!("    NEW NET!");
+                // println!("    NEW NET!");
                 handle_new_graph(&mut network, Some(graph), &thread_name);
             }
             Message::JobTensor(job) => {
@@ -82,22 +82,22 @@ pub fn executor_main(
                 // evaluate a batch
                 if input_vec.len() >= max_batch_size {
                     let input_tensors = Tensor::cat(&input_vec, 0);
-                    println!("        preparing tensors");
-                    println!("            eval input tensors: {:?}", input_tensors);
-                    println!("        NN evaluation:");
+                    // println!("        preparing tensors");
+                    // println!("            eval input tensors: {:?}", input_tensors);
+                    // println!("        NN evaluation:");
                     let (board_eval, policy) =
                         eval_state(input_tensors, network).expect("Evaluation failed");
-                    println!("            NN evaluation done!");
-                    println!("        processing outputs:");
-                    println!("            output tensors: {:?}, {:?}", board_eval, policy);
+                    // println!("            NN evaluation done!");
+                    // println!("        processing outputs:");
+                    // println!("            output tensors: {:?}, {:?}", board_eval, policy);
                     // distribute results to the output senders
-                    println!("        sending tensors back to mcts:");
+                    // println!("        sending tensors back to mcts:");
                     for i in 0..input_vec.len() {
                         let sender = output_senders
                             .pop_front()
                             .expect("There should be a sender for each job");
                         let result = (board_eval.get(i as i64), policy.get(i as i64));
-                        println!("            number {}, SENT! {:?}", i, &result);
+                        // println!("            number {}, SENT! {:?}", i, &result);
                         sender
                             .send(Message::ReturnMessage(Ok(result)))
                             .expect("Should be able to send the result");
@@ -107,7 +107,7 @@ pub fn executor_main(
                 }
             }
             Message::NewNetwork(Err(RecvError::Disconnected)) => {
-                println!("DISCONNECTED NET!");
+                // println!("DISCONNECTED NET!");
                 graph_disconnected = true;
                 if network.is_none() && input_vec.is_empty() {
                     break; // exit if no network and no ongoing jobs
