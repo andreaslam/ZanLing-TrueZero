@@ -42,6 +42,9 @@ Rewrite in progress! After careful consideration, TrueZero will be written in Ru
 - `dataformat.rs` - contains necessary abstractions for `fileformat.rs`.
 
 ## Libraries/technologies used 
+
+### Python 
+
 This Python and Rust Engine uses the following:
 - **Pytorch** - used for creating NN
 - **Numpy** - used for processing data (chess board representation after one-hot encoding, handling final outcome and final game  result
@@ -52,6 +55,13 @@ This Python and Rust Engine uses the following:
 - **SQLite3** - used for writing/accessing data to the SQL database
 - **tqdm** - used as progress bar 
 - **multiprocessing** - used for parallelisation of code
+
+### Rust
+
+- **cozy-chess** - chess move generation library. There is a simple wrapper of this library that TrueZero uses that covers draws, repetitions and serves as an interface between cozy-chess and the rest of the code.
+- **flume** - multi-sender, multi-producer channels used to send data between channels for data generation.
+- **tch-rs** - Rust wrapper of libtorch.
+- **crossbeam** - multithreading
 
 *database not uploaded to this GitHub repository
 
