@@ -58,7 +58,7 @@ This Python and Rust Engine uses the following:
 
 ### Rust
 
-- **cozy-chess** - chess move generation library. There is a simple wrapper of this library that TrueZero uses that covers draws, repetitions and serves as an interface between cozy-chess and the rest of the code.
+- **cozy-chess** - chess move generation library. There is a [simple wrapper](https://github.com/andreaslam/ZanLing-TrueZero/blob/main/src/boardmanager.rs) of this library that TrueZero uses that covers draws, repetitions and serves as an interface between cozy-chess and the rest of the code.
 - **flume** - multi-sender, multi-producer channels used to send data between channels for data generation.
 - **tch-rs** - Rust wrapper of libtorch.
 - **crossbeam** - multithreading
