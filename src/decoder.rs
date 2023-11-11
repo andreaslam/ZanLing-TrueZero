@@ -1,13 +1,15 @@
-use crate::boardmanager::BoardStack;
-use crate::mcts_trainer::{Node, Tree};
-use crate::{mcts_trainer::Net, mvs::get_contents};
+use crate::{
+    boardmanager::BoardStack,
+    mcts_trainer::{Net, Node, Tree},
+    mvs::get_contents,
+};
 use cozy_chess::{Color, Move, Piece, Rank, Square};
 use tch::{IValue, Kind, Tensor};
 
 pub fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> {
     // reshape the model (originally from 1D)
     let b = board;
-    let b = b.unsqueeze(0);
+    // let b = b.unsqueeze(0);
     let b = b.reshape([-1, 21, 8, 8]);
     // println!("{:?}", b.size());
     let b: Tensor = b.to(net.device);
@@ -15,16 +17,16 @@ pub fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> 
     let output = net.net.forward_is(&[board])?;
     let output_tensor = match output {
         IValue::Tuple(b) => b,
-        a => panic!("the output is not a TensorList {:?}", a),
+        a => panic!("the output is not a IValue {:?}", a),
     };
     let (board_eval, policy) = (&output_tensor[0], &output_tensor[1]);
     let board_eval = match board_eval {
         IValue::Tensor(b) => b,
-        a => panic!("the output is not a TensorList {:?}", a),
+        a => panic!("the output is not a Tensor {:?}", a),
     };
     let policy = match policy {
         IValue::Tensor(b) => b,
-        a => panic!("the output is not a TensorList {:?}", a),
+        a => panic!("the output is not a Tensor {:?}", a),
     };
     Ok((board_eval.clone(board_eval), policy.clone(policy)))
 }
@@ -140,7 +142,7 @@ pub fn eval_board(
     process_board_output(output, selected_node_idx, tree, &bs)
 }
 
-fn get_evaluation(bs: &BoardStack, net: &Net) -> (Tensor, Tensor) {
+pub fn get_evaluation(bs: &BoardStack, net: &Net) -> (Tensor, Tensor) {
     let b = convert_board(bs);
 
     eval_state(b, &net).expect("Error")
