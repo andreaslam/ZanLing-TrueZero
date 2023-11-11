@@ -1,20 +1,15 @@
-use crate::boardmanager::BoardStack;
-use crate::dataformat::ZeroEvaluation;
-use crate::decoder::{convert_board, eval_board, process_board_output};
-use crate::dirichlet::StableDirichlet;
-use crate::executor::Message;
+use crate::{
+    boardmanager::BoardStack,
+    dataformat::ZeroEvaluation,
+    decoder::{convert_board, eval_board, process_board_output},
+    dirichlet::StableDirichlet,
+    executor::{Message, Packet},
+};
 use cozy_chess::{Color, GameStatus, Move};
 use flume::{Receiver, Sender};
-use rand::SeedableRng;
-use rand::{rngs::StdRng, Rng};
-use std::ops::Range;
-use std::{fmt, thread};
+use rand::{rngs::StdRng, Rng, SeedableRng};
+use std::{fmt, ops::Range, thread};
 use tch::{CModule, Device, Kind, Tensor};
-
-// struct Packet {
-//     visits: i32,
-//     top: Option<Move>,
-// }
 
 pub struct Net {
     pub net: CModule,
@@ -52,11 +47,7 @@ impl Tree {
         }
     }
 
-    fn step(
-        &mut self,
-        tensor_exe_send: Sender<Tensor>,
-        eval_exe_recv: Receiver<Message>,
-    ) {
+    fn step(&mut self, tensor_exe_send: Sender<Packet>) {
         let display_str = self.display_node(0);
         // // println!("root node: {}", &display_str);
         const EPS: f32 = 0.3; // 0.3 for chess
@@ -69,12 +60,8 @@ impl Tree {
 
         // check for terminal state
         if !input_b.is_terminal() {
-            (selected_node, idx_li) = self.eval_and_expand(
-                selected_node,
-                &input_b,
-                tensor_exe_send,
-                eval_exe_recv,
-            );
+            (selected_node, idx_li) =
+                self.eval_and_expand(selected_node, &input_b, tensor_exe_send);
             // // println!("{}", self);
             self.nodes[selected_node].move_idx = Some(idx_li);
             let mut legal_moves: Vec<Move>;
@@ -177,8 +164,7 @@ impl Tree {
         &mut self,
         selected_node_idx: usize,
         bs: &BoardStack,
-        tensor_exe_send: Sender<Tensor>,
-        eval_exe_recv: Receiver<Message>,
+        tensor_exe_send: Sender<Packet>,
     ) -> (usize, Vec<usize>) {
         let fenstr = format!("{}", bs.board());
         // println!("    board FEN: {}", fenstr);
@@ -186,10 +172,17 @@ impl Tree {
 
         let input_tensor = convert_board(&bs);
 
-        let _ = tensor_exe_send.send(input_tensor).unwrap();
+        // creating a send/recv pair for executor
 
-        let output = eval_exe_recv.recv().unwrap();
+        let (resender_send, resender_recv) = flume::bounded::<Message>(1); // mcts to executor
 
+        let pack = Packet {
+            job: input_tensor,
+            resender: resender_send,
+        };
+        let _ = tensor_exe_send.send(pack).unwrap();
+
+        let output = resender_recv.recv().unwrap();
         let output = match output {
             Message::ReturnMessage(Ok(output)) => output,
             Message::JobTensor(_) => panic!("wrong output! JobTensor is impossible!"),
@@ -363,8 +356,7 @@ pub const MAX_NODES: u32 = 1600;
 
 pub fn get_move(
     bs: BoardStack,
-    tensor_exe_send: Sender<Tensor>,
-    eval_exe_recv: Receiver<Message>,
+    tensor_exe_send: Sender<Packet>,
 ) -> (
     Move,
     ZeroEvaluation,
@@ -373,11 +365,6 @@ pub fn get_move(
     u32,
 ) {
     // equiv to move() in mcts_trainer.py
-    // spawn processes
-    // let mut pack = Packet{
-    //     visits:0,
-    //     top:None,
-    // }
 
     // load nn and pass to eval if needed
 
@@ -391,7 +378,7 @@ pub fn get_move(
     }
     while tree.nodes[0].visits < MAX_NODES {
         // println!("step {} :", tree.nodes[0].visits);
-        tree.step(tensor_exe_send.clone(), eval_exe_recv.clone());
+        tree.step(tensor_exe_send.clone());
     }
     let best_move_node = tree.nodes[0]
         .children
