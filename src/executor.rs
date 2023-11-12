@@ -1,23 +1,32 @@
 use crate::{decoder::eval_state, mcts_trainer::Net};
 use flume::{Receiver, RecvError, Selector, Sender};
-use std::{cmp::min, collections::VecDeque};
+use std::{cmp::min, collections::VecDeque, time::Instant};
 use tch::Tensor;
 
 pub struct Packet {
     pub job: Tensor,
-    pub resender: Sender<Message>,
+    pub resender: Sender<ReturnMessage>,
+    pub id: String,
+}
+
+pub struct ReturnPacket {
+    pub packet: (Tensor, Tensor),
+    pub id: String,
 }
 
 pub enum Message {
     NewNetwork(Result<String, RecvError>),
     JobTensor(Result<Packet, RecvError>), // (converted) tensor from mcts search that needs NN evaluation
-    ReturnMessage(Result<(Tensor, Tensor), RecvError>),
+}
+
+pub enum ReturnMessage {
+    ReturnMessage(Result<ReturnPacket, RecvError>)
 }
 
 fn handle_new_graph(network: &mut Option<Net>, graph: Option<String>, thread_name: &str) {
     // drop previous network if any to save GPU memory
     if let Some(network) = network.take() {
-        println!("{} dropping network", thread_name);
+        // // println!("{} dropping network", thread_name);
         drop(network);
     }
 
@@ -35,18 +44,19 @@ pub fn executor_main(
     let mut network: Option<Net> = None;
     let thread_name = std::thread::current()
         .name()
-        .unwrap_or("unnamed")
+        .unwrap_or("unnamed-executor")
         .to_owned();
-    let mut input_vec: Vec<Tensor> = Vec::new();
-    let mut output_senders = VecDeque::new(); // collect senders
+    let mut input_vec: VecDeque<Tensor> = VecDeque::new();
     let mut debug_counter = 0;
-
-    println!("num_threads: {}", num_threads);
+    let mut output_senders = VecDeque::new(); // collect senders
+    let mut id_vec = VecDeque::new(); // collect senders
+    // println!("num_threads (generator): {}", num_threads);
 
     loop {
-        println!("thread {} loop {}:", thread_name, debug_counter);
-        println!("    number of output senders: {}", output_senders.len());
-        println!("    graph_disconnected: {}", graph_disconnected);
+        let sw = Instant::now();
+        // println!("thread {} loop {}:", thread_name, debug_counter);
+        // println!("    thread {} number of requests made from mcts: {}, {}", thread_name, output_senders.len(), num_threads);
+        // println!("    thread {} graph_disconnected: {}", thread_name, graph_disconnected);
         assert!(network.is_some() || !graph_disconnected);
 
         let mut selector = Selector::new();
@@ -66,52 +76,63 @@ pub fn executor_main(
         let message = selector.wait();
         match message {
             Message::NewNetwork(Ok(graph)) => {
-                println!("    NEW NET!");
+                // println!("    NEW NET!");
                 handle_new_graph(&mut network, Some(graph), &thread_name);
             }
             Message::JobTensor(job) => {
                 let job = job.expect("JobTensor should be available");
                 let network = network.as_mut().expect("Network should be available");
 
-                input_vec.push(job.job);
+                input_vec.push_back(job.job);
                 output_senders.push_back(job.resender);
-
+                id_vec.push_back(job.id);
                 // evaluate batches
                 while input_vec.len() >= max_batch_size {
                     let batch_size = min(max_batch_size, input_vec.len());
-                    let input_tensors = Tensor::cat(&input_vec[..batch_size], 0);
-                    println!("        preparing tensors");
-                    println!("            eval input tensors: {:?}", input_tensors);
-                    println!("        NN evaluation:");
+                    let i_v = input_vec.make_contiguous();
+                    let input_tensors = Tensor::cat(&i_v[..batch_size], 0);
+                    // println!("        thread {}: preparing tensors", thread_name);
+                    // println!("            thread {}: eval input tensors: {:?}", thread_name, input_tensors);
+                    // println!("        thread {}: NN evaluation:", thread_name);
+                    let sw_inference = Instant::now();
                     let (board_eval, policy) =
                         eval_state(input_tensors, network).expect("Evaluation failed");
-                    println!("            NN evaluation done!");
-                    println!("        processing outputs:");
-                    println!("            output tensors: {:?}, {:?}", board_eval, policy);
+                    let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
+                    // println!("            thread {}: NN evaluation done! {}s", thread_name, elapsed);
+                    // println!("        thread {}: processing outputs:",thread_name);
+                    // println!("            thread {}: output tensors: {:?}, {:?}", thread_name, board_eval, policy);
                     // distribute results to the output senders
-                    println!("        sending tensors back to mcts:");
+                    // println!("        thread {}: sending tensors back to mcts:", thread_name);
                     for i in 0..batch_size {
                         let sender = output_senders
                             .pop_front()
                             .expect("There should be a sender for each job");
+                        let id = id_vec
+                            .pop_front()
+                            .expect("There should be an ID for each job");
                         let result = (board_eval.get(i as i64), policy.get(i as i64));
-                        println!("            thread {}, SENT! {:?}", i, &result);
+                        // println!("            thread {}, SENT! {:?}", i, &result);
+                        let return_pack = ReturnPacket {
+                            packet: result,
+                            id
+                        };
                         sender
-                            .send(Message::ReturnMessage(Ok(result)))
+                            .send(ReturnMessage::ReturnMessage(Ok(return_pack)))
                             .expect("Should be able to send the result");
                     }
-                    input_vec.drain(0..batch_size);
+                    drop(input_vec.drain(0..batch_size));
                 }
             }
             Message::NewNetwork(Err(RecvError::Disconnected)) => {
-                println!("DISCONNECTED NET!");
+                // println!("DISCONNECTED NET!");
                 graph_disconnected = true;
                 if network.is_none() && input_vec.is_empty() {
                     break; // exit if no network and no ongoing jobs
                 }
             }
-            Message::ReturnMessage(_) => unreachable!(),
         }
+        let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
+        // println!("thread {}, elapsed time: {}s", thread_name, elapsed);
         debug_counter += 1;
     }
     // Return the senders to avoid them being dropped and disconnected
