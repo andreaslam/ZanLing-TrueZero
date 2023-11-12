@@ -1,4 +1,4 @@
-use crate::{decoder::eval_state, mcts_trainer::Net};
+use crate::{decoder::eval_state, mcts_trainer::Net, selfplay::CollectorMessage};
 use flume::{Receiver, RecvError, Selector, Sender};
 use std::{cmp::min, collections::VecDeque, time::Instant};
 use tch::Tensor;
@@ -20,7 +20,7 @@ pub enum Message {
 }
 
 pub enum ReturnMessage {
-    ReturnMessage(Result<ReturnPacket, RecvError>)
+    ReturnMessage(Result<ReturnPacket, RecvError>),
 }
 
 fn handle_new_graph(network: &mut Option<Net>, graph: Option<String>, thread_name: &str) {
@@ -38,6 +38,7 @@ pub fn executor_main(
     net_receiver: Receiver<String>,
     tensor_receiver: Receiver<Packet>, // receive tensors from mcts
     num_threads: usize,
+    evals_per_sec_sender: Sender<CollectorMessage>,
 ) {
     let max_batch_size = min(256, num_threads);
     let mut graph_disconnected = false;
@@ -50,7 +51,7 @@ pub fn executor_main(
     let mut debug_counter = 0;
     let mut output_senders = VecDeque::new(); // collect senders
     let mut id_vec = VecDeque::new(); // collect senders
-    // println!("num_threads (generator): {}", num_threads);
+                                      // println!("num_threads (generator): {}", num_threads);
 
     loop {
         let sw = Instant::now();
@@ -98,6 +99,9 @@ pub fn executor_main(
                     let (board_eval, policy) =
                         eval_state(input_tensors, network).expect("Evaluation failed");
                     let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
+                    let evals_per_sec = batch_size as f32 / elapsed;
+                    let _ = evals_per_sec_sender
+                        .send(CollectorMessage::ExecutorStatistics(evals_per_sec));
                     // println!("            thread {}: NN evaluation done! {}s", thread_name, elapsed);
                     // println!("        thread {}: processing outputs:",thread_name);
                     // println!("            thread {}: output tensors: {:?}, {:?}", thread_name, board_eval, policy);
@@ -112,10 +116,7 @@ pub fn executor_main(
                             .expect("There should be an ID for each job");
                         let result = (board_eval.get(i as i64), policy.get(i as i64));
                         // println!("            thread {}, SENT! {:?}", i, &result);
-                        let return_pack = ReturnPacket {
-                            packet: result,
-                            id
-                        };
+                        let return_pack = ReturnPacket { packet: result, id };
                         sender
                             .send(ReturnMessage::ReturnMessage(Ok(return_pack)))
                             .expect("Should be able to send the result");
