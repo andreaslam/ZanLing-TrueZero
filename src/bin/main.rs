@@ -15,8 +15,8 @@ use tz_rust::{
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
-    let num_threads = 512;
-    let num_executors = 2;
+    let num_threads = 1024;
+    let num_executors = 4;
     thread::scope(|s| {
         let mut selfplay_masters: Vec<DataGen> = Vec::new();
         // commander
@@ -151,8 +151,7 @@ fn collector_main(receiver: &Receiver<CollectorMessage>) {
             }
             CollectorMessage::GeneratorStatistics(nps) => {
                 if nps_start_time.elapsed() >= Duration::from_secs(1) {
-                    let sum: f32 = nps_vec.iter().sum();
-                    let nps = sum / nps_vec.len() as f32;
+                    let nps: f32 = nps_vec.iter().sum();
                     println!("{} nps", nps);
                     nps_start_time = Instant::now();
                     nps_vec = Vec::new();
@@ -162,9 +161,8 @@ fn collector_main(receiver: &Receiver<CollectorMessage>) {
             }
             CollectorMessage::ExecutorStatistics(evals_per_sec) => {
                 if evals_start_time.elapsed() >= Duration::from_secs(1) {
-                    let sum: f32 = nps_vec.iter().sum();
-                    let evals_per_sec = sum / nps_vec.len() as f32;
-                    println!("{} evals/s", evals_per_sec);
+                    let nps: f32 = nps_vec.iter().sum();
+                    println!("{} evals/s", nps);
                     evals_start_time = Instant::now();
                     nps_vec = Vec::new();
                 } else {
@@ -174,6 +172,7 @@ fn collector_main(receiver: &Receiver<CollectorMessage>) {
         }
     }
 }
+
 fn commander_main(vec_exe_sender: Vec<Sender<String>>) {
     loop {
         for exe_sender in vec_exe_sender.clone() {
