@@ -177,9 +177,9 @@ impl Tree {
 
         let (resender_send, resender_recv) = flume::bounded::<ReturnMessage>(1); // mcts to executor
         let thread_name = std::thread::current()
-        .name()
-        .unwrap_or("unnamed-generator")
-        .to_owned();
+            .name()
+            .unwrap_or("unnamed-generator")
+            .to_owned();
         let pack = Packet {
             job: input_tensor,
             resender: resender_send,
@@ -283,7 +283,7 @@ impl fmt::Display for Tree {
     }
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug)] // maybe display and debug as helper funcs to check impl
 pub struct Node {
     parent: Option<usize>,
     pub children: Range<usize>,
