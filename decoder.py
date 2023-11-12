@@ -38,7 +38,6 @@ def convert_board(board, bigl):
     # sq3, sq4 - castling pos l + r (us)
     # sq5, sq6 - castling pos l + r (opponent)
 
-    # i think the castling is correct?
 
     us = board.turn
     opp = not us
