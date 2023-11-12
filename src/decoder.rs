@@ -45,7 +45,7 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
     // sq2 - black's turn
 
     // it seems that creating a Vec, processing everything first is faster than doing Tensor::zeros() and then stacking them
-    // so i instead work with Vecs, get all of them together and convert them into a single Tensor at the end
+    // instead Vecs are used to get all of the inputs together and convert them into a single Tensor at the end
 
     let us = bs.board().side_to_move();
     let mut scalar_data = vec![0.0; 8];
