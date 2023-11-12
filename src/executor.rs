@@ -99,9 +99,9 @@ pub fn executor_main(
                     let (board_eval, policy) =
                         eval_state(input_tensors, network).expect("Evaluation failed");
                     let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
-                    let evals_per_sec = batch_size as f32 / elapsed;
+                    // let evals_per_sec = batch_size as f32 / elapsed;
                     let _ = evals_per_sec_sender
-                        .send(CollectorMessage::ExecutorStatistics(evals_per_sec));
+                        .send(CollectorMessage::ExecutorStatistics(batch_size as f32));
                     // println!("            thread {}: NN evaluation done! {}s", thread_name, elapsed);
                     // println!("        thread {}: processing outputs:",thread_name);
                     // println!("            thread {}: output tensors: {:?}, {:?}", thread_name, board_eval, policy);
