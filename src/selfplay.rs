@@ -11,6 +11,12 @@ use rand_distr::WeightedIndex;
 use std::time::Instant;
 // selfplay code
 
+pub enum CollectorMessage {
+    FinishedGame(Simulation),
+    GeneratorStatistics(f32),
+    ExecutorStatistics(f32),
+}
+
 #[derive(PartialEq, Clone, Debug, Copy)]
 
 pub struct DataGen {
@@ -18,7 +24,11 @@ pub struct DataGen {
 }
 
 impl DataGen {
-    pub fn play_game(&self, tensor_exe_send: Sender<Packet>) -> Simulation {
+    pub fn play_game(
+        &self,
+        tensor_exe_send: Sender<Packet>,
+        nps_sender: Sender<CollectorMessage>,
+    ) -> Simulation {
         let mut bs = BoardStack::new(Board::default());
         // let mut value: Vec<f32> = Vec::new();
         let mut positions: Vec<Position> = Vec::new();
@@ -60,7 +70,9 @@ impl DataGen {
             // if thread_name == "generator_1" {
             //     println!("{:#}", final_mv,);
             // }
-            println!("thread {}, {:#}, {}nps", thread_name, final_mv, nps);
+            // println!("thread {}, {:#}, {}nps", thread_name, final_mv, nps);
+            println!("{:#}", final_mv);
+            let _ = nps_sender.send(CollectorMessage::GeneratorStatistics(nps));
             bs.play(final_mv);
             positions.push(pos);
         }
@@ -78,14 +90,5 @@ impl DataGen {
         // }
         println!("one done!");
         tz
-    }
-
-    pub fn generate_batch(&mut self) -> Vec<Simulation> {
-        let mut sims: Vec<Simulation> = Vec::new();
-        while sims.len() < self.iterations as usize {
-            // let sim = self.play_game();
-            // sims.push(sim);
-        }
-        sims
     }
 }
