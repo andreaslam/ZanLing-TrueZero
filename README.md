@@ -15,7 +15,9 @@ The chess Engine will then play games against itself using the evaluation to eva
 
 Firstly, download this repository onto your computer. 
 
-```git clone https://github.com/andreaslam/ZanLing-TrueZero```
+```
+git clone https://github.com/andreaslam/ZanLing-TrueZero
+```
 
 Make sure you have Rust installed. If not, follow the instructions [here](https://doc.rust-lang.org/book/ch01-01-installation.html). 
 Make sure you have Python installed. If not, download the latest version [here]([https://doc.rust-lang.org/book/ch01-01-installation.html](https://www.python.org/downloads/)). 
