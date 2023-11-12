@@ -11,10 +11,15 @@ The evaluation learns from randomly generated games with outcomes and move turns
 
 The chess Engine will then play games against itself using the evaluation to evaluate chess positions, done using [Monte Carlo Tree Search (MCTS)]([https://en.wikipedia.org/wiki/Negamax#Negamax_with_alpha_beta_pruning](https://en.wikipedia.org/wiki/Monte_Carlo_tree_search)).
 
-## How all this works in more detail 
-
-
 ## Engine setup
+
+Firstly, download this repository onto your computer. 
+
+```git clone https://github.com/andreaslam/ZanLing-TrueZero```
+
+Make sure you have Rust installed. If not, follow the instructions [here](https://doc.rust-lang.org/book/ch01-01-installation.html). 
+Make sure you have Python installed. If not, download the latest version [here]([https://doc.rust-lang.org/book/ch01-01-installation.html](https://www.python.org/downloads/)). 
+Configure `tch-rs` from the instructions [here](https://github.com/LaurentMazare/tch-rs/blob/main/README.md). For now, the neural net for this project is not provided but the NN architecture is available [here](https://github.com/andreaslam/ZanLing-TrueZero/blob/main/network.py) for reference.
 
 ## Features in progress
 Rewrite in progress! After careful consideration, TrueZero will be written in Rust. 
