@@ -23,6 +23,20 @@ Make sure you have Rust installed. If not, follow the instructions [here](https:
 Make sure you have Python installed. If not, download the latest version [here]([https://doc.rust-lang.org/book/ch01-01-installation.html](https://www.python.org/downloads/)). 
 Configure `tch-rs` from the instructions [here](https://github.com/LaurentMazare/tch-rs/blob/main/README.md). For now, the neural net for this project is not provided but the NN architecture is available [here](https://github.com/andreaslam/ZanLing-TrueZero/blob/main/network.py) for reference.
 
+Navigate to `ZanLing-TrueZero`:
+
+```
+cd ZanLing-TrueZero
+```
+
+Then, build using `cargo`:
+
+```
+cargo build
+```
+
+Then choose a binary to run!
+
 ## Features in progress
 Rewrite in progress! After careful consideration, TrueZero will be written in Rust. 
 
