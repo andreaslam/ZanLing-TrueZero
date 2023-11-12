@@ -30,11 +30,9 @@ impl DataGen {
             let sw = Instant::now();
             let (mv, v_p, move_idx_piece, search_data, visits) =
                 get_move(bs.clone(), tensor_exe_send.clone());
-            let elapsed = sw.elapsed().as_secs();
+            let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
             let final_mv = if positions.len() > 30 {
                 // when tau is "infinitesimally small", pick the best move
-                let nps = MAX_NODES as u64 / elapsed as u64;
-                println!("thread {}, {:#}, {}nps", thread_name, mv, nps);
                 mv
             } else {
                 let weighted_index = WeightedIndex::new(&search_data.policy).unwrap();
@@ -47,8 +45,6 @@ impl DataGen {
                     legal_moves.extend(moves);
                     false
                 });
-                let nps = MAX_NODES as u64 / elapsed;
-                println!("thread {}, {:#}, {}nps", thread_name, mv, nps);
                 legal_moves[sampled_idx]
             };
 
@@ -60,6 +56,11 @@ impl DataGen {
                 zero_evaluation: search_data, // q
                 net_evaluation: v_p,          // v
             };
+            let nps = MAX_NODES as f32 / elapsed;
+            // if thread_name == "generator_1" {
+            //     println!("{:#}", final_mv,);
+            // }
+            println!("thread {}, {:#}, {}nps", thread_name, final_mv, nps);
             bs.play(final_mv);
             positions.push(pos);
         }
@@ -72,6 +73,9 @@ impl DataGen {
             positions,
             final_board: bs,
         };
+        // if thread_name == "generator_1" {
+        //     println!("one done!");
+        // }
         println!("one done!");
         tz
     }
