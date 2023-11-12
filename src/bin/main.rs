@@ -11,17 +11,27 @@ use tz_rust::{
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
     let (game_sender, game_receiver) = flume::bounded::<Simulation>(1);
-    let num_threads = 32;
+    let num_threads = 512;
+    let num_executors = 2;
+
 
     thread::scope(|s| {
-        let mut selfplay_masters: Vec<DataGen> = Vec::new();
 
+        let mut selfplay_masters: Vec<DataGen> = Vec::new();
         // commander
-        let (communicate_exe_send, communicate_exe_recv) = flume::bounded::<String>(1);
+        
+        let mut vec_communicate_exe_send: Vec<Sender<String>> = Vec::new();
+        let mut vec_communicate_exe_recv: Vec<Receiver<String>> = Vec::new();
+        
+        for _ in 0..num_executors {
+            let (communicate_exe_send, communicate_exe_recv) = flume::bounded::<String>(1);
+            vec_communicate_exe_send.push(communicate_exe_send);
+            vec_communicate_exe_recv.push(communicate_exe_recv);
+        }
 
         s.builder()
             .name("commander".to_string())
-            .spawn(|_| commander_main(communicate_exe_send))
+            .spawn(|_| commander_main(vec_communicate_exe_send))
             .unwrap();
 
         // s.spawn(move |_| {
@@ -32,7 +42,19 @@ fn main() {
         // let mut tensor_senders: Vec<Receiver<Tensor>> = Vec::new(); // sent FROM mcts to executor
         let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(1); // mcts to executor
                                                                               // let (eval_exe_send, eval_exe_recv) = flume::bounded::<Message>(1); // executor to mcts
+        // let mut exe_count = 0;
         for n in 0..num_threads {
+
+            // // executor
+            // if n % num_executors == 0 {
+            //     let communicate_exe_recv_clone = communicate_exe_recv.clone();
+            //     let tensor_exe_recv_clone = tensor_exe_recv.clone();
+            //     s.builder()
+            //     .name(format!("executor_{}", exe_count.to_string()))
+            //     .spawn(move |_| executor_main(communicate_exe_recv_clone, tensor_exe_recv_clone, num_threads))
+            //     .unwrap();
+            //     exe_count += 1;
+            // }
             // sender-receiver pair to communicate for each thread instance to the executor
             let sender_clone = game_sender.clone();
             let mut selfplay_master = DataGen { iterations: 1 };
@@ -62,11 +84,18 @@ fn main() {
         //     collector_main(&game_receiver);
         // });
         // executor
+        let mut n = 0;
+        for communicate_exe_recv in vec_communicate_exe_recv {
+            // send/recv pair between executor and commander
 
-        s.builder()
-            .name("executor".to_string())
-            .spawn(|_| executor_main(communicate_exe_recv, tensor_exe_recv, num_threads))
-            .unwrap();
+            // let communicate_exe_recv_clone = communicate_exe_recv.clone();
+            let tensor_exe_recv_clone = tensor_exe_recv.clone();
+            s.builder()
+                .name(format!("executor_{}", n.to_string()))
+                .spawn(move |_| executor_main(communicate_exe_recv, tensor_exe_recv_clone, num_threads /num_executors))
+                .unwrap();
+            n += 1;
+        }
 
         // s.spawn(move |_| {
         //     executor_main(communicate_exe_recv);
@@ -93,7 +122,7 @@ fn collector_main(receiver: &Receiver<Simulation>) {
     loop {
         let sim = receiver.recv().unwrap();
         let _ = bin_output.append(&sim).unwrap();
-        println!("{}", bin_output.game_count());
+        // println!("{}", bin_output.game_count());
         if bin_output.game_count() >= 5 {
             counter += 1;
             let _ = bin_output.finish().unwrap();
@@ -101,12 +130,14 @@ fn collector_main(receiver: &Receiver<Simulation>) {
         }
     }
 }
-fn commander_main(exe_sender: Sender<String>) {
+fn commander_main(vec_exe_sender: Vec<Sender<String>>) {
     loop {
-        exe_sender
-            .send("chess_16x128_gen3634.pt".to_string())
-            .unwrap();
-        // println!("SENT!");
-        sleep(Duration::from_secs(1));
+        for exe_sender in vec_exe_sender.clone() {
+            exe_sender
+                .send("chess_16x128_gen3634.pt".to_string())
+                .unwrap();
+            // println!("SENT!");
+        } 
+        sleep(Duration::from_secs(10000000000000000000));
     }
 }
