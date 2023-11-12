@@ -283,7 +283,7 @@ impl fmt::Display for Tree {
     }
 }
 
-#[derive(PartialEq, Clone, Debug)] // maybe display and debug as helper funcs to check impl
+#[derive(PartialEq, Clone, Debug)]
 pub struct Node {
     parent: Option<usize>,
     pub children: Range<usize>,
