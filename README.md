@@ -87,13 +87,13 @@ This Python and Rust Engine uses the following:
 
 ## Credits and Acknowledgements
 
-I would like to extend my heartfelt thanks to [Karel Peeters](https://github.com/KarelPeeters) for your persistent help and guidance, from explaining MCTS and the mechanisms of AlphaZero. Without you this project would not been possible. 
+I would like to extend my heartfelt thanks to **[Karel Peeters](https://github.com/KarelPeeters)** for your persistent help and guidance, from explaining MCTS and the mechanisms of AlphaZero. Without you this project would not been possible. 
 
 Portions/entire files of code are being used in this Repository, which include:
 
-- rust/dirichlet.rs
-- rust/fileformat.rs
-- rust/dataformat.rs
+- `rust/dirichlet.rs`
+- `rust/fileformat.rs`
+- `rust/dataformat.rs`
 and the `lib` folder used for reading [KZero's](https://github.com/KarelPeeters/kZero) custom data format
 
 
