@@ -97,6 +97,4 @@ Portions/entire files of code are being used in this Repository, which include:
 - the `lib` folder used for reading [KZero's](https://github.com/KarelPeeters/kZero) custom data format and training
 
 
-*database not uploaded to this GitHub repository
-
 
