@@ -94,7 +94,7 @@ Portions/entire files of code are being used in this Repository, which include:
 - `rust/dirichlet.rs`
 - `rust/fileformat.rs`
 - `rust/dataformat.rs`
-and the `lib` folder used for reading [KZero's](https://github.com/KarelPeeters/kZero) custom data format
+- the `lib` folder used for reading [KZero's](https://github.com/KarelPeeters/kZero) custom data format and training
 
 
 *database not uploaded to this GitHub repository
