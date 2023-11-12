@@ -1,17 +1,16 @@
-use std::env;
-use stopwatch::Stopwatch;
+use std::{env, time::Instant};
 use tch::Tensor;
 use tz_rust::{decoder::eval_state, mcts_trainer::Net};
 
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
-    let net = Net::new();
+    let net = Net::new("chess_16x128_gen3634.pt");
     let mut avg = Vec::new();
-    const BATCH_SIZE: usize = 128;
+    const BATCH_SIZE: usize = 32;
 
     // warmup loop
 
-    for _ in 0..10 {
+    for _ in 0..100 {
         let data = Tensor::from_slice(&[0.0 as f32; 1344 * BATCH_SIZE]); // 8*8*21 = 1344
         (_, _) = eval_state(data, &net).expect("Error");
     }
@@ -19,13 +18,11 @@ fn main() {
     // timed, benchmarked loop
 
     for _ in 0..100 {
-        let mut sw = Stopwatch::new();
         let data = Tensor::from_slice(&[0.0 as f32; 1344 * BATCH_SIZE]); // 8*8*21 = 1344
-        sw.start();
+        let sw = Instant::now();
         (_, _) = eval_state(data, &net).expect("Error");
-        sw.stop();
-        println!("Elapsed time: {}ms", sw.elapsed_ms());
-        let eps = BATCH_SIZE.clone() as f32 / (sw.elapsed_ms() as f32 / 1000.0);
+        println!("Elapsed time: {}s", sw.elapsed().as_nanos() as f32 / 1e9);
+        let eps = BATCH_SIZE.clone() as f32 / (sw.elapsed().as_nanos() as f32 / 1e9);
         println!("Evaluations per second: {} evals/s", eps);
         avg.push(eps);
     }
