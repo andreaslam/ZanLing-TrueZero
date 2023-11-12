@@ -89,12 +89,12 @@ This Python and Rust Engine uses the following:
 
 I would like to extend my heartfelt thanks to **[Karel Peeters](https://github.com/KarelPeeters)** for your persistent help and guidance, from explaining MCTS to the mechanisms of AlphaZero. Without you this project would not been possible. 
 
-Portions/entire files of code from KZero are being used in this Repository with express permission from Karel, which include:
+Portions/entire files of code from [KZero](https://github.com/KarelPeeters/kZero) are being used in this Repository with express permission from Karel, which include:
 
 - `rust/dirichlet.rs`
 - `rust/fileformat.rs`
 - `rust/dataformat.rs`
-- the `lib` folder used for reading [KZero's](https://github.com/KarelPeeters/kZero) custom data format and training
+- the `lib` folder used for reading KZero's custom data format and training
 
 
 
