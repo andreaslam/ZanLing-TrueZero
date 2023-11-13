@@ -46,7 +46,6 @@ Rewrite in progress! After careful consideration, TrueZero will be written in Ru
 - Create a [Data Engine](https://www.youtube.com/watch?v=zPH5O8hRfMA) where games are taken automatically and put to training DB and newly trained AIs can play against each other 24/7
 
 ## What each file does
-### Evaluation Engines (NN files)
 
 ### Internal testing (non-UCI compliant)
 - `getdecode.rs` - used for internal testing. Used for obtaining the encoded NN inputs.
@@ -69,13 +68,6 @@ Rewrite in progress! After careful consideration, TrueZero will be written in Ru
 This Python and Rust Engine uses the following:
 - **Pytorch** - used for creating NN
 - **Numpy** - used for processing data (chess board representation after one-hot encoding, handling final outcome and final game  result
-- **Scikitlearn** - used minimally for splitting data into train/validation sets (will be replaced with Pytorch DataLoader in the future)
-- **Python Chess** - used for handling board-related code
-- **Cython** - used for running files at faster speeds instead of running on Vanilla Python 
-- **Setuptools** - used in tandem with Cython to Cythonise the Python code
-- **SQLite3** - used for writing/accessing data to the SQL database
-- **tqdm** - used as progress bar 
-- **multiprocessing** - used for parallelisation of code
 
 ### Rust
 
