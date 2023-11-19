@@ -17,6 +17,8 @@ pub struct ReturnPacket {
 pub enum Message {
     NewNetwork(Result<String, RecvError>),
     JobTensor(Result<Packet, RecvError>), // (converted) tensor from mcts search that needs NN evaluation
+    
+    StopServer(), // end the executor process
 }
 
 pub enum ReturnMessage {
@@ -76,6 +78,9 @@ pub fn executor_main(
 
         let message = selector.wait();
         match message {
+            Message::StopServer() => {
+                break
+            }
             Message::NewNetwork(Ok(graph)) => {
                 // println!("    NEW NET!");
                 handle_new_graph(&mut network, Some(graph), &thread_name);
@@ -134,6 +139,90 @@ pub fn executor_main(
         }
         let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
         // println!("thread {}, elapsed time: {}s", thread_name, elapsed);
+        debug_counter += 1;
+    }
+    // Return the senders to avoid them being dropped and disconnected
+}
+
+
+pub fn executor_static(
+    net_path: String,
+    tensor_receiver: Receiver<Packet>, // receive tensors from mcts
+    ctrl_receiver: Receiver<Message>, // receive control messages
+    num_threads: usize,
+) {
+    let max_batch_size = min(256, num_threads);
+    let mut network: Option<Net> = None;
+    let thread_name = std::thread::current()
+        .name()
+        .unwrap_or("unnamed-executor")
+        .to_owned();
+    let mut input_vec: VecDeque<Tensor> = VecDeque::new();
+    let mut debug_counter = 0;
+    let mut output_senders: VecDeque<Sender<ReturnMessage>> = VecDeque::new();
+    let mut id_vec: VecDeque<String> = VecDeque::new();
+
+    handle_new_graph(&mut network, Some(net_path), thread_name.as_str());
+
+    loop {
+        let sw = Instant::now();
+
+        let mut selector = Selector::new();
+
+        // Register all receivers in the selector
+        selector = selector.recv(&tensor_receiver, |res| Message::JobTensor(res));
+        selector = selector.recv(&ctrl_receiver, |_| Message::StopServer());
+        let message = selector.wait();
+
+        match message {
+            Message::StopServer() => {
+                break;
+            }
+            Message::NewNetwork(_) => {
+                unreachable!(); // Handle new network message if needed
+            }
+            Message::JobTensor(job) => {
+                let job = job.expect("JobTensor should be available");
+                let network = network.as_mut().expect("Network should be available");
+
+                input_vec.push_back(job.job);
+                output_senders.push_back(job.resender);
+                id_vec.push_back(job.id);
+
+                while input_vec.len() >= max_batch_size {
+                    let batch_size = min(max_batch_size, input_vec.len());
+                    let i_v = input_vec.make_contiguous();
+                    let input_tensors = Tensor::cat(&i_v[..batch_size], 0);
+
+                    let sw_inference = Instant::now();
+                    let (board_eval, policy) =
+                        eval_state(input_tensors, network).expect("Evaluation failed");
+                    let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
+
+                    for i in 0..batch_size {
+                        let sender = output_senders
+                            .pop_front()
+                            .expect("There should be a sender for each job");
+                        let id = id_vec
+                            .pop_front()
+                            .expect("There should be an ID for each job");
+                        let result = (
+                            board_eval.get(i as i64),
+                            policy.get(i as i64)
+                        );
+                        let return_pack = ReturnPacket {
+                            packet: result,
+                            id
+                        };
+                        sender
+                            .send(ReturnMessage::ReturnMessage(Ok(return_pack)))
+                            .expect("Should be able to send the result");
+                    }
+                    drop(input_vec.drain(0..batch_size));
+                }
+            }
+        }
+        let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
         debug_counter += 1;
     }
     // Return the senders to avoid them being dropped and disconnected
