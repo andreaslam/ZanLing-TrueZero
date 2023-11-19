@@ -79,7 +79,7 @@ This Python and Rust Engine uses the following:
 
 ## Credits and Acknowledgements
 
-I would like to extend my heartfelt thanks to **[Karel Peeters](https://github.com/KarelPeeters)** for his persistent help and guidance. Without you this project would not been possible. 
+I would like to extend my heartfelt thanks to **[Karel Peeters](https://github.com/KarelPeeters)** for his persistent help and guidance. Without him this project would not been possible. 
 
 Portions/entire files of code from [KZero](https://github.com/KarelPeeters/kZero) are being used in this Repository with express permission from Karel, which include:
 
