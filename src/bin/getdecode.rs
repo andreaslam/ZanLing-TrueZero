@@ -1,6 +1,6 @@
 use cozy_chess::Board;
 use std::{env, time::Instant};
-use tz_rust::{boardmanager::BoardStack, decoder::convert_board, decoder::eval_board};
+use tz_rust::{boardmanager::BoardStack, decoder::convert_board};
 
 fn main() {
     // test board conversion
