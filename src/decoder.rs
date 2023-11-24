@@ -11,7 +11,7 @@ pub fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> 
     let b = board;
     // let b = b.unsqueeze(0);
     let b = b.reshape([-1, 21, 8, 8]);
-    // println!("{:?}", b.size());
+    // // println!("{:?}", b.size());
     let b: Tensor = b.to(net.device);
     let board = IValue::Tensor(b);
     let output = net.net.forward_is(&[board])?;
@@ -31,22 +31,7 @@ pub fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> 
     Ok((board_eval.clone(board_eval), policy.clone(policy)))
 }
 
-pub fn convert_board(bs: &BoardStack) -> Tensor {
-    // FULL LIST HERE:
-    // sq1 - white's turn
-    // sq2 - black's turn
-    // sq3, sq4 - castling pos l + r (us)
-    // sq5, sq6 - castling pos l + r (opponent)
-    // sql7, sql8 -  sqs for bits for the repetition counter
-    // sq9 - sq20 - sqs for turn to move + non-turn to move's pieces
-    // sq21 - en passant square if any
-
-    // sq1 - white's turn
-    // sq2 - black's turn
-
-    // it seems that creating a Vec, processing everything first is faster than doing Tensor::zeros() and then stacking them
-    // instead Vecs are used to get all of the inputs together and convert them into a single Tensor at the end
-
+pub fn board_data(bs: &BoardStack) -> (Vec<f32>, Vec<bool>) {
     let us = bs.board().side_to_move();
     let mut scalar_data = vec![0.0; 8];
     if bs.board().side_to_move() == Color::Black {
@@ -77,19 +62,17 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
     scalar_data[6] = bs.get_reps() as f32;
     scalar_data[7] = bs.board().halfmove_clock() as f32;
 
-    // flatten to 1d
-
     let mut counter = 0;
-    let mut pieces_sqs: Vec<f32> = vec![0.0; 64 * 12];
+    let mut pieces_sqs: Vec<bool> = vec![false; 64 * 12];
     for colour in li {
         for piece in Piece::ALL {
             for tile in bs.board().colored_pieces(colour, piece) {
                 if li[0] == Color::Black {
                     pieces_sqs[(63 - (tile.rank() as usize * 8 + (7 - tile.file() as usize)))
-                        + (64 * counter)] = 1.0;
+                        + (64 * counter)] = true;
                 } else {
                     pieces_sqs[(tile.rank() as usize * 8 + tile.file() as usize) + 64 * counter] =
-                        1.0;
+                        true;
                 }
             }
             counter += 1
@@ -98,26 +81,47 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
 
     let is_ep = bs.board().en_passant();
     // let fenstr = format!("{}", bs.board());
-    // println!("    board FEN: {}", fenstr);
-    // println!("En passant status: {:?}", is_ep);
-    let mut sq21: Vec<f32> = vec![0.0; 64];
+    // // println!("    board FEN: {}", fenstr);
+    // // println!("En passant status: {:?}", is_ep);
+    let mut sq21: Vec<bool> = vec![false; 64];
     match is_ep {
         Some(is_ep) => {
             if us == Color::White {
                 // 4 for white and 5 for black for victim
                 let row = Rank::Fourth;
                 let ep_sq = Square::new(is_ep, row);
-                sq21[ep_sq.rank() as usize * 8 + ep_sq.file() as usize] = 1.0;
+                sq21[ep_sq.rank() as usize * 8 + ep_sq.file() as usize] = true;
             } else {
                 let row = Rank::Fifth;
                 let ep_sq = Square::new(is_ep, row);
-                sq21[63 - (ep_sq.rank() as usize * 8 + (7 - ep_sq.file() as usize))] = 1.0;
+                sq21[63 - (ep_sq.rank() as usize * 8 + (7 - ep_sq.file() as usize))] = true;
             }
         }
         None => {}
     };
+    pieces_sqs.extend(sq21);
+    (scalar_data, pieces_sqs)
+}
+
+pub fn convert_board(bs: &BoardStack) -> Tensor {
+    // FULL LIST HERE:
+    // sq1 - white's turn
+    // sq2 - black's turn
+    // sq3, sq4 - castling pos l + r (us)
+    // sq5, sq6 - castling pos l + r (opponent)
+    // sql7, sql8 -  sqs for bits for the repetition counter
+    // sq9 - sq20 - sqs for turn to move + non-turn to move's pieces
+    // sq21 - en passant square if any
+
+    // sq1 - white's turn
+    // sq2 - black's turn
+
+    // it seems that creating a Vec, processing everything first is faster than doing Tensor::zeros() and then stacking them
+    // so i instead work with Vecs, get all of them together and convert them into a single Tensor at the end
 
     let mut all_data: Vec<f32> = Vec::new();
+
+    let (scalar_data, pieces_sqs) = board_data(bs);
 
     for v in &scalar_data {
         for _ in 0..64 {
@@ -125,8 +129,8 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
         }
     }
 
-    all_data.extend(pieces_sqs);
-    all_data.extend(sq21);
+    all_data.extend(pieces_sqs.iter().map(|&x|x as u8 as f32));
+
 
     let all_data = Tensor::from_slice(&all_data);
     all_data // all_data is 1d
@@ -214,7 +218,7 @@ pub fn process_board_output(
         pol_list.push(policy[*id]);
     }
 
-    // println!("{:?}", pol_list);
+    // // println!("{:?}", pol_list);
 
     // step 3 - softmax
 
@@ -224,9 +228,11 @@ pub fn process_board_output(
 
     let pol_list: Vec<f32> = Vec::try_from(sm).expect("Error");
 
-    // println!("{:?}", pol_list);
+    // // println!("{:?}", pol_list);
 
-    // println!("        V={}", &value);
+    // // println!("        V={}", &value);
+
+    // println!("        Value={}", &value);
 
     // step 4 - iteratively append nodes into class
     let mut counter = 0;
@@ -234,7 +240,7 @@ pub fn process_board_output(
     // tree.nodes[*selected_node_idx].eval_score = 0.0;
     let ct = tree.nodes.len();
     for (mv, pol) in legal_moves.iter().zip(pol_list.iter()) {
-        // println!("VAL {}", value);
+        // // println!("VAL {}", value);
         let fm: Move;
         if bs.board().side_to_move() == Color::Black {
             // flip move
@@ -249,11 +255,11 @@ pub fn process_board_output(
         // FLAT POLICY VER
         // let child = Node::new(1.0/legal_moves.len() as f32, Some(*selected_node_idx), Some(fm));
         let child = Node::new(*pol, Some(*selected_node_idx), Some(fm));
-        // println!("{:?}, {:?}, {:?}", mv, child.policy, child.eval_score);
+        // // println!("{:?}, {:?}, {:?}", mv, child.policy, child.eval_score);
         tree.nodes.push(child); // push child to the tree Vec<Node>
         counter += 1
     }
     tree.nodes[*selected_node_idx].children = ct..ct + counter; // push numbers
-                                                                // println!("{:?}", tree.nodes.len());
+                                                                // // println!("{:?}", tree.nodes.len());
     idx_li
 }
