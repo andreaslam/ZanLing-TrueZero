@@ -1,5 +1,5 @@
 use cozy_chess::Board;
-use std::{convert, env, time::Instant};
+use std::{env, time::Instant};
 use tz_rust::{boardmanager::BoardStack, decoder::convert_board, decoder::eval_board};
 
 fn main() {
@@ -13,7 +13,7 @@ fn main() {
     let bs = BoardStack::new(board);
     let sw = Instant::now();
     let converted_tensor = convert_board(&bs);
-    let print_vec: Vec<f32> = Vec::try_from(converted_tensor).expect("Error");
-    println!("{:?}", print_vec);
     println!("Elapsed time: {}ms", sw.elapsed().as_nanos() as f32 / 1e6);
+    let converted_tensor = converted_tensor.reshape([21,8,8]);
+    converted_tensor.print();
 }
