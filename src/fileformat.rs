@@ -11,7 +11,7 @@ use std::{
 use crate::{
     boardmanager::BoardStack,
     dataformat::{Position, Simulation},
-    decoder::convert_board,
+    decoder::{convert_board, board_data},
     mvs::get_contents,
 };
 
@@ -237,16 +237,30 @@ impl BinaryOutput {
         policy_values: &[f32],
     ) -> io::Result<()> {
         // encode board
-        let board_bools: Vec<f32> =
-            Vec::try_from(convert_board(board)).unwrap()[8 * 64 - 1..].to_vec();
-        let board_scalars: Vec<f32> =
-            Vec::try_from(convert_board(board)).unwrap()[0..8 * 64].to_vec();
+
+        let (board_scalars, board_bools) = board_data(board);
         // assert_eq!(self.mapper.input_bool_len(), board_bools.len());
         // assert_eq!(self.mapper.input_scalar_count(), board_scalars.len());
         // assert_eq!(
         //     (self.mapper.input_bool_len() + 7) / 8,
         //     board_bools.storage().len()
         // );
+        
+        // converting bools into u8s (8 bools = 1 u8)
+
+        assert_eq!(board_bools.len() % 8, 0);
+            
+        let mut byte_vec: Vec<u8> = Vec::new();
+
+        for i in 0..board_bools.len() / 8 {
+            let mut byte: u8 = 0;
+            for j in 0..8 {
+                let b = board_bools[i*8+j];
+                byte |= (b as u8) << j;
+                // byte[j] = b
+            }
+            byte_vec.push(byte);
+        }
 
         // check that everything makes sense
         let policy_len = policy_indices.len();
@@ -267,7 +281,7 @@ impl BinaryOutput {
         let scalars = scalars.to_vec();
         let data_to_write: &[&[u8]] = &[
             cast_slice(&scalars),
-            cast_slice(&board_bools),
+            &byte_vec,
             cast_slice(&board_scalars),
             cast_slice(policy_indices),
             cast_slice(policy_values),
@@ -335,8 +349,10 @@ fn collect_policy_indices(board: &BoardStack) -> (usize, Vec<u32>) {
                 false
             });
 
+            let mv_l = get_contents();
+
             for m in move_list.clone() {
-                policy_indices.push(move_list.iter().position(|&x| x == m).unwrap() as u32);
+                policy_indices.push(mv_l.iter().position(|&x| x == m).unwrap() as u32);
             }
 
             (policy_indices.len(), policy_indices)
