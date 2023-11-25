@@ -11,7 +11,7 @@ use std::{
 use crate::{
     boardmanager::BoardStack,
     dataformat::{Position, Simulation},
-    decoder::{convert_board, board_data},
+    decoder::{board_data, convert_board},
     mvs::get_contents,
 };
 
@@ -245,17 +245,17 @@ impl BinaryOutput {
         //     (self.mapper.input_bool_len() + 7) / 8,
         //     board_bools.storage().len()
         // );
-        
+
         // converting bools into u8s (8 bools = 1 u8)
 
         assert_eq!(board_bools.len() % 8, 0);
-            
+
         let mut byte_vec: Vec<u8> = Vec::new();
 
         for i in 0..board_bools.len() / 8 {
             let mut byte: u8 = 0;
             for j in 0..8 {
-                let b = board_bools[i*8+j];
+                let b = board_bools[i * 8 + j];
                 byte |= (b as u8) << j;
                 // byte[j] = b
             }
@@ -350,9 +350,16 @@ fn collect_policy_indices(board: &BoardStack) -> (usize, Vec<u32>) {
             });
 
             let mv_l = get_contents();
-
             for m in move_list.clone() {
-                policy_indices.push(mv_l.iter().position(|&x| x == m).unwrap() as u32);
+                let mut fm = m;
+                if board.board().side_to_move() == Color::Black {
+                    fm = Move {
+                        from: m.from.flip_rank(),
+                        to: m.to.flip_rank(),
+                        promotion: m.promotion,
+                    };
+                }
+                policy_indices.push(mv_l.iter().position(|&x| x == fm).unwrap() as u32);
             }
 
             (policy_indices.len(), policy_indices)
