@@ -2,21 +2,23 @@ use crossbeam::thread;
 use flume::{Receiver, Sender};
 use std::{
     env,
+    io::Write,
+    net::{TcpListener, TcpStream},
     thread::sleep,
     time::{Duration, Instant},
 };
 use tz_rust::{
-    dataformat::Simulation,
     executor::{executor_main, Packet},
     fileformat::BinaryOutput,
     selfplay::{CollectorMessage, DataGen},
 };
 
 fn main() {
+    let listener = TcpListener::bind("127.0.0.1:8080").expect("Failed to bind to address");
     env::set_var("RUST_BACKTRACE", "1");
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
-    let num_threads = 1024;
-    let num_executors = 4;
+    let num_threads = 5;
+    let num_executors = 1;
     thread::scope(|s| {
         let mut selfplay_masters: Vec<DataGen> = Vec::new();
         // commander
@@ -137,6 +139,7 @@ fn collector_main(receiver: &Receiver<CollectorMessage>) {
     let mut nps_start_time = Instant::now();
     let mut evals_start_time = Instant::now();
     let mut nps_vec: Vec<f32> = Vec::new();
+    let mut path: String;
     loop {
         let msg = receiver.recv().unwrap();
         match msg {
@@ -146,13 +149,16 @@ fn collector_main(receiver: &Receiver<CollectorMessage>) {
                 if bin_output.game_count() >= 5 {
                     counter += 1;
                     let _ = bin_output.finish().unwrap();
-                    bin_output = BinaryOutput::new(format!("games_{}", counter), "chess").unwrap();
+                    path = format!("games_{}", counter);
+                    bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
+                    let stream = TcpStream::connect("127.0.0.1:8080");
+                    let _ = stream.expect("REASON").write_all(path.clone().as_bytes());
                 }
             }
             CollectorMessage::GeneratorStatistics(nps) => {
                 if nps_start_time.elapsed() >= Duration::from_secs(1) {
                     let nps: f32 = nps_vec.iter().sum();
-                    println!("{} nps", nps);
+                    // println!("{} nps", nps);
                     nps_start_time = Instant::now();
                     nps_vec = Vec::new();
                 } else {
@@ -162,7 +168,7 @@ fn collector_main(receiver: &Receiver<CollectorMessage>) {
             CollectorMessage::ExecutorStatistics(evals_per_sec) => {
                 if evals_start_time.elapsed() >= Duration::from_secs(1) {
                     let nps: f32 = nps_vec.iter().sum();
-                    println!("{} evals/s", nps);
+                    // println!("{} evals/s", nps);
                     evals_start_time = Instant::now();
                     nps_vec = Vec::new();
                 } else {
