@@ -2,57 +2,34 @@ use crossbeam::thread;
 use flume::{Receiver, Sender};
 use std::{
     env,
-    io::Write,
-    net::{TcpListener, TcpStream},
+    io::{Read, Write},
+    net::TcpStream,
     thread::sleep,
     time::{Duration, Instant},
 };
 use tz_rust::{
+    dataformat::Simulation,
     executor::{executor_main, Packet},
     fileformat::BinaryOutput,
     selfplay::{CollectorMessage, DataGen},
 };
+
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
-    let listener = TcpListener::bind("127.0.0.1:8080").expect("Failed to bind to address");
-
-    let num_threads = 5;
-    let num_executors = 1;
-    let mut n = 0;
-
-    thread::scope(|s| {
-        for stream in listener.incoming() {
-            match stream {
-                Ok(stream) => {
-                    println!("New connection: {:?}", stream.peer_addr().unwrap());
-                    let thread_name = format!("datagen_{}", n.to_string());
-
-                    thread::scope(|s| {
-                        let _ = s
-                            .builder()
-                            .name(thread_name)
-                            .spawn(move |_| datagen(num_threads, num_executors));
-                    })
-                    .unwrap();
-
-                    n += 1; // Move the increment inside the thread::scope closure
-                }
-                Err(e) => {
-                    eprintln!("Error: {}", e);
-                }
-            }
-        }
-    })
-    .unwrap();
-}
-fn datagen(num_threads: usize, num_executors: usize) {
-    let thread_name = std::thread::current()
-        .name()
-        .unwrap_or("unnamed-datagen")
-        .to_owned();
-
-    println!("spawned: {}", thread_name);
+    // connect to python-rust server
+    let mut stream = loop {
+        match TcpStream::connect("127.0.0.1:8080") {
+            Ok(s) => break s,
+            Err(_) => continue,
+        };
+    };
+    stream
+        .write_all("rust-datagen".as_bytes())
+        .expect("Failed to send data");
+    println!("Connected to server!");
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
+    let num_threads = 1024;
+    let num_executors = 4;
     thread::scope(|s| {
         let mut selfplay_masters: Vec<DataGen> = Vec::new();
         // commander
@@ -68,7 +45,12 @@ fn datagen(num_threads: usize, num_executors: usize) {
 
         s.builder()
             .name("commander".to_string())
-            .spawn(|_| commander_main(vec_communicate_exe_send))
+            .spawn(|_| {
+                commander_main(
+                    vec_communicate_exe_send,
+                    &mut stream.try_clone().expect("clone failed"),
+                )
+            })
             .unwrap();
 
         // s.spawn(move |_| {
@@ -119,7 +101,12 @@ fn datagen(num_threads: usize, num_executors: usize) {
 
         s.builder()
             .name("collector".to_string())
-            .spawn(|_| collector_main(&game_receiver))
+            .spawn(|_| {
+                collector_main(
+                    &game_receiver,
+                    &mut stream.try_clone().expect("clone failed"),
+                )
+            })
             .unwrap();
 
         // s.spawn(move |_| {
@@ -167,13 +154,12 @@ fn generator_main(
     }
 }
 
-fn collector_main(receiver: &Receiver<CollectorMessage>) {
+fn collector_main(receiver: &Receiver<CollectorMessage>, server_handle: &mut TcpStream) {
     let mut counter = 0;
     let mut bin_output = BinaryOutput::new(format!("games_{}", counter), "chess").unwrap();
     let mut nps_start_time = Instant::now();
     let mut evals_start_time = Instant::now();
     let mut nps_vec: Vec<f32> = Vec::new();
-    let mut path: String;
     loop {
         let msg = receiver.recv().unwrap();
         match msg {
@@ -183,16 +169,16 @@ fn collector_main(receiver: &Receiver<CollectorMessage>) {
                 if bin_output.game_count() >= 5 {
                     counter += 1;
                     let _ = bin_output.finish().unwrap();
-                    path = format!("games_{}", counter);
+                    let path = format!("games_{}", counter);
                     bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
-                    let stream = TcpStream::connect("127.0.0.1:8080");
-                    let _ = stream.expect("REASON").write_all(path.clone().as_bytes());
+                    let message = format!("new-file: {}", path.clone());
+                    server_handle.write_all(message.as_bytes()).unwrap();
                 }
             }
             CollectorMessage::GeneratorStatistics(nps) => {
                 if nps_start_time.elapsed() >= Duration::from_secs(1) {
                     let nps: f32 = nps_vec.iter().sum();
-                    // println!("{} nps", nps);
+                    println!("{} nps", nps);
                     nps_start_time = Instant::now();
                     nps_vec = Vec::new();
                 } else {
@@ -202,7 +188,7 @@ fn collector_main(receiver: &Receiver<CollectorMessage>) {
             CollectorMessage::ExecutorStatistics(evals_per_sec) => {
                 if evals_start_time.elapsed() >= Duration::from_secs(1) {
                     let nps: f32 = nps_vec.iter().sum();
-                    // println!("{} evals/s", nps);
+                    println!("{} evals/s", nps);
                     evals_start_time = Instant::now();
                     nps_vec = Vec::new();
                 } else {
@@ -213,14 +199,38 @@ fn collector_main(receiver: &Receiver<CollectorMessage>) {
     }
 }
 
-fn commander_main(vec_exe_sender: Vec<Sender<String>>) {
+fn commander_main(vec_exe_sender: Vec<Sender<String>>, server_handle: &mut TcpStream) {
+    let mut curr_net = String::new(); // Changed to String type
+    let mut buffer = [0; 16384];
     loop {
-        for exe_sender in vec_exe_sender.clone() {
-            exe_sender
-                .send("chess_16x128_gen3634.pt".to_string())
-                .unwrap();
-            // println!("SENT!");
+        let recv_net = server_handle.read(&mut buffer).unwrap();
+
+        match server_handle.read(&mut buffer) {
+            Ok(recv_net) if recv_net == 0 => {
+                // no more data, connection closed by server
+                println!("Server closed the connection");
+                break;
+            }
+            Ok(_) => {
+                let net_path = String::from_utf8_lossy(&buffer[..recv_net]).to_string(); // Convert received bytes to String
+
+                if curr_net != net_path {
+                    for exe_sender in &vec_exe_sender {
+                        exe_sender
+                            .send("chess_16x128_gen3634.pt".to_string())
+                            .unwrap();
+                        // println!("SENT!");
+                    }
+
+                    curr_net = net_path;
+                }
+            }
+            Err(err) => {
+                eprintln!("Error reading from server: {}", err);
+                break;
+            }
         }
-        sleep(Duration::from_secs(10000000000000000000));
+
+        buffer = [0; 16384];
     }
 }
