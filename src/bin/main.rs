@@ -14,11 +14,42 @@ use tz_rust::{
 };
 
 fn main() {
-    let listener = TcpListener::bind("127.0.0.1:8080").expect("Failed to bind to address");
     env::set_var("RUST_BACKTRACE", "1");
-    let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
+    let listener = TcpListener::bind("127.0.0.1:8080").expect("Failed to bind to address");
+
     let num_threads = 5;
     let num_executors = 1;
+    let mut n = 0;
+
+    thread::scope(|s| {
+    for stream in listener.incoming() {
+        match stream {
+            Ok(stream) => {
+                println!("New connection: {:?}", stream.peer_addr().unwrap());
+                let thread_name = format!("datagen_{}", n.to_string());
+                n += 1;
+
+                    let _ = s.builder()
+                        .name(thread_name.clone())
+                        .spawn(move |_| datagen(num_threads, num_executors));
+                }
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                }
+            }
+        }
+    })
+    .unwrap();
+}
+
+fn datagen(num_threads: usize, num_executors: usize) {
+    let thread_name = std::thread::current()
+        .name()
+        .unwrap_or("unnamed-datagen")
+        .to_owned();
+
+    println!("spawned: {}", thread_name);
+    let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
     thread::scope(|s| {
         let mut selfplay_masters: Vec<DataGen> = Vec::new();
         // commander
