@@ -46,6 +46,6 @@ while True:
     received_data = server.receive()
     print(f"Received: {received_data}")
 
-# Close the server connection outside the loop
+# close the server connection outside the loop
 server.close()
 print("Connection closed.")
