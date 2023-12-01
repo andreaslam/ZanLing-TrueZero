@@ -31,7 +31,7 @@ class Server:
 
 shared_queue = queue.Queue()
 
-ml_loop_thread = threading.Thread(target=loop, args=(shared_queue,))  # Comma added to create a single-item tuple
+ml_loop_thread = threading.Thread(target=loop, args=(shared_queue,))
 
 HOST = "127.0.0.1"
 PORT = 8080
