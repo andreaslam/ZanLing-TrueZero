@@ -21,7 +21,7 @@ fn handle_client(mut stream: TcpStream) {
                 break;
             }
         }
-        buffer = [0; 1024];
+        buffer = [0; 16384];
     }
 }
 
