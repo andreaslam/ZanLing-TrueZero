@@ -233,4 +233,8 @@ fn commander_main(vec_exe_sender: Vec<Sender<String>>, server_handle: &mut TcpSt
 
         buffer = [0; 16384];
     }
+
+    // If the loop exits unexpectedly, force quit the program
+    println!("Exiting program due to unexpected server disconnection");
+    std::process::exit(0);
 }
