@@ -2,7 +2,7 @@ import socket
 from enum import Enum
 import threading
 import queue
-from trainingloop import loop  # Assuming 'loop' function is imported correctly
+from trainingloop import loop
 
 # message enums
 class MessageSend(Enum):  # message to send to rust
