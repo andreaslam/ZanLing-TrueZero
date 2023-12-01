@@ -1,17 +1,13 @@
 import socket
 from enum import Enum
-import time
 import threading
 import queue
-from trainingloop import loop
+from trainingloop import loop  # Assuming 'loop' function is imported correctly
 
 # message enums
-
-
 class MessageSend(Enum):  # message to send to rust
     NEW_NETWORK = "newnet"
     STOP_SERVER = "stop"
-
 
 class Server:
     def __init__(self, host, port):
@@ -33,11 +29,9 @@ class Server:
     def close(self):
         self.socket.close()
 
-
 shared_queue = queue.Queue()
 
-ml_loop_thread = threading.Thread(target=loop, args=(shared_queue))
-
+ml_loop_thread = threading.Thread(target=loop, args=(shared_queue,))  # Comma added to create a single-item tuple
 
 HOST = "127.0.0.1"
 PORT = 8080
@@ -46,13 +40,12 @@ server = Server(HOST, PORT)
 server.connect()
 
 # identification - this is python training
-
 server.send("python-training")
 
 while True:
-
     received_data = server.receive()
     print(f"Received: {received_data}")
 
-    server.close()
-    print("Connection closed.")
+# Close the server connection outside the loop
+server.close()
+print("Connection closed.")
