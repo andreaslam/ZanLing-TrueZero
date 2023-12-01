@@ -12,7 +12,6 @@ use tz_rust::{
     fileformat::BinaryOutput,
     selfplay::{CollectorMessage, DataGen},
 };
-
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
     let listener = TcpListener::bind("127.0.0.1:8080").expect("Failed to bind to address");
@@ -22,16 +21,21 @@ fn main() {
     let mut n = 0;
 
     thread::scope(|s| {
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                println!("New connection: {:?}", stream.peer_addr().unwrap());
-                let thread_name = format!("datagen_{}", n.to_string());
-                n += 1;
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => {
+                    println!("New connection: {:?}", stream.peer_addr().unwrap());
+                    let thread_name = format!("datagen_{}", n.to_string());
 
-                    let _ = s.builder()
-                        .name(thread_name.clone())
-                        .spawn(move |_| datagen(num_threads, num_executors));
+                    thread::scope(|s| {
+                        let _ = s
+                            .builder()
+                            .name(thread_name)
+                            .spawn(move |_| datagen(num_threads, num_executors));
+                    })
+                    .unwrap();
+
+                    n += 1; // Move the increment inside the thread::scope closure
                 }
                 Err(e) => {
                     eprintln!("Error: {}", e);
@@ -41,7 +45,6 @@ fn main() {
     })
     .unwrap();
 }
-
 fn datagen(num_threads: usize, num_executors: usize) {
     let thread_name = std::thread::current()
         .name()
