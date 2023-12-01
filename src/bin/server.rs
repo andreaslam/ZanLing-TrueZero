@@ -11,7 +11,8 @@ fn handle_client(mut stream: TcpStream) {
                     break;
                 }
                 let received = &buffer[..bytes_read];
-                println!("Received: {:?}", received);
+                let message = String::from_utf8_lossy(&buffer[..bytes_read]).to_string(); // convert received bytes to String
+                println!("Received: {:?}", message);
 
                 stream.write_all(received).unwrap();
             }
