@@ -138,6 +138,7 @@ fn main() {
         // });
     })
     .unwrap();
+
 }
 
 fn generator_main(
@@ -167,12 +168,12 @@ fn collector_main(receiver: &Receiver<CollectorMessage>, server_handle: &mut Tcp
                 let _ = bin_output.append(&sim).unwrap();
                 // println!("{}", bin_output.game_count());
                 if bin_output.game_count() >= 5 {
-                    counter += 1;
                     let _ = bin_output.finish().unwrap();
                     let path = format!("games_{}", counter);
                     bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
                     let message = format!("new-file: {}", path.clone());
                     server_handle.write_all(message.as_bytes()).unwrap();
+                    counter += 1;
                 }
             }
             CollectorMessage::GeneratorStatistics(nps) => {
@@ -200,35 +201,34 @@ fn collector_main(receiver: &Receiver<CollectorMessage>, server_handle: &mut Tcp
 }
 
 fn commander_main(vec_exe_sender: Vec<Sender<String>>, server_handle: &mut TcpStream) {
-    let mut curr_net = String::new(); // Changed to String type
+    let mut curr_net = String::new(); // changed to String type
     let mut buffer = [0; 16384];
     loop {
-        let recv_net = server_handle.read(&mut buffer).unwrap();
-
-        match server_handle.read(&mut buffer) {
+        let recv_net = match server_handle.read(&mut buffer) {
             Ok(recv_net) if recv_net == 0 => {
                 // no more data, connection closed by server
                 println!("Server closed the connection");
-                break;
+                // Force quit the program when the server closes the connection
+                std::process::exit(0);
             }
-            Ok(_) => {
-                let net_path = String::from_utf8_lossy(&buffer[..recv_net]).to_string(); // Convert received bytes to String
-
-                if curr_net != net_path {
-                    for exe_sender in &vec_exe_sender {
-                        exe_sender
-                            .send("chess_16x128_gen3634.pt".to_string())
-                            .unwrap();
-                        // println!("SENT!");
-                    }
-
-                    curr_net = net_path;
-                }
-            }
+            Ok(recv_net) => recv_net,
             Err(err) => {
                 eprintln!("Error reading from server: {}", err);
                 break;
             }
+        };
+
+        let net_path = String::from_utf8_lossy(&buffer[..recv_net]).to_string(); // convert received bytes to String
+
+        if curr_net != net_path {
+            for exe_sender in &vec_exe_sender {
+                exe_sender
+                    .send("chess_16x128_gen3634.pt".to_string())
+                    .unwrap();
+                // println!("SENT!");
+            }
+
+            curr_net = net_path;
         }
 
         buffer = [0; 16384];
