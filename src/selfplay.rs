@@ -71,7 +71,7 @@ impl DataGen {
             //     println!("{:#}", final_mv,);
             // }
             // println!("thread {}, {:#}, {}nps", thread_name, final_mv, nps);
-            println!("{:#}", final_mv);
+            // println!("{:#}", final_mv);
             let _ = nps_sender.send(CollectorMessage::GeneratorStatistics(MAX_NODES as f32));
             bs.play(final_mv);
             positions.push(pos);
