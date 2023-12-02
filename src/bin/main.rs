@@ -157,7 +157,8 @@ fn generator_main(
 
 fn collector_main(receiver: &Receiver<CollectorMessage>, server_handle: &mut TcpStream) {
     let mut counter = 0;
-    let mut bin_output = BinaryOutput::new(format!("games_{}", counter), "chess").unwrap();
+    let mut path = format!("games_{}", counter);
+    let mut bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
     let mut nps_start_time = Instant::now();
     let mut evals_start_time = Instant::now();
     let mut nps_vec: Vec<f32> = Vec::new();
@@ -170,11 +171,12 @@ fn collector_main(receiver: &Receiver<CollectorMessage>, server_handle: &mut Tcp
                 println!("{}", bin_output.game_count());
                 if bin_output.game_count() >= 5 {
                     let _ = bin_output.finish().unwrap();
-                    let path = format!("games_{}", counter);
-                    bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
                     let message = format!("new-training-data: {}.json", path.clone());
                     server_handle.write_all(message.as_bytes()).unwrap();
                     counter += 1;
+                    path = format!("games_{}", counter);
+                    bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
+                    
                 }
             }
             CollectorMessage::GeneratorStatistics(nps) => {
