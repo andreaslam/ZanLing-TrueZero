@@ -360,7 +360,7 @@ impl Node {
     }
 }
 
-pub const MAX_NODES: u32 = 1600;
+pub const MAX_NODES: u32 = 10;
 
 pub fn get_move(
     bs: BoardStack,
