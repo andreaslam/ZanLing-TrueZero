@@ -34,7 +34,7 @@ def train(b):
         einops.rearrange(input_full, "b c h w -> (b c) 1 h w"),
         "chess_input.png",
         nrow=21,
-        pad_value=0.4,
+        pad_value=0.3,
     )
 
     train = TrainSettings(
