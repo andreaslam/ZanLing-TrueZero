@@ -8,11 +8,11 @@ fn handle_client(mut stream: TcpStream, clients: Arc<Mutex<Vec<TcpStream>>>) {
     loop {
         let bytes_read = match stream.read(&mut buffer) {
             Ok(n) if n == 0 => {
-                break; // Connection closed
+                break; // connection closed
             }
             Ok(n) => n,
             Err(_) => {
-                break; // Error while reading
+                break; // error while reading
             }
         };
 
@@ -23,7 +23,7 @@ fn handle_client(mut stream: TcpStream, clients: Arc<Mutex<Vec<TcpStream>>>) {
         let all_clients = clients.lock().unwrap();
         for mut client in all_clients.iter() {
             if let Err(_) = client.write_all(received.as_bytes()) {
-                println!("Failed to send message to a client");
+                println!("[Server] Failed to send message to a client");
             }
         }
     }
