@@ -23,7 +23,7 @@ class Simulation:
 
     @property
     def end_file_pi(self):
-        """ The end position index, exclusive """
+        """The end position index, exclusive"""
         return self.start_file_pi + self.position_count
 
     @property
@@ -33,18 +33,19 @@ class Simulation:
 
 class Position:
     def __init__(
-            self,
-            game: Game,
-            file_pi: int,
-            includes_final: bool,
-            scalar_names: List[str],
-            data: bytes,
-            final_position: Optional['Position']
+        self,
+        game: Game,
+        file_pi: int,
+        includes_final: bool,
+        scalar_names: List[str],
+        data: bytes,
+        final_position: Optional["Position"],
     ):
         self.game = game
         data = Taker(data)
 
         scalar_array = np.frombuffer(data.take(len(scalar_names) * 4), dtype=np.float32)
+        # print("scalar_array", len(scalar_names) * 4)
         scalars = {n: v for n, v in zip(scalar_names, scalar_array)}
 
         self.file_pi = file_pi
@@ -65,10 +66,14 @@ class Position:
 
         played_mv = map_none(scalars.pop("played_mv", None), int)
         if not (played_mv is None or played_mv == -1 or played_mv in game.possible_mvs):
-            print(f"Warning: got played_mv '{played_mv}' that is not possible in game '{game.name}'")
+            print(
+                f"Warning: got played_mv '{played_mv}' that is not possible in game '{game.name}'"
+            )
         self.played_mv = played_mv
 
-        self.is_full_search = map_none_or(scalars.pop("is_full_search", None), bool, True)
+        self.is_full_search = map_none_or(
+            scalars.pop("is_full_search", None), bool, True
+        )
         self.is_final = map_none_or(scalars.pop("is_final_position", None), bool, False)
         self.is_terminal = map_none_or(scalars.pop("is_terminal", None), bool, False)
         self.hit_move_limit = map_none(scalars.pop("hit_move_limit", None), bool)
@@ -77,28 +82,44 @@ class Position:
         self.kdl_policy = float(scalars.pop("kdl_policy"))
 
         self.final_v = float(scalars.pop("final_v"))
+        # print(self.final_v)
         self.zero_v = float(scalars.pop("zero_v"))
+        # print(self.zero_v)
         self.net_v = float(scalars.pop("net_v"))
+        # print(self.net_v)
 
-        self.final_wdl = np.array([scalars.pop("final_wdl_w"), scalars.pop("final_wdl_d"), scalars.pop("final_wdl_l")])
-        self.zero_wdl = np.array([scalars.pop("zero_wdl_w"), scalars.pop("zero_wdl_d"), scalars.pop("zero_wdl_l")])
-        self.net_wdl = np.array([scalars.pop("net_wdl_w"), scalars.pop("net_wdl_d"), scalars.pop("net_wdl_l")])
+        # self.final_wdl = np.array([scalars.pop("final_wdl_w"), scalars.pop("final_wdl_d"), scalars.pop("final_wdl_l")])
+        # self.zero_wdl = np.array([scalars.pop("zero_wdl_w"), scalars.pop("zero_wdl_d"), scalars.pop("zero_wdl_l")])
+        # self.net_wdl = np.array([scalars.pop("net_wdl_w"), scalars.pop("net_wdl_d"), scalars.pop("net_wdl_l")])
 
-        self.final_moves_left = float(scalars.pop("final_moves_left", move_count - self.move_index))
-        self.zero_moves_left = float(scalars.pop("zero_moves_left", np.nan))
-        self.net_moves_left = float(scalars.pop("net_moves_left", np.nan))
+        # self.final_moves_left = float(scalars.pop("final_moves_left", move_count - self.move_index))
+        # self.zero_moves_left = float(scalars.pop("zero_moves_left", np.nan))
+        # self.net_moves_left = float(scalars.pop("net_moves_left", np.nan))
 
         if len(scalars):
             print(f"Leftover scalars: {list(scalars.keys())}")
 
         bool_count = prod(game.input_bool_shape)
         bit_buffer = np.frombuffer(data.take((bool_count + 7) // 8), dtype=np.uint8)
+        # print("bit_buffer", (bool_count + 7) // 8)
+        # print("bit_buffer", bit_buffer)
         bool_buffer = np.unpackbits(bit_buffer, bitorder="little")
         self.input_bools = bool_buffer[:bool_count].reshape(*game.input_bool_shape)
-        self.input_scalars = np.frombuffer(data.take(game.input_scalar_channels * 4), dtype=np.float32)
-
-        self.policy_indices = np.frombuffer(data.take(self.available_mv_count * 4), dtype=np.int32)
-        self.policy_values = np.frombuffer(data.take(self.available_mv_count * 4), dtype=np.float32)
+        # print("self.input_bools", self.input_bools)
+        self.input_scalars = np.frombuffer(
+            data.take(game.input_scalar_channels * 4), dtype=np.float32
+        )
+        # print("input_scalars", game.input_scalar_channels * 4)
+        # print("input_scalars", self.input_scalars)
+        self.policy_indices = np.frombuffer(
+            data.take(self.available_mv_count * 4), dtype=np.int32
+        )
+        # print("input_scalars", game.input_scalar_channels * 4)
+        # print("policy_indices", self.policy_indices)
+        self.policy_values = np.frombuffer(
+            data.take(self.available_mv_count * 4), dtype=np.float32
+        )
+        # print("policy_values", self.policy_values)
 
         data.finish()
 
@@ -161,33 +182,67 @@ class PostFinalPosition:
 
 
 class PositionBatch:
-    def __init__(self, game: Game, positions: List[Position], include_final_for_each: bool, pin_memory: bool):
-        self.max_available_moves = max(p.available_mv_count if p is not None else 0 for p in positions)
+    def __init__(
+        self,
+        game: Game,
+        positions: List[Position],
+        include_final_for_each: bool,
+        pin_memory: bool,
+    ):
+        self.max_available_moves = max(
+            p.available_mv_count if p is not None else 0 for p in positions
+        )
 
-        input_full = torch.empty(len(positions), *game.full_input_shape, pin_memory=pin_memory)
+        input_full = torch.empty(
+            len(positions), *game.full_input_shape, pin_memory=pin_memory
+        )
         all_wdls = torch.empty(len(positions), 3 * 3, pin_memory=pin_memory)
         all_values = torch.empty(len(positions), 3, pin_memory=pin_memory)
         all_moves_left = torch.empty(len(positions), 3, pin_memory=pin_memory)
 
-        final_input_full = torch.empty(len(positions), *game.full_input_shape, pin_memory=pin_memory) \
-            if include_final_for_each else None
+        final_input_full = (
+            torch.empty(len(positions), *game.full_input_shape, pin_memory=pin_memory)
+            if include_final_for_each
+            else None
+        )
 
         # positions with less available moves get padded extra indices 0 and values -1
-        policy_indices = torch.zeros(len(positions), self.max_available_moves, dtype=torch.int64, pin_memory=pin_memory)
-        policy_values = torch.empty(len(positions), self.max_available_moves, pin_memory=pin_memory)
+        policy_indices = torch.zeros(
+            len(positions),
+            self.max_available_moves,
+            dtype=torch.int64,
+            pin_memory=pin_memory,
+        )
+        policy_values = torch.empty(
+            len(positions), self.max_available_moves, pin_memory=pin_memory
+        )
         policy_values.fill_(-1)
 
-        played_mv = torch.empty(len(positions), dtype=torch.int64, pin_memory=pin_memory)
-        sim_index = torch.empty(len(positions), dtype=torch.int64, pin_memory=pin_memory)
-        move_index = torch.empty(len(positions), dtype=torch.int64, pin_memory=pin_memory)
+        played_mv = torch.empty(
+            len(positions), dtype=torch.int64, pin_memory=pin_memory
+        )
+        sim_index = torch.empty(
+            len(positions), dtype=torch.int64, pin_memory=pin_memory
+        )
+        move_index = torch.empty(
+            len(positions), dtype=torch.int64, pin_memory=pin_memory
+        )
         file_pi = torch.empty(len(positions), dtype=torch.int64, pin_memory=pin_memory)
 
-        is_terminal = torch.empty(len(positions), dtype=torch.bool, pin_memory=pin_memory)
-        is_final = torch.empty((len(positions)), dtype=torch.bool, pin_memory=pin_memory)
-        is_post_final = torch.empty((len(positions)), dtype=torch.bool, pin_memory=pin_memory)
+        is_terminal = torch.empty(
+            len(positions), dtype=torch.bool, pin_memory=pin_memory
+        )
+        is_final = torch.empty(
+            (len(positions)), dtype=torch.bool, pin_memory=pin_memory
+        )
+        is_post_final = torch.empty(
+            (len(positions)), dtype=torch.bool, pin_memory=pin_memory
+        )
 
         if game.input_mv_channels is not None:
-            played_mv_full = torch.zeros(len(positions), *game.input_mv_shape, pin_memory=pin_memory)
+            played_mv_full = torch.zeros(
+                len(positions), *game.input_mv_shape, pin_memory=pin_memory
+            )
         else:
             played_mv_full = None
 
@@ -199,18 +254,22 @@ class PositionBatch:
                 assert p.final_position is not None
                 write_input(game, final_input_full[i, :, :, :], p.final_position)
 
-            all_wdls[i, 0:3] = torch.from_numpy(p.final_wdl)
-            all_wdls[i, 3:6] = torch.from_numpy(p.zero_wdl)
-            all_wdls[i, 6:9] = torch.from_numpy(p.net_wdl)
+            # all_wdls[i, 0:3] = torch.from_numpy(p.final_wdl)
+            # all_wdls[i, 3:6] = torch.from_numpy(p.zero_wdl)
+            # all_wdls[i, 6:9] = torch.from_numpy(p.net_wdl)
             all_values[i, 0] = p.final_v
             all_values[i, 1] = p.zero_v
             all_values[i, 2] = p.net_v
-            all_moves_left[i, 0] = p.final_moves_left
-            all_moves_left[i, 1] = p.zero_moves_left
-            all_moves_left[i, 2] = p.net_moves_left
+            # all_moves_left[i, 0] = p.final_moves_left
+            # all_moves_left[i, 1] = p.zero_moves_left
+            # all_moves_left[i, 2] = p.net_moves_left
 
-            policy_indices[i, :p.available_mv_count] = torch.from_numpy(p.policy_indices.copy())
-            policy_values[i, :p.available_mv_count] = torch.from_numpy(p.policy_values.copy())
+            policy_indices[i, : p.available_mv_count] = torch.from_numpy(
+                p.policy_indices.copy()
+            )
+            policy_values[i, : p.available_mv_count] = torch.from_numpy(
+                p.policy_values.copy()
+            )
 
             played_mv[i] = p.played_mv
             move_index[i] = p.move_index
@@ -231,7 +290,9 @@ class PositionBatch:
             is_post_final[i] = p.is_post_final
 
         self.input_full = input_full.to(DEVICE)
-        self.final_input_full = final_input_full.to(DEVICE) if include_final_for_each else None
+        self.final_input_full = (
+            final_input_full.to(DEVICE) if include_final_for_each else None
+        )
 
         self.policy_indices = policy_indices.to(DEVICE)
         self.policy_values = policy_values.to(DEVICE)
@@ -240,7 +301,9 @@ class PositionBatch:
         self.move_index = move_index.to(DEVICE)
         self.file_pi = file_pi.to(DEVICE)
         self.sim_index = sim_index.to(DEVICE)
-        self.played_mv_full = played_mv_full.to(DEVICE) if played_mv_full is not None else None
+        self.played_mv_full = (
+            played_mv_full.to(DEVICE) if played_mv_full is not None else None
+        )
 
         self.is_terminal = is_terminal.to(DEVICE)
         self.is_final = is_final.to(DEVICE)
@@ -265,25 +328,31 @@ class PositionBatch:
 
 
 def write_input(game: Game, target, position: Position):
-    target[:game.input_scalar_channels, :, :] = torch.tensor(position.input_scalars) \
-        .view(-1, 1, 1).expand(*game.input_scalar_shape)
-    target[game.input_scalar_channels:, :, :] = torch.tensor(position.input_bools) \
-        .view(*game.input_bool_shape)
+    target[: game.input_scalar_channels, :, :] = (
+        torch.tensor(position.input_scalars)
+        .view(-1, 1, 1)
+        .expand(*game.input_scalar_shape)
+    )
+    target[game.input_scalar_channels :, :, :] = torch.tensor(
+        position.input_bools
+    ).view(*game.input_bool_shape)
 
 
 class UnrolledPositionBatch:
     def __init__(
-            self,
-            game: Game,
-            unroll_steps: int,
-            include_final_for_each: bool,
-            batch_size: int,
-            chains: List[List[Position]],
-            pin_memory: bool
+        self,
+        game: Game,
+        unroll_steps: int,
+        include_final_for_each: bool,
+        batch_size: int,
+        chains: List[List[Position]],
+        pin_memory: bool,
     ):
         assert unroll_steps >= 0, "Negative unroll steps don't make sense"
         for chain in chains:
-            assert len(chain) == unroll_steps + 1, f"Expected {unroll_steps + 1} positions, got chain with {len(chain)}"
+            assert (
+                len(chain) == unroll_steps + 1
+            ), f"Expected {unroll_steps + 1} positions, got chain with {len(chain)}"
 
         positions_by_step = [[] for _ in range(unroll_steps + 1)]
 
@@ -295,7 +364,9 @@ class UnrolledPositionBatch:
                     positions_by_step[si].append(p)
                     last_position = p
                 else:
-                    assert last_position is not None, "Each chain must contain at least one position"
+                    assert (
+                        last_position is not None
+                    ), "Each chain must contain at least one position"
                     positions_by_step[si].append(PostFinalPosition(last_position))
 
         self.unroll_steps = unroll_steps
