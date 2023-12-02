@@ -23,13 +23,14 @@ fn main() {
             Err(_) => continue,
         };
     };
+    // identification - this is rust data generation
     stream
         .write_all("rust-datagen".as_bytes())
         .expect("Failed to send data");
     println!("Connected to server!");
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
-    let num_threads = 1024;
-    let num_executors = 4;
+    let num_threads = 5;
+    let num_executors = 1;
     thread::scope(|s| {
         let mut selfplay_masters: Vec<DataGen> = Vec::new();
         // commander
@@ -138,7 +139,6 @@ fn main() {
         // });
     })
     .unwrap();
-
 }
 
 fn generator_main(
@@ -166,7 +166,7 @@ fn collector_main(receiver: &Receiver<CollectorMessage>, server_handle: &mut Tcp
         match msg {
             CollectorMessage::FinishedGame(sim) => {
                 let _ = bin_output.append(&sim).unwrap();
-                // println!("{}", bin_output.game_count());
+                println!("{}", bin_output.game_count());
                 if bin_output.game_count() >= 5 {
                     let _ = bin_output.finish().unwrap();
                     let path = format!("games_{}", counter);
@@ -179,7 +179,7 @@ fn collector_main(receiver: &Receiver<CollectorMessage>, server_handle: &mut Tcp
             CollectorMessage::GeneratorStatistics(nps) => {
                 if nps_start_time.elapsed() >= Duration::from_secs(1) {
                     let nps: f32 = nps_vec.iter().sum();
-                    println!("{} nps", nps);
+                    // println!("{} nps", nps);
                     nps_start_time = Instant::now();
                     nps_vec = Vec::new();
                 } else {
@@ -189,7 +189,7 @@ fn collector_main(receiver: &Receiver<CollectorMessage>, server_handle: &mut Tcp
             CollectorMessage::ExecutorStatistics(evals_per_sec) => {
                 if evals_start_time.elapsed() >= Duration::from_secs(1) {
                     let nps: f32 = nps_vec.iter().sum();
-                    println!("{} evals/s", nps);
+                    // println!("{} evals/s", nps);
                     evals_start_time = Instant::now();
                     nps_vec = Vec::new();
                 } else {
@@ -199,7 +199,6 @@ fn collector_main(receiver: &Receiver<CollectorMessage>, server_handle: &mut Tcp
         }
     }
 }
-
 fn commander_main(vec_exe_sender: Vec<Sender<String>>, server_handle: &mut TcpStream) {
     let mut curr_net = String::new(); // changed to String type
     let mut buffer = [0; 16384];
