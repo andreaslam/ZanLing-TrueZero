@@ -5,7 +5,7 @@ import torchvision.utils
 import torch.nn as nn
 import torch.optim as optim
 from lib.data.file import DataFile
-from lib.data.position import PositionBatch
+from lib.data.position import PositionBatch, Position
 from lib.games import Game
 from lib.logger import Logger
 from lib.train import TrainSettings
@@ -13,34 +13,20 @@ from lib.train import ScalarTarget
 from queue import Queue
 
 
-
-
-
 def load_file(games_path: str):
-    
     game = Game.find("chess")
-    print(games_path)
     data = DataFile.open(game, games_path)
-    
-    print(data.positions)
+    return data
 
 
-def train():
-    print("HI")
-
+def train(b):
     game = Game.find("chess")
-
-    games_path = r"C:\Users\andre\RemoteFolder\tz-rust\sample.off"
-
-    data = DataFile.open(game, games_path)
-    p = data.positions[0]
 
     model_path = r"C:\Users\andre\RemoteFolder\tz-rust\chess_16x128_gen3634.pt"
     model = torch.jit.load(model_path, map_location=torch.device("cuda"))
 
     model.eval()
-
-    b = PositionBatch(game, [p], False, False)
+    
     input_full = b.input_full.to("cuda")
 
     # print(input_full.shape)
