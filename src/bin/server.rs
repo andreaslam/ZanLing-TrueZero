@@ -30,7 +30,7 @@ fn handle_client(
         {
             let id: usize;
             all_messages.push(received.clone());
-            println!("{:?}", all_messages);
+            // println!("{:?}", all_messages);
 
             if received.clone().starts_with("python-training") {
                 id = all_messages
