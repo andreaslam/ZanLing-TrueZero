@@ -4,11 +4,9 @@ use std::{
     env,
     io::{Read, Write},
     net::TcpStream,
-    thread::sleep,
     time::{Duration, Instant},
 };
 use tz_rust::{
-    dataformat::Simulation,
     executor::{executor_main, Packet},
     fileformat::BinaryOutput,
     selfplay::{CollectorMessage, DataGen},
