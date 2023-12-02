@@ -4,9 +4,11 @@ use std::{
     env,
     io::{Read, Write},
     net::TcpStream,
+    thread::sleep,
     time::{Duration, Instant},
 };
 use tz_rust::{
+    dataformat::Simulation,
     executor::{executor_main, Packet},
     fileformat::BinaryOutput,
     selfplay::{CollectorMessage, DataGen},
@@ -26,27 +28,7 @@ fn main() {
         .write_all("rust-datagen".as_bytes())
         .expect("Failed to send data");
     println!("Connected to server!");
-    let mut buffer = [0; 16384];
-    let id: String = loop {
-        match stream.read(&mut buffer) {
-            Ok(recv_net) if recv_net == 0 => {
-                // no more data, connection closed by server
-                println!("Server closed the connection");
-                // Force quit the program when the server closes the connection
-                std::process::exit(0);
-            }
-            Ok(_) => {
-                let msg = String::from_utf8_lossy(&buffer[..]); // convert received bytes to String
-                if msg.starts_with("rust-datagen") {
-                    let segment: Vec<String> = msg.split_whitespace().map(String::from).collect();
-                    break segment[1].clone();
-                }
-            }
-            Err(err) => {
-                panic!("Error reading from server: {}", err);
-            }
-        };
-    };
+
 
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
     let num_threads = 5;
@@ -126,7 +108,6 @@ fn main() {
                 collector_main(
                     &game_receiver,
                     &mut stream.try_clone().expect("clone failed"),
-                    id.clone()
                 )
             })
             .unwrap();
@@ -176,15 +157,16 @@ fn generator_main(
     }
 }
 
-fn collector_main(receiver: &Receiver<CollectorMessage>, server_handle: &mut TcpStream, id: String) {
+fn collector_main(receiver: &Receiver<CollectorMessage>, server_handle: &mut TcpStream) {
     let mut counter = 0;
-    let mut path = format!("generator_{}_games_{}", id, counter);
+    let mut path = format!("games_{}", counter);
     let mut bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
     let mut nps_start_time = Instant::now();
     let mut evals_start_time = Instant::now();
     let mut nps_vec: Vec<f32> = Vec::new();
 
     loop {
+
         let msg = receiver.recv().unwrap();
         match msg {
             CollectorMessage::FinishedGame(sim) => {
@@ -195,7 +177,7 @@ fn collector_main(receiver: &Receiver<CollectorMessage>, server_handle: &mut Tcp
                     let message = format!("new-training-data: {}.json", path.clone());
                     server_handle.write_all(message.as_bytes()).unwrap();
                     counter += 1;
-                    path = format!("generator_{}_games_{}", id, counter);
+                    path = format!("games_{}", counter);
                     bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
                 }
             }
