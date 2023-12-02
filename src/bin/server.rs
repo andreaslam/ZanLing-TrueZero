@@ -23,7 +23,6 @@ fn handle_client(mut stream: TcpStream, clients: Arc<Mutex<Vec<TcpStream>>>) {
         let all_clients = clients.lock().unwrap();
         for mut client in all_clients.iter() {
             if let Err(_) = client.write_all(received.as_bytes()) {
-                println!("[Server] Failed to send message to a client");
             }
         }
     }
