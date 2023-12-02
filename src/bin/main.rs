@@ -161,6 +161,7 @@ fn collector_main(receiver: &Receiver<CollectorMessage>, server_handle: &mut Tcp
     let mut nps_start_time = Instant::now();
     let mut evals_start_time = Instant::now();
     let mut nps_vec: Vec<f32> = Vec::new();
+        
     loop {
         let msg = receiver.recv().unwrap();
         match msg {
@@ -171,7 +172,7 @@ fn collector_main(receiver: &Receiver<CollectorMessage>, server_handle: &mut Tcp
                     let _ = bin_output.finish().unwrap();
                     let path = format!("games_{}", counter);
                     bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
-                    let message = format!("new-file: {}", path.clone());
+                    let message = format!("new-training-data: {}.json", path.clone());
                     server_handle.write_all(message.as_bytes()).unwrap();
                     counter += 1;
                 }
