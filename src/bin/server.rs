@@ -1,44 +1,57 @@
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::{Arc, Mutex};
 use std::thread;
 
-fn handle_client(mut stream: TcpStream) {
-    let mut buffer = [0; 16384];
+fn handle_client(mut stream: TcpStream, clients: Arc<Mutex<Vec<TcpStream>>>) {
+    let mut buffer = [0; 512];
     loop {
-        match stream.read(&mut buffer) {
-            Ok(bytes_read) => {
-                if bytes_read == 0 {
-                    break;
-                }
-                let received = &buffer[..bytes_read];
-                let message = String::from_utf8_lossy(&buffer[..bytes_read]).to_string(); // convert received bytes to String
-                println!("Received: {:?}", message);
-
-                stream.write_all(received).unwrap();
+        let bytes_read = match stream.read(&mut buffer) {
+            Ok(n) if n == 0 => {
+                break; // Connection closed
             }
-            Err(e) => {
-                eprintln!("Error reading from socket: {}", e);
-                break;
+            Ok(n) => n,
+            Err(_) => {
+                break; // Error while reading
+            }
+        };
+
+        let received = String::from_utf8_lossy(&buffer[..bytes_read]);
+        println!("Received: {}", received);
+
+        // Broadcast message to all clients except the sender
+        let all_clients = clients.lock().unwrap();
+        for mut client in all_clients.iter() {
+            if let Err(_) = client.write_all(received.as_bytes()) {
+                println!("Failed to send message to a client");
             }
         }
-        buffer = [0; 16384];
     }
 }
 
 fn main() {
-    let listener = TcpListener::bind("127.0.0.1:8080").expect("Could not bind to address");
-    println!("Server listening on port 8080...");
+    let listener = TcpListener::bind("127.0.0.1:8080").expect("Failed to bind address");
+    let clients: Arc<Mutex<Vec<TcpStream>>> = Arc::new(Mutex::new(Vec::new()));
 
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                println!("New connection: {:?}", stream.peer_addr().unwrap());
+                let cloned_clients = Arc::clone(&clients);
+                let addr = stream.peer_addr().expect("Failed to get peer address");
+                println!("New connection: {}", addr);
+
+                {
+                    let mut all_clients = cloned_clients.lock().unwrap();
+                    all_clients.push(stream.try_clone().expect("Failed to clone stream"));
+                }
+
+                let cloned_clients = Arc::clone(&clients);
                 thread::spawn(move || {
-                    handle_client(stream);
+                    handle_client(stream, cloned_clients);
                 });
             }
             Err(e) => {
-                eprintln!("Error: {}", e);
+                println!("Error: {}", e);
             }
         }
     }
