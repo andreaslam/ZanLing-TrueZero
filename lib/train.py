@@ -12,12 +12,17 @@ from lib.data.position import PositionBatch, UnrolledPositionBatch
 from lib.games import Game
 from lib.logger import Logger
 from lib.networks import MuZeroNetworks
-from lib.util import calc_gradient_norms, calc_parameter_norm, fake_quantize_scale, DEVICE
+from lib.util import (
+    calc_gradient_norms,
+    calc_parameter_norm,
+    fake_quantize_scale,
+    DEVICE,
+)
 
 
 class ScalarTarget:
-    Final: 'ScalarTarget'
-    Zero: 'ScalarTarget'
+    Final: "ScalarTarget"
+    Zero: "ScalarTarget"
 
     def __init__(self, final: float):
         assert 0.0 <= final <= 1.0
@@ -57,11 +62,11 @@ class TrainSettings:
     mask_policy: bool
 
     def train_step(
-            self,
-            batch: EitherBatch,
-            network: EitherNetwork,
-            optimizer: Optimizer,
-            logger: Logger
+        self,
+        batch: EitherBatch,
+        network: EitherNetwork,
+        optimizer: Optimizer,
+        logger: Logger,
     ):
         if self.train_in_eval_mode:
             network.eval()
@@ -83,7 +88,13 @@ class TrainSettings:
         logger.log("grad_norm", "torch", grad_norm)
         logger.log("param_norm", "param_norm", calc_parameter_norm(network))
 
-    def evaluate_either_batch(self, batch: EitherBatch, network: EitherNetwork, logger: Logger, log_prefix: str):
+    def evaluate_either_batch(
+        self,
+        batch: EitherBatch,
+        network: EitherNetwork,
+        logger: Logger,
+        log_prefix: str,
+    ):
         if isinstance(batch, UnrolledPositionBatch):
             loss = self.evaluate_batch_unrolled(network, batch, log_prefix, logger)
         elif isinstance(batch, PositionBatch):
@@ -92,15 +103,21 @@ class TrainSettings:
             assert False, f"Unexpected batch type {type(batch)}"
         return loss
 
-    def evaluate_batch(self, network: nn.Module, batch: PositionBatch, log_prefix: str, logger: Logger):
+    def evaluate_batch(
+        self, network: nn.Module, batch: PositionBatch, log_prefix: str, logger: Logger
+    ):
         scalars, policy_logits = network(batch.input_full)
-        loss = self.evaluate_batch_predictions(log_prefix, logger, False, batch, scalars, policy_logits)
+        loss = self.evaluate_batch_predictions(
+            log_prefix, logger, False, batch, scalars, policy_logits
+        )
         return loss
 
     def evaluate_batch_unrolled(
-            self,
-            networks: MuZeroNetworks, batch: UnrolledPositionBatch,
-            log_prefix: str, logger: Logger
+        self,
+        networks: MuZeroNetworks,
+        batch: UnrolledPositionBatch,
+        log_prefix: str,
+        logger: Logger,
     ):
         total_loss = torch.zeros((), device=DEVICE)
         curr_state = None
@@ -118,24 +135,35 @@ class TrainSettings:
                     # TODO it's kind of annoying that we don't have the same batch size here each time,
                     #   but otherwise we mess up eg. batch-norm with nan or dummy inputs
                     with torch.no_grad():
-                        curr_state_repr = networks.representation(step.input_full[~step.is_post_final])
+                        curr_state_repr = networks.representation(
+                            step.input_full[~step.is_post_final]
+                        )
                     total_loss += self.eval_similarity(
-                        curr_state, curr_state_repr, step.is_post_final,
-                        logger, step_prefix
+                        curr_state,
+                        curr_state_repr,
+                        step.is_post_final,
+                        logger,
+                        step_prefix,
                     )
 
             scalars_k, policy_logits_k = networks.prediction(curr_state)
 
             # limit the number of channels that have to be saved
-            curr_state = curr_state[:, :networks.state_channels_saved, :, :]
+            curr_state = curr_state[:, : networks.state_channels_saved, :, :]
 
             # quantize to reduce memory usage in inference, but only _after_ policy and value heads
             if networks.state_quant_bits is not None:
-                curr_state = fake_quantize_scale(curr_state, 1.0, networks.state_quant_bits)
+                curr_state = fake_quantize_scale(
+                    curr_state, 1.0, networks.state_quant_bits
+                )
 
             total_loss += self.evaluate_batch_predictions(
-                step_prefix, logger, True,
-                batch.positions[k], scalars_k, policy_logits_k
+                step_prefix,
+                logger,
+                True,
+                batch.positions[k],
+                scalars_k,
+                policy_logits_k,
             )
 
             # TODO is a BN layer inside of the networks enough for hidden state normalization?
@@ -150,11 +178,20 @@ class TrainSettings:
         norm_loss = total_loss / len(batch.positions)
         return norm_loss
 
-    def eval_similarity(self, curr_state, curr_state_repr_filtered, is_post_final, logger: Logger, log_prefix: str):
+    def eval_similarity(
+        self,
+        curr_state,
+        curr_state_repr_filtered,
+        is_post_final,
+        logger: Logger,
+        log_prefix: str,
+    ):
         batch_size = len(is_post_final)
         non_post_final_count = len(curr_state_repr_filtered)
 
-        sim_loss_raw = nnf.mse_loss(curr_state[~is_post_final], curr_state_repr_filtered)
+        sim_loss_raw = nnf.mse_loss(
+            curr_state[~is_post_final], curr_state_repr_filtered
+        )
 
         sim_loss_norm = (non_post_final_count / batch_size) * sim_loss_raw
         sim_loss_weighed = self.sim_weight * sim_loss_norm
@@ -166,10 +203,13 @@ class TrainSettings:
         return sim_loss_weighed
 
     def evaluate_batch_predictions(
-            self,
-            log_prefix: str, logger: Logger, log_policy_norm: bool,
-            batch: PositionBatch,
-            scalars, policy_logits,
+        self,
+        log_prefix: str,
+        logger: Logger,
+        log_policy_norm: bool,
+        batch: PositionBatch,
+        scalars,
+        policy_logits,
     ):
         """Returns the total loss for the given batch while logging a bunch of statistics"""
 
@@ -187,35 +227,56 @@ class TrainSettings:
         loss_value_separate = nnf.mse_loss(value, batch_value, reduction="none")
         # TODO add option to choose between cross-entropy and mse
         loss_wdl_separate = (-batch_wdl * nnf.log_softmax(wdl_logits, dim=1)).sum(dim=1)
-        loss_moves_left_separate = nnf.huber_loss(moves_left, batch_moves_left, delta=self.moves_left_delta,
-                                                  reduction="none")
+        # loss_moves_left_separate = nnf.huber_loss(moves_left, batch_moves_left, delta=self.moves_left_delta,
+        #                                           reduction="none")
 
         loss_value = loss_value_separate.mean()
         loss_wdl = loss_wdl_separate.mean()
-        loss_moves_left = loss_moves_left_separate.mean()
+        # loss_moves_left = loss_moves_left_separate.mean()
 
-        eval_policy = evaluate_policy(policy_logits, batch.policy_indices, batch.policy_values, self.mask_policy)
+        loss_moves_left = 0
+
+        eval_policy = evaluate_policy(
+            policy_logits, batch.policy_indices, batch.policy_values, self.mask_policy
+        )
 
         loss_total = self.combine_losses(
-            log_prefix, logger,
-            loss_value, loss_wdl, loss_moves_left,
-            eval_policy.train_loss
+            log_prefix,
+            logger,
+            loss_value,
+            loss_wdl,
+            loss_moves_left,
+            eval_policy.train_loss,
         )
 
         # log terminal losses
         terminal_count = batch.is_terminal.sum()
-        loss_wdl_terminal = (loss_wdl_separate * batch.is_terminal).sum() / terminal_count
-        loss_value_terminal = (loss_value_separate * batch.is_terminal).sum() / terminal_count
-        loss_moves_left_terminal = (loss_moves_left * batch.is_terminal).sum() / terminal_count
+        loss_wdl_terminal = (
+            loss_wdl_separate * batch.is_terminal
+        ).sum() / terminal_count
+        loss_value_terminal = (
+            loss_value_separate * batch.is_terminal
+        ).sum() / terminal_count
+        loss_moves_left_terminal = (
+            loss_moves_left * batch.is_terminal
+        ).sum() / terminal_count
 
         logger.log("loss-wdl", f"{log_prefix} wdl terminal", loss_wdl_terminal)
         logger.log("loss-value", f"{log_prefix} value terminal", loss_value_terminal)
-        logger.log("loss-moves-left", f"{log_prefix} moves-left terminal", loss_moves_left_terminal)
+        logger.log(
+            "loss-moves-left",
+            f"{log_prefix} moves-left terminal",
+            loss_moves_left_terminal,
+        )
 
         # value accuracies
         batch_size = len(batch)
-        acc_value = torch.eq(value.sign(), batch_value.sign()).sum() / (batch_value != 0).sum()
-        acc_wdl = torch.eq(wdl.argmax(dim=-1), batch_wdl.argmax(dim=-1)).sum() / batch_size
+        acc_value = (
+            torch.eq(value.sign(), batch_value.sign()).sum() / (batch_value != 0).sum()
+        )
+        acc_wdl = (
+            torch.eq(wdl.argmax(dim=-1), batch_wdl.argmax(dim=-1)).sum() / batch_size
+        )
 
         logger.log("acc-value", f"{log_prefix} value", acc_value)
         logger.log("acc-value", f"{log_prefix} wdl", acc_wdl)
@@ -225,16 +286,19 @@ class TrainSettings:
         logger.log("pol-acc", f"{log_prefix} top_mass", eval_policy.norm_top_mass)
 
         if not self.mask_policy:
-            logger.log("pol-valid", f"{log_prefix} valid_mass", eval_policy.norm_valid_mass)
+            logger.log(
+                "pol-valid", f"{log_prefix} valid_mass", eval_policy.norm_valid_mass
+            )
 
         if log_policy_norm:
-            logger.log("loss-policy-norm", f"{log_prefix} policy", eval_policy.norm_loss)
+            logger.log(
+                "loss-policy-norm", f"{log_prefix} policy", eval_policy.norm_loss
+            )
 
         return loss_total
 
     def combine_losses(
-            self, log_prefix: str, logger: Logger,
-            value, wdl, moves_left, policy
+        self, log_prefix: str, logger: Logger, value, wdl, moves_left, policy
     ):
         value_weighed = self.value_weight * value
         wdl_weighed = self.wdl_weight * wdl
@@ -285,8 +349,13 @@ def old_evaluate_policy(logits, indices, values):
 
     # accuracy (top move matches) and captured (policy of net top move)
     selected_argmax = selected_logits.argmax(dim=1, keepdim=True)
-    acc = torch.sum(torch.eq(selected_argmax, values.argmax(dim=1, keepdim=True))) / batch_size
-    cap = torch.gather(values, 1, selected_argmax).mean() + 2 * (empty_count / batch_size)
+    acc = (
+        torch.sum(torch.eq(selected_argmax, values.argmax(dim=1, keepdim=True)))
+        / batch_size
+    )
+    cap = torch.gather(values, 1, selected_argmax).mean() + 2 * (
+        empty_count / batch_size
+    )
 
     return total_loss, acc, cap
 
@@ -305,7 +374,9 @@ VALUE_MASS_TOLERANCE = 0.01
 LOG_CLIPPING = 10
 
 
-def evaluate_policy(logits, indices, values, mask_invalid_moves: bool) -> PolicyEvaluation:
+def evaluate_policy(
+    logits, indices, values, mask_invalid_moves: bool
+) -> PolicyEvaluation:
     """
     Returns the cross-entropy loss, the accuracy and the value of the argmax policy.
     The loss is calculated between `softmax(logits, 1)` and `torch.zeros(logits.shape).scatter(1, indices, values)`
@@ -325,7 +396,9 @@ def evaluate_policy(logits, indices, values, mask_invalid_moves: bool) -> Policy
 
     # sum should be 1 or 0 (for no valid moves)
     value_mass = (values * (values != -1)).sum(dim=1)
-    valid_and_1 = torch.logical_and(has_valid, (1.0 - value_mass < VALUE_MASS_TOLERANCE))
+    valid_and_1 = torch.logical_and(
+        has_valid, (1.0 - value_mass < VALUE_MASS_TOLERANCE)
+    )
     invalid_and_0 = torch.logical_and(~has_valid, value_mass == 0.0)
     assert torch.logical_or(valid_and_1, invalid_and_0).all(), "Invalid value mass"
 
@@ -338,7 +411,9 @@ def evaluate_policy(logits, indices, values, mask_invalid_moves: bool) -> Policy
 
         top_index = torch.argmax(picked_logits, dim=1)
         batch_acc = top_index == torch.argmax(values, dim=1)
-        batch_top_mass = torch.gather(values, 1, top_index.unsqueeze(1)).squeeze(1) * has_valid
+        batch_top_mass = (
+            torch.gather(values, 1, top_index.unsqueeze(1)).squeeze(1) * has_valid
+        )
         batch_valid_mass = has_valid * np.nan
     else:
         # softmax between all logits, then only use selected logs, implicitly assuming other values are 0.0
@@ -354,9 +429,13 @@ def evaluate_policy(logits, indices, values, mask_invalid_moves: bool) -> Policy
             batch_acc = torch.full((batch_size,), np.nan, device=device)
             batch_valid_mass = torch.full((batch_size,), np.nan, device=device)
         else:
-            batch_acc = top_index == torch.gather(indices, 1, torch.argmax(values, dim=1).unsqueeze(1)).squeeze(1)
+            batch_acc = top_index == torch.gather(
+                indices, 1, torch.argmax(values, dim=1).unsqueeze(1)
+            ).squeeze(1)
             predicted = torch.softmax(logits, 1)
-            predicted_invalid = torch.scatter(predicted, 1, indices, (values == -1).float(), reduce="multiply")
+            predicted_invalid = torch.scatter(
+                predicted, 1, indices, (values == -1).float(), reduce="multiply"
+            )
             batch_valid_mass = 1 - predicted_invalid.sum(dim=1)
 
         batch_top_mass = has_valid * np.nan
