@@ -1,66 +1,97 @@
-import einops
-import torch
-import torch.nn.functional as nnf
-import torchvision.utils
-import torch.nn as nn
-import torch.optim as optim
-from lib.data.file import DataFile
-from lib.data.position import PositionBatch, Position
+import socket
+from enum import Enum
 from lib.games import Game
+from trainingloop import train, load_file
+from lib.loop import LoopBuffer
 from lib.logger import Logger
-from lib.train import TrainSettings
-from lib.train import ScalarTarget
-from queue import Queue
+
+# message enums
+class MessageSend(Enum):  # message to send to rust
+    NEW_NETWORK = "newnet"
+    STOP_SERVER = "stop"
 
 
-def load_file(games_path: str):
-    game = Game.find("chess")
-    data = DataFile.open(game, games_path)
-    return data
+class Server:
+    def __init__(self, host, port):
+        self.host = host
+        self.port = port
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    def connect(self):
+        connected = False
+        while not connected:
+            try:
+                self.socket.connect((self.host, self.port))
+                print("Connected to server!.")
+                connected = True
+            except ConnectionRefusedError as e:
+                print(f"Connection failed: {e}. Retrying...")
+                continue
+
+    def send(self, message):
+        self.socket.sendall(message.encode())
+
+    def receive(self):
+        data = self.socket.recv(16384)
+        return data.decode()
+
+    def close(self):
+        self.socket.close()
 
 
-def train(b):
-    game = Game.find("chess")
+HOST = "127.0.0.1"
+PORT = 8080
 
-    model_path = r"C:\Users\andre\RemoteFolder\tz-rust\chess_16x128_gen3634.pt"
-    model = torch.jit.load(model_path, map_location=torch.device("cuda"))
+server = Server(HOST, PORT)
+server.connect()
 
-    model.eval()
-    
-    input_full = b.input_full.to("cuda")
+# identification - this is python training
+server.send("python-training")
 
-    # print(input_full.shape)
-    # print(input_full.dtype)
-    # torchvision.utils.save_image(
-    #     einops.rearrange(input_full, "b c h w -> (b c) 1 h w"),
-    #     "chess_input.png", nrow=21, pad_value=0.4
-    # )
+# define file buffer
 
-    train = TrainSettings(
-        game=game,
-        scalar_target=ScalarTarget.Final,
-        value_weight=0.1,
-        wdl_weight=0.0,
-        moves_left_weight=0.0,
-        moves_left_delta=0.0,
-        policy_weight=1,
-        sim_weight=0.0,
-        train_in_eval_mode=False,
-        clip_norm=5.0,
-        mask_policy=True,
-    )
 
-    op = optim.AdamW(params=model.parameters())
+logged_in = False
 
+
+BUFFER_SIZE = 1000
+BATCH_SIZE = 200
+loopbuf = LoopBuffer(
+    Game.find("chess"), target_positions=BUFFER_SIZE, test_fraction=0.2
+)
+while True:
     log = Logger()
     log.start_batch()
-    train.train_step(batch=b, network=model, optimizer=op, logger=log)
+    received_data = server.receive()
+    print(f"Received: {received_data}")
 
-    with torch.no_grad():
-        batch_scalar_logits, batch_policy_logits = model(input_full)
-        print((batch_scalar_logits, batch_policy_logits))
+    if "python-training" in received_data:  # connected to server, got confirmation
+        logged_in = True
+        print("logged in")
 
-        scalar_logits = batch_scalar_logits[0]
+    if "new-training-data" in received_data and logged_in:
+        # append file buffer
 
-        print("value:", scalar_logits[0].tanh())
-        print("wdl:", nnf.softmax(scalar_logits[1:4], -1))
+        file_path = received_data.split()[1].strip()
+        data = load_file(file_path)
+        loopbuf.append(log, data)
+
+        if loopbuf.position_count >= 1000:
+            sample = loopbuf.sampler(
+                batch_size=BATCH_SIZE,
+                unroll_steps=None,
+                include_final=False,
+                random_symmetries=False,
+                only_last_gen=False,
+                test=True,
+            )
+            batch = sample.next_batch()
+            train(batch)
+            loopbuf = LoopBuffer(
+                Game.find("chess"), target_positions=BUFFER_SIZE, test_fraction=0.2
+            )
+
+    # Close the server connection outside the loop
+    if received_data == "shutdown" and logged_in:
+        server.close()
+        print("Connection closed.")
