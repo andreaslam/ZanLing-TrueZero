@@ -1,8 +1,10 @@
 import socket
 from enum import Enum
-import threading
-import queue
-from trainingloop import loop
+# import threading
+# import queue
+from trainingloop import train, load_file
+import torch
+from torchrl.data import ReplayBuffer, ListStorage 
 
 # message enums
 class MessageSend(Enum):  # message to send to rust
@@ -36,9 +38,6 @@ class Server:
     def close(self):
         self.socket.close()
 
-shared_queue = queue.Queue()
-
-ml_loop_thread = threading.Thread(target=loop, args =(shared_queue,))  # Comma added to create a single-item tuple
 
 HOST = "127.0.0.1"
 PORT = 8080
@@ -49,12 +48,25 @@ server.connect()
 # identification - this is python training
 server.send("python-training")
 
+# define file buffer
+
+rb = ReplayBuffer(
+    storage=ListStorage(max_size=1000),
+    batch_size=5,
+)
 while True:
     received_data = server.receive()
     print(f"Received: {received_data}")
     if "new-training-data" in received_data:
-    
+        # append file buffer
+        
+        file_path = received_data.split()[1].strip()      
+        load_file(file_path)
 
 # Close the server connection outside the loop
-server.close()
-print("Connection closed.")
+    if received_data == "shutdown":
+         
+        server.close()
+        print("Connection closed.")
+    
+    
