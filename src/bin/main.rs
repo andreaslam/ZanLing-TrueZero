@@ -48,8 +48,6 @@ fn main() {
         };
     };
 
-    println!("MY ID {}", id);
-
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
     let num_threads = 5;
     let num_executors = 1;
@@ -128,6 +126,7 @@ fn main() {
                 collector_main(
                     &game_receiver,
                     &mut stream.try_clone().expect("clone failed"),
+                    id.clone()
                 )
             })
             .unwrap();
@@ -177,9 +176,9 @@ fn generator_main(
     }
 }
 
-fn collector_main(receiver: &Receiver<CollectorMessage>, server_handle: &mut TcpStream) {
+fn collector_main(receiver: &Receiver<CollectorMessage>, server_handle: &mut TcpStream, id: String) {
     let mut counter = 0;
-    let mut path = format!("games_{}", counter);
+    let mut path = format!("generator_{}_games_{}", id, counter);
     let mut bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
     let mut nps_start_time = Instant::now();
     let mut evals_start_time = Instant::now();
@@ -196,7 +195,7 @@ fn collector_main(receiver: &Receiver<CollectorMessage>, server_handle: &mut Tcp
                     let message = format!("new-training-data: {}.json", path.clone());
                     server_handle.write_all(message.as_bytes()).unwrap();
                     counter += 1;
-                    path = format!("games_{}", counter);
+                    path = format!("generator_{}_games_{}", id, counter);
                     bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
                 }
             }
