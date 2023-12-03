@@ -83,9 +83,9 @@ I would like to extend my heartfelt thanks to **[Karel Peeters](https://github.c
 
 Portions/entire files of code from [KZero](https://github.com/KarelPeeters/kZero) are being used in this Repository with express permission from Karel, which include:
 
-- `rust/dirichlet.rs`
-- `rust/fileformat.rs`
-- `rust/dataformat.rs`
+- `src/dirichlet.rs`
+- `src/fileformat.rs`
+- `src/dataformat.rs`
 - the `lib` folder used for reading KZero's custom data format and training
 
 
