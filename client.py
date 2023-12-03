@@ -83,7 +83,7 @@ while True:
         loopbuf.append(log, data)
 
         print("buffer size:",loopbuf.position_count)
-        if loopbuf.position_count >= 1000:
+        if loopbuf.position_count >= BUFFER_SIZE:
             sample = loopbuf.sampler(
                 batch_size=BATCH_SIZE,
                 unroll_steps=None,
