@@ -21,7 +21,7 @@ fn handle_client(
         };
 
         let received = String::from_utf8_lossy(&buffer[..bytes_read]).to_string();
-
+        println!("[Message] {}", received);
         // keep track of messages sent and filter for python/rust instances
 
         let mut all_messages = messages.lock().unwrap();
@@ -61,6 +61,8 @@ fn handle_client(
             }
         }
     }
+
+    println!("Client disconnected: {:?}", stream.peer_addr().unwrap());
 }
 
 fn main() {
@@ -74,7 +76,7 @@ fn main() {
                 let cloned_clients = Arc::clone(&clients);
                 let cloned_messages = Arc::clone(&messages);
                 let addr = stream.peer_addr().expect("Failed to get peer address");
-                println!("New connection: {}", addr);
+                println!("[Server] New connection: {}", addr);
 
                 {
                     let mut all_clients = cloned_clients.lock().unwrap();
