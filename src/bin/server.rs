@@ -20,7 +20,7 @@ fn handle_client(
             }
         };
 
-        let received = String::from_utf8_lossy(&buffer[..bytes_read]).to_string();
+        let received = String::from_utf8(buffer[..bytes_read].to_vec()).unwrap();
         println!("[Message] {}", received);
         // keep track of messages sent and filter for python/rust instances
 
