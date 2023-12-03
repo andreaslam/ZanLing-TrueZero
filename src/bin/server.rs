@@ -48,20 +48,22 @@ fn handle_client(
                 unreachable!();
             }
             let message = format!("{}: {} ", received, id);
-            // Broadcast message to all clients except the sender
+            // broadcast message to all clients except the sender
             let all_clients = clients.lock().unwrap();
             for mut client in all_clients.iter() {
                 if let Err(_) = client.write_all(message.as_bytes()) {}
                 println!("[Sent] {}", message);
             }
         } else {
-            // Broadcast message to all clients except the sender
+            // broadcast message to all clients except the sender
             let all_clients = clients.lock().unwrap();
             for mut client in all_clients.iter() {
                 if let Err(_) = client.write_all(received.as_bytes()) {}
                 println!("[Sent] {}", received);
             }
         }
+        // clear buffer
+        buffer = [0; 512];
     }
 
     println!("[Server] Client disconnected: {:?}", stream.peer_addr().unwrap());
