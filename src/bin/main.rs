@@ -34,7 +34,7 @@ fn main() {
         .expect("Failed to send data");
     println!("Connected to server!");
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
-    let num_threads = 512;
+    let num_threads = 32;
     let num_executors = 2;
     thread::scope(|s| {
         let mut selfplay_masters: Vec<DataGen> = Vec::new();
@@ -140,6 +140,10 @@ fn collector_main(
     server_handle: &mut TcpStream,
     id_recv: Receiver<String>,
 ) {
+    let thread_name = std::thread::current()
+            .name()
+            .unwrap_or("unnamed")
+            .to_owned();
     let folder_name = "games"; // Change this to your desired folder name
 
     if let Err(e) = fs::create_dir(folder_name) {
@@ -172,8 +176,9 @@ fn collector_main(
                     let _ = bin_output.finish().unwrap();
                     let message = format!("new-training-data: {}.json", path.clone());
                     server_handle.write_all(message.as_bytes()).unwrap();
+                    println!("{}, {}", thread_name, counter);
                     counter += 1;
-                    path = format!("generator_{}_games_{}", id, counter);
+                    path = format!("games/generator_{}_games_{}", id, counter);
                     bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
                 }
             }
@@ -210,6 +215,7 @@ fn commander_main(
     let mut is_initialised = false;
     let mut net_path = String::new(); // initialize net_path with an empty string
     loop {
+        println!("is_initialised: {}", is_initialised);
         let recv_msg = match server_handle.read(&mut buffer) {
             Ok(msg) if msg == 0 => {
                 // no more data, connection closed by server
