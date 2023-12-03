@@ -209,7 +209,6 @@ fn commander_main(
     let mut buffer = [0; 16384];
     let mut is_initialised = false;
     let mut net_path = String::new(); // initialize net_path with an empty string
-
     loop {
         let recv_msg = match server_handle.read(&mut buffer) {
             Ok(msg) if msg == 0 => {
@@ -249,15 +248,21 @@ fn commander_main(
             net_path = segment[1].clone();
             net_path.retain(|c| c != '\0'); // remove invalid chars
         } else {
-            let id = String::from_utf8(buffer[..recv_msg].to_vec()).unwrap();
-            let segment: Vec<String> = id.split_whitespace().map(String::from).collect();
-            let mut id = segment[1].clone();
-            id.retain(|c| c != '\0'); // remove invalid chars
-                                      // send to collector
 
-            let _ = id_sender.send(id).unwrap();
-
-            is_initialised = true;
+            let msg = String::from_utf8(buffer[..recv_msg].to_vec()).unwrap();
+            if msg.starts_with("rust-datagen") {
+                let segment: Vec<String> = msg.split_whitespace().map(String::from).collect();
+                let mut id = segment[1].clone();
+                id.retain(|c| c != '\0'); // remove invalid chars
+                                          // send to collector
+    
+                let _ = id_sender.send(id).unwrap();
+    
+                is_initialised = true;
+            } else {
+                // force quit, there is no ID, hence potentially overwriting existing game files should this process continue
+                std::process::exit(0);
+            }
         }
 
         if curr_net != net_path {
