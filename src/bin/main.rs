@@ -202,7 +202,7 @@ fn commander_main(
                 std::process::exit(0);
             }
             Ok(id) if !is_initialised => {
-                let msg = String::from_utf8_lossy(&buffer[..]); // convert received bytes to String
+                let msg = String::from_utf8(buffer[..].to_vec()).unwrap(); // convert received bytes to String
                 if msg.starts_with("rust-datagen") {
                     println!("obtained id: {}", id);
                     id // Explicitly return the value
@@ -212,7 +212,7 @@ fn commander_main(
             }
 
             Ok(recv_net) => {
-                let msg = String::from_utf8_lossy(&buffer[..]); // convert received bytes to String
+                let msg = String::from_utf8(buffer[..].to_vec()).unwrap(); // convert received bytes to String
                 if msg.starts_with("newnet") {
                     println!("found net path: {}", recv_net);
                     recv_net // Explicitly return the value
@@ -228,12 +228,12 @@ fn commander_main(
         };
 
         if is_initialised {
-            net_path = String::from_utf8_lossy(&buffer[..recv_msg]).to_string();
+            net_path = String::from_utf8(buffer[..recv_msg].to_vec()).unwrap();
             let segment: Vec<String> = net_path.split_whitespace().map(String::from).collect();
             net_path = segment[1].clone();
             net_path.retain(|c| c != '\0'); // remove invalid chars
         } else {
-            let id = String::from_utf8_lossy(&buffer[..recv_msg]).to_string(); // convert received bytes to String
+            let id = String::from_utf8(buffer[..recv_msg].to_vec()).unwrap();
             let segment: Vec<String> = id.split_whitespace().map(String::from).collect();
             let mut id = segment[1].clone();
             id.retain(|c| c != '\0'); // remove invalid chars
