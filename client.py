@@ -23,7 +23,7 @@ class Server:
         while not connected:
             try:
                 self.socket.connect((self.host, self.port))
-                print("Connected to server!.")
+                print("Connected to server!")
                 connected = True
             except ConnectionRefusedError as e:
                 print(f"Connection failed: {e}. Retrying...")
@@ -69,6 +69,11 @@ while True:
     if "python-training" in received_data:  # connected to server, got confirmation
         logged_in = True
         print("logged in")
+        # send neural net
+        server.send("newnet: chess_16x128_gen3634.pt")  # hardcode for now
+
+    if "rust-datagen" in received_data:
+        server.send("newnet: chess_16x128_gen3634.pt")  # hardcode for now
 
     if "new-training-data" in received_data and logged_in:
         # append file buffer
