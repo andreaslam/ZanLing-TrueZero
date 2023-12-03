@@ -48,12 +48,9 @@ fn handle_client(
                 unreachable!();
             }
             let message = format!("{}: {} ", received, id);
-            // broadcast message to all clients except the sender
-            let all_clients = clients.lock().unwrap();
-            for mut client in all_clients.iter() {
-                if let Err(_) = client.write_all(message.as_bytes()) {}
-                println!("[Sent] {}", message);
-            }
+            // privately send identification
+            if let Err(_) = stream.write_all(message.as_bytes()) {}
+            println!("[Sent Identification] {}", message);
         } else {
             // broadcast message to all clients except the sender
             let all_clients = clients.lock().unwrap();
