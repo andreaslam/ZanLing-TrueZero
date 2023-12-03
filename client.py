@@ -70,10 +70,10 @@ while True:
         logged_in = True
         print("logged in")
         # send neural net
-        server.send("newnet: chess_16x128_gen3634.pt")  # hardcode for now
+        server.send("newnet: chess_16x128_gen3634.pt ")  # hardcode for now
 
     if "rust-datagen" in received_data:
-        server.send("newnet: chess_16x128_gen3634.pt")  # hardcode for now
+        server.send("newnet: chess_16x128_gen3634.pt ")  # hardcode for now
 
     if "new-training-data" in received_data and logged_in:
         # append file buffer
@@ -82,6 +82,7 @@ while True:
         data = load_file(file_path)
         loopbuf.append(log, data)
 
+        print("buffer size:",loopbuf.position_count)
         if loopbuf.position_count >= 1000:
             sample = loopbuf.sampler(
                 batch_size=BATCH_SIZE,
@@ -93,9 +94,7 @@ while True:
             )
             batch = sample.next_batch()
             train(batch)
-            loopbuf = LoopBuffer(
-                Game.find("chess"), target_positions=BUFFER_SIZE, test_fraction=0.2
-            )
+
 
     # Close the server connection outside the loop
     if received_data == "shutdown":
