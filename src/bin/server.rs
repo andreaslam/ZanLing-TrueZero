@@ -47,22 +47,24 @@ fn handle_client(
             } else {
                 unreachable!();
             }
-            let message = format!("{}: {}", received, id);
+            let message = format!("{}: {} ", received, id);
             // Broadcast message to all clients except the sender
             let all_clients = clients.lock().unwrap();
             for mut client in all_clients.iter() {
                 if let Err(_) = client.write_all(message.as_bytes()) {}
+                println!("[Sent] {}", message);
             }
         } else {
             // Broadcast message to all clients except the sender
             let all_clients = clients.lock().unwrap();
             for mut client in all_clients.iter() {
                 if let Err(_) = client.write_all(received.as_bytes()) {}
+                println!("[Sent] {}", received);
             }
         }
     }
 
-    println!("Client disconnected: {:?}", stream.peer_addr().unwrap());
+    println!("[Server] Client disconnected: {:?}", stream.peer_addr().unwrap());
 }
 
 fn main() {
