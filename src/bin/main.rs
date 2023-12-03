@@ -5,6 +5,8 @@ use std::{
     io::{Read, Write},
     net::TcpStream,
     time::{Duration, Instant},
+    panic,
+    fs,
 };
 use tz_rust::{
     executor::{executor_main, Packet},
@@ -14,6 +16,12 @@ use tz_rust::{
 
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
+    panic::set_hook(Box::new(|panic_info| {
+        // Print panic information
+        eprintln!("Panic occurred: {:?}", panic_info);
+        // Exit the program immediately
+        std::process::exit(1);
+    }));
     // connect to python-rust server
     let mut stream = loop {
         match TcpStream::connect("127.0.0.1:8080") {
@@ -133,10 +141,24 @@ fn collector_main(
     server_handle: &mut TcpStream,
     id_recv: Receiver<String>,
 ) {
+    let folder_name = "games"; // Change this to your desired folder name
+
+    if let Err(e) = fs::create_dir(folder_name) {
+        match e.kind() {
+            std::io::ErrorKind::AlreadyExists => {
+            }
+            _ => {
+                eprintln!("Error creating folder: {}", e);
+            }
+        }
+    } else {
+        println!("created {}", folder_name);
+    }
     let mut counter = 0;
     let id = id_recv.recv().unwrap();
 
-    let mut path = format!("generator_{}_games_{}", id, counter);
+    let mut path = format!("games/generator_{}_games_{}", id, counter);
+    println!("collector path: {}", path);
     let mut bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
     let mut nps_start_time = Instant::now();
     let mut nps_vec: Vec<f32> = Vec::new();
@@ -148,7 +170,6 @@ fn collector_main(
         match msg {
             CollectorMessage::FinishedGame(sim) => {
                 let _ = bin_output.append(&sim).unwrap();
-                println!("{}", bin_output.game_count());
                 if bin_output.game_count() >= 5 {
                     let _ = bin_output.finish().unwrap();
                     let message = format!("new-training-data: {}.json", path.clone());
@@ -192,8 +213,6 @@ fn commander_main(
     let mut net_path = String::new(); // initialize net_path with an empty string
 
     loop {
-        println!("is_initialised: {} ", is_initialised);
-        println!("net_path: {} ", net_path);
         let recv_msg = match server_handle.read(&mut buffer) {
             Ok(msg) if msg == 0 => {
                 // no more data, connection closed by server
@@ -204,7 +223,6 @@ fn commander_main(
             Ok(id) if !is_initialised => {
                 let msg = String::from_utf8(buffer[..].to_vec()).unwrap(); // convert received bytes to String
                 if msg.starts_with("rust-datagen") {
-                    println!("obtained id: {}", id);
                     id // Explicitly return the value
                 } else {
                     continue;
@@ -214,7 +232,7 @@ fn commander_main(
             Ok(recv_net) => {
                 let msg = String::from_utf8(buffer[..].to_vec()).unwrap(); // convert received bytes to String
                 if msg.starts_with("newnet") {
-                    println!("found net path: {}", recv_net);
+                    // println!("found net path: {}", msg);
                     recv_net // Explicitly return the value
                 } else {
                     continue;
@@ -242,11 +260,11 @@ fn commander_main(
             let _ = id_sender.send(id).unwrap();
 
             is_initialised = true;
-            println!("INITIALISED");
         }
 
         if curr_net != net_path {
             for exe_sender in &vec_exe_sender {
+                println!("updating net to: {}", net_path.clone());
                 exe_sender
                     .send(net_path.clone())
                     .unwrap();
