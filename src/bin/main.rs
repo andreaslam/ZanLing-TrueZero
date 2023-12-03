@@ -1,12 +1,11 @@
 use crossbeam::thread;
-use flume::{Receiver, RecvError, Selector, Sender};
+use flume::{Receiver, Sender};
 use std::{
-    env,
+    env, fs,
     io::{Read, Write},
     net::TcpStream,
-    time::{Duration, Instant},
     panic,
-    fs,
+    time::{Duration, Instant},
 };
 use tz_rust::{
     executor::{executor_main, Packet},
@@ -145,8 +144,7 @@ fn collector_main(
 
     if let Err(e) = fs::create_dir(folder_name) {
         match e.kind() {
-            std::io::ErrorKind::AlreadyExists => {
-            }
+            std::io::ErrorKind::AlreadyExists => {}
             _ => {
                 eprintln!("Error creating folder: {}", e);
             }
@@ -265,9 +263,7 @@ fn commander_main(
         if curr_net != net_path {
             for exe_sender in &vec_exe_sender {
                 println!("updating net to: {}", net_path.clone());
-                exe_sender
-                    .send(net_path.clone())
-                    .unwrap();
+                exe_sender.send(net_path.clone()).unwrap();
                 // println!("SENT!");
             }
 
