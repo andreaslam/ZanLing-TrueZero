@@ -63,7 +63,10 @@ fn handle_client(
         buffer = [0; 512];
     }
 
-    println!("[Server] Client disconnected: {:?}", stream.peer_addr().unwrap());
+    println!(
+        "[Server] Client disconnected: {:?}",
+        stream.peer_addr().unwrap()
+    );
 }
 
 fn main() {
