@@ -75,6 +75,9 @@ while True:
     if "rust-datagen" in received_data:
         server.send("newnet: chess_16x128_gen3634.pt ")  # hardcode for now
 
+    if "requesting-net" in received_data:
+        server.send("newnet: chess_16x128_gen3634.pt ")  # hardcode for now
+    
     if "new-training-data" in received_data and logged_in:
         # append file buffer
 
