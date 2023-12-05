@@ -141,9 +141,9 @@ fn collector_main(
     id_recv: Receiver<String>,
 ) {
     let thread_name = std::thread::current()
-            .name()
-            .unwrap_or("unnamed")
-            .to_owned();
+        .name()
+        .unwrap_or("unnamed")
+        .to_owned();
     let folder_name = "games"; // Change this to your desired folder name
 
     if let Err(e) = fs::create_dir(folder_name) {
@@ -175,6 +175,9 @@ fn collector_main(
                 if bin_output.game_count() >= 5 {
                     let _ = bin_output.finish().unwrap();
                     let message = format!("new-training-data: {}.json", path.clone());
+                    // TODO: keep a vec of all data training files sent, reset every time when python completes a training loop
+                    // also filter for whether the files still exist in the meantime?
+                    // maybe better to do checking files still exist in python better, if done here, it may affect nps/eval scores
                     server_handle.write_all(message.as_bytes()).unwrap();
                     println!("{}, {}", thread_name, counter);
                     counter += 1;
@@ -254,16 +257,15 @@ fn commander_main(
             net_path = segment[1].clone();
             net_path.retain(|c| c != '\0'); // remove invalid chars
         } else {
-
             let msg = String::from_utf8(buffer[..recv_msg].to_vec()).unwrap();
             if msg.starts_with("rust-datagen") {
                 let segment: Vec<String> = msg.split_whitespace().map(String::from).collect();
                 let mut id = segment[1].clone();
                 id.retain(|c| c != '\0'); // remove invalid chars
                                           // send to collector
-    
-                let _ = id_sender.send(id).unwrap();
-    
+
+                id_sender.send(id).unwrap();
+
                 is_initialised = true;
             } else {
                 // force quit, there is no ID, hence potentially overwriting existing game files should this process continue
@@ -272,13 +274,22 @@ fn commander_main(
         }
 
         if curr_net != net_path {
-            println!("updating net to: {}", net_path.clone());
-            for exe_sender in &vec_exe_sender {
-                exe_sender.send(net_path.clone()).unwrap();
-                // println!("SENT!");
-            }
+            if !net_path.is_empty() {
+                println!("updating net to: {}", net_path.clone());
+                for exe_sender in &vec_exe_sender {
+                    exe_sender.send(net_path.clone()).unwrap();
+                    // println!("SENT!");
+                }
 
-            curr_net = net_path.clone();
+                curr_net = net_path.clone();
+            }
+        } 
+        if net_path.is_empty() {
+            println!("no net yet");
+            // actively request for net path
+            server_handle
+                .write_all("requesting-net".as_bytes())
+                .unwrap();
         }
 
         buffer = [0; 16384];
