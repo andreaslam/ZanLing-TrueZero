@@ -189,7 +189,7 @@ impl Tree {
         let _ = tensor_exe_send.send(pack).unwrap();
         let sw = Instant::now();
         let output = resender_recv.recv().unwrap();
-        // println!("Elapsed time for inference: {}",sw.elapsed().as_nanos() as f32 / 1e6);
+        // println!("Elapsed time for inference: {}ms",sw.elapsed().as_nanos() as f32 / 1e6);
 
         let output = match output {
             ReturnMessage::ReturnMessage(Ok(output)) => output,
