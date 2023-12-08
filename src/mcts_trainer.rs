@@ -185,9 +185,12 @@ impl Tree {
             resender: resender_send,
             id: thread_name.clone(),
         };
-        let _ = tensor_exe_send.send(pack).unwrap();
 
+        let _ = tensor_exe_send.send(pack).unwrap();
+        let sw = Instant::now();
         let output = resender_recv.recv().unwrap();
+        // println!("Elapsed time for inference: {}",sw.elapsed().as_nanos() as f32 / 1e6);
+
         let output = match output {
             ReturnMessage::ReturnMessage(Ok(output)) => output,
             ReturnMessage::ReturnMessage(Err(_)) => panic!("error in returning!"),
@@ -361,7 +364,7 @@ impl Node {
     }
 }
 
-pub const MAX_NODES: u32 = 100;
+pub const MAX_NODES: u32 = 1600;
 
 pub fn get_move(
     bs: BoardStack,
@@ -394,7 +397,7 @@ pub fn get_move(
         // // println!("thread {}, step {}", thread_name, tree.nodes[0].visits);
         let sw = Instant::now();
         tree.step(tensor_exe_send.clone());
-        // // println!("Elapsed time: {}ms", sw.elapsed().as_secs() * 1000);
+        // println!("Elapsed time for step: {}ms", sw.elapsed().as_nanos() as f32 / 1e6);
     }
     let best_move_node = tree.nodes[0]
         .children
