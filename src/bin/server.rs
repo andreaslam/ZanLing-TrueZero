@@ -81,8 +81,7 @@ fn main() {
                 let cloned_messages = Arc::clone(&messages);
                 let addr = stream.peer_addr().expect("Failed to get peer address");
                 println!("[Server] New connection: {}", addr);
-                if received.clone().starts_with("python-training")
-                    || received.clone().starts_with("rust-datagen")
+
                 {
                     let mut all_clients = cloned_clients.lock().unwrap();
                     all_clients.push(stream.try_clone().expect("Failed to clone stream"));
