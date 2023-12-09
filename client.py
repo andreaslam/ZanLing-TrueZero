@@ -56,16 +56,15 @@ server.send("python-training")
 loopbuf = LoopBuffer(
     Game.find("chess"), target_positions=BUFFER_SIZE, test_fraction=0.2
 )
-log = Logger()
-log.start_batch()
 
-logged_in = False
 communication_queue = Queue()
 
 thread = threading.Thread(target=trainer_loop, args=(communication_queue,))
 thread.start()
 
 while True:
+    log = Logger()
+    log.start_batch()
     received_data = server.receive()
     print(f"Received: {received_data}")
 
@@ -76,7 +75,7 @@ while True:
     ):
         server.send("newnet: chess_16x128_gen3634.pt")
 
-    if "new-training-data" in received_data and logged_in:
+    if "new-training-data" in received_data:
         file_path = received_data.split()[1].strip()
         data = load_file(file_path)
         loopbuf.append(log, data)
