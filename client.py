@@ -8,10 +8,17 @@ import threading
 from queue import Queue
 
 
-class MessageSend(Enum):
+class MessageSend(Enum): # message from python to rust
     NEW_NETWORK = "newnet"
     STOP_SERVER = "stop"
-
+    PYTHON_ID = "python-training"
+    
+class MessageRecv(Enum): # message from rust to python
+    NEW_NETWORK = "newnet"
+    STOP_SERVER = "shutdown"
+    RUST_ID = "rust-datagen"
+    JOB = "new-training-data"
+    NET_REQUEST = "requesting-net"
 
 class Server:
     def __init__(self, host: str, port: int):
@@ -52,7 +59,7 @@ if __name__ == "__main__":
     server = Server(HOST, PORT)
     server.connect()
 
-    server.send("python-training")
+    server.send(MessageSend.PYTHON_ID)
 
     loopbuf = LoopBuffer(
         Game.find("chess"), target_positions=BUFFER_SIZE, test_fraction=0.2
@@ -70,13 +77,13 @@ if __name__ == "__main__":
         print(f"Received: {received_data}")
 
         if (
-            "python-training" in received_data
-            or "rust-datagen" in received_data
-            or "requesting-net" in received_data
+            MessageSend.PYTHON_ID in received_data
+            or MessageRecv.RUST_ID in received_data
+            or MessageRecv.NET_REQUEST in received_data
         ):
             server.send("newnet: chess_16x128_gen3634.pt")
 
-        if "new-training-data" in received_data:
+        if MessageRecv.JOB in received_data:
             file_path = received_data.split()[1].strip()
             data = load_file(file_path)
             loopbuf.append(log, data)
@@ -94,7 +101,7 @@ if __name__ == "__main__":
                 batch = sample.next_batch()
                 communication_queue.put(batch)
 
-        if received_data == "shutdown":
+        if received_data == MessageRecv.STOP_SERVER:
             server.close()
             print("Connection closed.")
             thread.join()
