@@ -8,17 +8,19 @@ import threading
 from queue import Queue
 
 
-class MessageSend(Enum): # message from python to rust
+class MessageSend(Enum):  # message from python to rust
     NEW_NETWORK = "newnet"
     STOP_SERVER = "stop"
     PYTHON_ID = "python-training"
-    
-class MessageRecv(Enum): # message from rust to python
+
+
+class MessageRecv(Enum):  # message from rust to python
     NEW_NETWORK = "newnet"
     STOP_SERVER = "shutdown"
     RUST_ID = "rust-datagen"
     JOB = "new-training-data"
     NET_REQUEST = "requesting-net"
+
 
 class Server:
     def __init__(self, host: str, port: int):
@@ -54,7 +56,6 @@ BUFFER_SIZE = 1000
 BATCH_SIZE = 200
 
 if __name__ == "__main__":
-    
     # Initialization
     server = Server(HOST, PORT)
     server.connect()
