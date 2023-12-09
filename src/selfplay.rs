@@ -1,11 +1,11 @@
 use crate::{
     boardmanager::BoardStack,
     dataformat::{Position, Simulation},
-    executor::{Message, Packet},
+    executor::{Packet},
     mcts_trainer::{get_move, MAX_NODES},
 };
 use cozy_chess::{Board, GameStatus, Move};
-use flume::{Receiver, Sender};
+use flume::Sender;
 use rand::prelude::*;
 use rand_distr::WeightedIndex;
 use std::time::Instant;
@@ -70,7 +70,7 @@ impl DataGen {
             // if thread_name == "generator_1" {
             //     println!("{:#}", final_mv,);
             // }
-            // println!("thread {}, {:#}, {}nps", thread_name, final_mv, nps);
+            println!("thread {}, {:#}, {}nps", thread_name, final_mv, nps);
             // println!("{:#}", final_mv);
             let _ = nps_sender.send(CollectorMessage::GeneratorStatistics(MAX_NODES as f32));
             bs.play(final_mv);
