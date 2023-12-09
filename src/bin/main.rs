@@ -16,9 +16,9 @@ use tz_rust::{
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
     panic::set_hook(Box::new(|panic_info| {
-        // Print panic information
+        // print panic information
         eprintln!("Panic occurred: {:?}", panic_info);
-        // Exit the program immediately
+        // exit the program immediately
         std::process::exit(1);
     }));
     // connect to python-rust server
@@ -144,7 +144,7 @@ fn collector_main(
         .name()
         .unwrap_or("unnamed")
         .to_owned();
-    let folder_name = "games"; // Change this to your desired folder name
+    let folder_name = "games";
 
     if let Err(e) = fs::create_dir(folder_name) {
         match e.kind() {
@@ -176,6 +176,7 @@ fn collector_main(
                     let _ = bin_output.finish().unwrap();
                     let message = format!("new-training-data: {}.json", path.clone());
                     // TODO: keep a vec of all data training files sent, reset every time when python completes a training loop
+                    // if python code disconnects halfway, resend all the files missed
                     // also filter for whether the files still exist in the meantime?
                     // maybe better to do checking files still exist in python better, if done here, it may affect nps/eval scores
                     server_handle.write_all(message.as_bytes()).unwrap();
@@ -191,16 +192,20 @@ fn collector_main(
                     // println!("{} nps", nps);
                     nps_start_time = Instant::now();
                     nps_vec = Vec::new();
+                    let message = format!("statistics-nps: {} ", nps.clone());
+                    // server_handle.write_all(message.as_bytes()).unwrap();
                 } else {
                     nps_vec.push(nps);
                 }
             }
             CollectorMessage::ExecutorStatistics(evals_per_sec) => {
                 if evals_start_time.elapsed() >= Duration::from_secs(1) {
-                    let nps: f32 = evals_vec.iter().sum();
-                    // println!("{} evals/s", nps);
+                    let evals_per_second: f32 = evals_vec.iter().sum();
+                    // println!("{} evals/s", evals_per_second);
                     evals_start_time = Instant::now();
                     evals_vec = Vec::new();
+                    let message = format!("statistics-evals: {} ", evals_per_second.clone());
+                    // server_handle.write_all(message.as_bytes()).unwrap();
                 } else {
                     evals_vec.push(evals_per_sec);
                 }
@@ -218,7 +223,6 @@ fn commander_main(
     let mut is_initialised = false;
     let mut net_path = String::new(); // initialize net_path with an empty string
     loop {
-        println!("is_initialised: {}", is_initialised);
         let recv_msg = match server_handle.read(&mut buffer) {
             Ok(msg) if msg == 0 => {
                 // no more data, connection closed by server
@@ -283,7 +287,7 @@ fn commander_main(
 
                 curr_net = net_path.clone();
             }
-        } 
+        }
         if net_path.is_empty() {
             println!("no net yet");
             // actively request for net path
@@ -295,7 +299,7 @@ fn commander_main(
         buffer = [0; 16384];
     }
 
-    // If the loop exits unexpectedly, force quit the program
+    // force quit the program
     println!("Exiting program due to unexpected server disconnection");
     std::process::exit(0);
 }
