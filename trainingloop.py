@@ -2,7 +2,6 @@ import einops
 import torch
 import torch.nn.functional as nnf
 import torchvision.utils
-import torch.nn as nn
 import torch.optim as optim
 from lib.data.file import DataFile
 from lib.games import Game
@@ -10,6 +9,13 @@ from lib.logger import Logger
 from lib.train import TrainSettings
 from lib.train import ScalarTarget
 from queue import Queue
+from lib.data.position import PositionBatch
+
+
+def trainer_loop(q: Queue):
+    while True:
+        data = q.get()
+        train(data)
 
 
 def load_file(games_path: str):
@@ -18,7 +24,7 @@ def load_file(games_path: str):
     return data
 
 
-def train(b):
+def train(b: PositionBatch):
     game = Game.find("chess")
 
     model_path = r"C:\Users\andre\RemoteFolder\tz-rust\chess_16x128_gen3634.pt"
@@ -34,10 +40,10 @@ def train(b):
         einops.rearrange(input_full, "b c h w -> (b c) 1 h w"),
         "chess_input.png",
         nrow=21,
-        pad_value=0.3,
+        pad_value=0.4,
     )
 
-    train = TrainSettings(
+    train_settings = TrainSettings(
         game=game,
         scalar_target=ScalarTarget.Final,
         value_weight=0.1,
@@ -55,7 +61,7 @@ def train(b):
 
     log = Logger()
     log.start_batch()
-    train.train_step(batch=b, network=model, optimizer=op, logger=log)
+    train_settings.train_step(batch=b, network=model, optimizer=op, logger=log)
 
     with torch.no_grad():
         batch_scalar_logits, batch_policy_logits = model(input_full)
