@@ -5,6 +5,7 @@ pub mod dirichlet;
 pub mod executor;
 pub mod fileformat;
 pub mod mcts_trainer;
+pub mod message_types;
 pub mod mvs;
 pub mod selfplay;
 
