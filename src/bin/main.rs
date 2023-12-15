@@ -2,7 +2,7 @@ use crossbeam::thread;
 use flume::{Receiver, Sender};
 use std::{
     env, fs,
-    io::{Read, Write},
+    io::{BufRead, BufReader, Read, Write},
     net::TcpStream,
     panic,
     time::{Duration, Instant},
@@ -10,6 +10,7 @@ use std::{
 use tz_rust::{
     executor::{executor_main, Packet},
     fileformat::BinaryOutput,
+    message_types::{ServerMessageRecv, ServerMessageSend},
     selfplay::{CollectorMessage, DataGen},
 };
 
@@ -29,8 +30,21 @@ fn main() {
         };
     };
     // identification - this is rust data generation
+
+    let message = ServerMessageSend {
+        is_continue: true,
+        initialise_identity: Some("rust-datagen".to_string()),
+        nps: None,
+        evals_per_second: None,
+        job_path: None,
+        net_path: None,
+        has_net: false,
+        purpose: "initialise".to_string(),
+    };
+    let mut serialised = serde_json::to_string(&message).expect("serialisation failed");
+    serialised += "\n";
     stream
-        .write_all("rust-datagen".as_bytes())
+        .write_all(serialised.as_bytes())
         .expect("Failed to send data");
     println!("Connected to server!");
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
@@ -174,12 +188,24 @@ fn collector_main(
                 let _ = bin_output.append(&sim).unwrap();
                 if bin_output.game_count() >= 5 {
                     let _ = bin_output.finish().unwrap();
-                    let message = format!("new-training-data: {}.json", path.clone());
+                    let message = ServerMessageSend {
+                        is_continue: true,
+                        initialise_identity: None,
+                        nps: None,
+                        evals_per_second: None,
+                        job_path: Some(path.clone().to_string()),
+                        net_path: None,
+                        has_net: true,
+                        purpose: "jobsend".to_string(),
+                    };
                     // TODO: keep a vec of all data training files sent, reset every time when python completes a training loop
                     // if python code disconnects halfway, resend all the files missed
                     // also filter for whether the files still exist in the meantime?
                     // maybe better to do checking files still exist in python better, if done here, it may affect nps/eval scores
-                    server_handle.write_all(message.as_bytes()).unwrap();
+                    let mut serialised =
+                        serde_json::to_string(&message).expect("serialisation failed");
+                    serialised += "\n";
+                    server_handle.write_all(serialised.as_bytes()).unwrap();
                     println!("{}, {}", thread_name, counter);
                     counter += 1;
                     path = format!("games/generator_{}_games_{}", id, counter);
@@ -192,8 +218,21 @@ fn collector_main(
                     // println!("{} nps", nps);
                     nps_start_time = Instant::now();
                     nps_vec = Vec::new();
-                    let message = format!("statistics-nps: {} ", nps.clone());
-                    // server_handle.write_all(message.as_bytes()).unwrap();
+                    // let message = format!("statistics-nps: {}\n", nps.clone());
+                    let message = ServerMessageSend {
+                        is_continue: true,
+                        initialise_identity: None,
+                        nps: Some(nps),
+                        job_path: None,
+                        evals_per_second: None,
+                        net_path: None,
+                        has_net: true,
+                        purpose: "statistics-nps".to_string(),
+                    };
+                    let mut serialised =
+                        serde_json::to_string(&message).expect("serialisation failed");
+                    serialised += "\n";
+                    server_handle.write_all(serialised.as_bytes()).unwrap();
                 } else {
                     nps_vec.push(nps);
                 }
@@ -204,8 +243,20 @@ fn collector_main(
                     // println!("{} evals/s", evals_per_second);
                     evals_start_time = Instant::now();
                     evals_vec = Vec::new();
-                    let message = format!("statistics-evals: {} ", evals_per_second.clone());
-                    // server_handle.write_all(message.as_bytes()).unwrap();
+                    let message = ServerMessageSend {
+                        is_continue: true,
+                        initialise_identity: None,
+                        nps: None,
+                        evals_per_second: Some(evals_per_second),
+                        job_path: None,
+                        net_path: None,
+                        has_net: true,
+                        purpose: "statistics-evals".to_string(),
+                    };
+                    let mut serialised =
+                        serde_json::to_string(&message).expect("serialisation failed");
+                    serialised += "\n";
+                    server_handle.write_all(serialised.as_bytes()).unwrap();
                 } else {
                     evals_vec.push(evals_per_sec);
                 }
@@ -219,55 +270,46 @@ fn commander_main(
     id_sender: Sender<String>,
 ) {
     let mut curr_net = String::new();
-    let mut buffer = [0; 16384];
     let mut is_initialised = false;
     let mut net_path = String::new(); // initialize net_path with an empty string
+    let mut cloned_handle = server_handle.try_clone().unwrap();
+    let mut reader = BufReader::new(server_handle);
     loop {
-        let recv_msg = match server_handle.read(&mut buffer) {
-            Ok(msg) if msg == 0 => {
-                // no more data, connection closed by server
-                println!("Server closed the connection");
-                // force quit the program when the server closes the connection
-                std::process::exit(0);
+        let mut recv_msg = String::new();
+        if let Err(_) = reader.read_line(&mut recv_msg) {
+            return;
+        }
+        // deserialise data
+        // println!("RAW message: {:?}", recv_msg);
+        let message = match serde_json::from_str::<ServerMessageRecv>(&recv_msg) {
+            Ok(message) => {
+                message
+                // process the received JSON data
             }
-            Ok(id) if !is_initialised => {
-                let msg = String::from_utf8(buffer[..].to_vec()).unwrap(); // convert received bytes to String
-                if msg.starts_with("rust-datagen") {
-                    id // Explicitly return the value
-                } else {
-                    continue;
-                }
-            }
-
-            Ok(recv_net) => {
-                let msg = String::from_utf8(buffer[..].to_vec()).unwrap(); // convert received bytes to String
-                if msg.starts_with("newnet") {
-                    // println!("found net path: {}", msg);
-                    recv_net // Explicitly return the value
-                } else {
-                    continue;
-                }
-            }
-
             Err(err) => {
-                eprintln!("Error reading from server: {}", err);
-                break;
+                println!("error deserialising message! {}, {}", recv_msg, err);
+                continue;
             }
         };
 
         if is_initialised {
-            net_path = String::from_utf8(buffer[..recv_msg].to_vec()).unwrap();
-            let segment: Vec<String> = net_path.split_whitespace().map(String::from).collect();
-            net_path = segment[1].clone();
-            net_path.retain(|c| c != '\0'); // remove invalid chars
+            let np = message.net_path;
+            match np {
+                Some(net_p) => {
+                    net_path = net_p;
+                    net_path.retain(|c| c != '\0'); // remove invalid chars
+                }
+                None => {
+                    continue;
+                }
+            }
         } else {
-            let msg = String::from_utf8(buffer[..recv_msg].to_vec()).unwrap();
+            let msg = message.verification.unwrap();
             if msg.starts_with("rust-datagen") {
                 let segment: Vec<String> = msg.split_whitespace().map(String::from).collect();
                 let mut id = segment[1].clone();
-                id.retain(|c| c != '\0'); // remove invalid chars
+                id.retain(|c| c != '\n'); // remove invalid chars
                                           // send to collector
-
                 id_sender.send(id).unwrap();
 
                 is_initialised = true;
@@ -280,6 +322,7 @@ fn commander_main(
         if curr_net != net_path {
             if !net_path.is_empty() {
                 println!("updating net to: {}", net_path.clone());
+
                 for exe_sender in &vec_exe_sender {
                     exe_sender.send(net_path.clone()).unwrap();
                     // println!("SENT!");
@@ -291,15 +334,22 @@ fn commander_main(
         if net_path.is_empty() {
             println!("no net yet");
             // actively request for net path
-            server_handle
-                .write_all("requesting-net".as_bytes())
-                .unwrap();
+
+            let message = ServerMessageSend {
+                is_continue: true,
+                initialise_identity: None,
+                nps: None,
+                evals_per_second: None,
+                job_path: None,
+                net_path: None,
+                has_net: false,
+                purpose: "requesting-net".to_string(),
+            };
+            let mut serialised = serde_json::to_string(&message).expect("serialisation failed");
+            serialised += "\n";
+            println!("serialised {:?}", serialised);
+            cloned_handle.write_all(serialised.as_bytes()).unwrap();
         }
-
-        buffer = [0; 16384];
+        recv_msg.clear();
     }
-
-    // force quit the program
-    println!("Exiting program due to unexpected server disconnection");
-    std::process::exit(0);
 }
