@@ -3,6 +3,7 @@ use std::{
     net::{TcpListener, TcpStream},
     sync::{Arc, Mutex},
     thread,
+    time::{Duration, Instant},
 };
 
 use tz_rust::message_types::{ServerMessageRecv, ServerMessageSend};
@@ -14,6 +15,11 @@ fn handle_client(
 ) {
     let mut cloned_handle = stream.try_clone().unwrap();
     let mut reader = BufReader::new(&stream);
+    let mut nps_start_time = Instant::now();
+    let mut nps_vec: Vec<f32> = Vec::new();
+    let mut evals_start_time = Instant::now();
+    let mut evals_vec: Vec<f32> = Vec::new();
+
     loop {
         let mut recv_msg = String::new();
         if let Err(_) = reader.read_line(&mut recv_msg) {
@@ -74,7 +80,28 @@ fn handle_client(
                 }
                 println!("[Sent Identification] {:?}", message);
             }
-        } else {
+        } else if purpose.starts_with("statistics") { 
+            if purpose == "statistics-nps" {
+                if nps_start_time.elapsed() >= Duration::from_secs(1) {
+                    let nps: f32 = nps_vec.iter().sum();
+                    nps_start_time = Instant::now();
+                    nps_vec = Vec::new();
+                    println!("[Statistics-nps] {}", nps);
+                } else {
+                    nps_vec.push(message.nps.unwrap());
+                }
+            } else if purpose == "statistics-evals" {
+                if evals_start_time.elapsed() >= Duration::from_secs(1) {
+                    let evals_per_second: f32 = evals_vec.iter().sum();
+                    evals_start_time = Instant::now();
+                    evals_vec = Vec::new();
+                    println!("[Statistics-evals] {}", evals_per_second);
+                } else {
+                    evals_vec.push(message.evals_per_second.unwrap());
+                }
+            }
+        }
+        else {
             let all_clients = clients.lock().unwrap();
             for mut client in all_clients.iter() {
                 if let Err(msg) = client.write_all(recv_msg.as_bytes()) {
