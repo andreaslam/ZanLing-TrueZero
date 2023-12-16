@@ -23,7 +23,10 @@ fn handle_client(
         let message: ServerMessageSend = match serde_json::from_str(&recv_msg) {
             Ok(msg) => msg,
             Err(err) => {
-                eprintln!("[Error] Error deserialising message! {:?} {}", recv_msg, err);
+                eprintln!(
+                    "[Error] Error deserialising message! {:?} {}",
+                    recv_msg, err
+                );
                 recv_msg.clear();
                 continue;
             }
@@ -66,7 +69,7 @@ fn handle_client(
                 let mut serialised = serde_json::to_string(&message).expect("serialization failed");
                 serialised += "\n";
                 if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
-                    eprintln!("Error sending identification! {}", msg);
+                    // eprintln!("Error sending identification! {}", msg);
                     break;
                 }
                 println!("[Sent Identification] {:?}", message);
@@ -78,7 +81,7 @@ fn handle_client(
                     eprintln!("Error sending message to client! {}", msg);
                     continue;
                 }
-                let mut disp_msg=  recv_msg.clone();
+                let mut disp_msg = recv_msg.clone();
                 disp_msg.retain(|c| c != '\n'); // remove newline
                 println!("[Sent to {}]: {}", client.peer_addr().unwrap(), disp_msg);
             }
@@ -88,11 +91,11 @@ fn handle_client(
             let all_clients = clients.lock().unwrap();
             for mut client in all_clients.iter() {
                 if let Err(msg) = client.write_all(recv_msg.as_bytes()) {
-                    eprintln!("Error sending message to client! {}", msg);
+                    // eprintln!("Error sending message to client! {}", msg);
                     continue;
                 }
 
-                let mut disp_msg =  recv_msg.clone();
+                let mut disp_msg = recv_msg.clone();
                 disp_msg.retain(|c| c != '\n'); // remove newline
                 println!("[Sent to {}]: {}", client.peer_addr().unwrap(), disp_msg);
             }
