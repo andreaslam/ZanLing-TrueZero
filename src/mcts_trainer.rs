@@ -20,8 +20,10 @@ impl Net {
     pub fn new(path: &str) -> Self {
         // let path = "tz.pt";
         // // println!("{}", path);
+        let mut net = tch::CModule::load(path).expect("ERROR");
+        net.set_eval();
         Self {
-            net: tch::CModule::load(path).expect("ERROR"),
+            net: net,
             // device: Device::Cpu,
             device: Device::cuda_if_available(),
         }
