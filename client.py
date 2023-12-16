@@ -132,12 +132,15 @@ def main():
     if len(os.listdir("nets")) == 0 or len(latest_file) == 0:
         net = torch.jit.script(network.TrueNet(num_resBlocks=2, num_hidden=64).to(d))
 
-        for m in net.modules():
+
+        def init_weights(m):
             if isinstance(m, nn.Linear):
                 nn.init.xavier_uniform_(m.weight)
                 if m.bias is not None:
-                    nn.init.kaiming_uniform(m.bias)
+                    nn.init.constant_(m.bias, 0.0)  # Set bias to zero
 
+
+        net.apply(init_weights)
         torch.jit.save(
             net, "nets/tz_0.pt"
         )  # if it doesn't exist, create one and save into folder
