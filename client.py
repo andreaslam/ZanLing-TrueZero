@@ -91,12 +91,12 @@ class Server:
 # Constants
 HOST = "127.0.0.1"
 PORT = 8080
-BUFFER_SIZE = 1000
-BATCH_SIZE = 256  # (power of 2, const)
+BUFFER_SIZE = 1000000
+BATCH_SIZE = 16384  # (power of 2, const)
 
 assert BATCH_SIZE > 0 and math.isqrt(BATCH_SIZE) ** 2 == BATCH_SIZE
 
-SAMPLING_RATIO = 0.9  # ~ 1 <-- how often to train on each pos
+SAMPLING_RATIO = 0.3 # how often to train on each pos
 
 
 def load_file(games_path: str):
@@ -130,20 +130,18 @@ def main():
     )
 
     if len(os.listdir("nets")) == 0 or len(latest_file) == 0:
-        net = torch.jit.script(network.TrueNet(num_resBlocks=2, num_hidden=64).to(d))
-
-
-        def init_weights(m):
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0.0)  # Set bias to zero
-
-
-        net.apply(init_weights)
-        torch.jit.save(
-            net, "nets/tz_0.pt"
-        )  # if it doesn't exist, create one and save into folder
+        with torch.no_grad():
+            net = torch.jit.script(network.TrueNet(num_resBlocks=2, num_hidden=64).to(d))
+            for m in net.modules():
+                if isinstance(m, nn.Linear):
+                    nn.init.xavier_uniform_(m.weight)
+                    if m.bias is not None:
+                        nn.init.kaiming_uniform(m.bias)
+        net.eval()
+        with torch.no_grad():
+            torch.jit.save(
+                net, "nets/tz_0.pt"
+            )  # if it doesn't exist, create one and save into folder
 
     # load the latest generation net
 
@@ -252,7 +250,8 @@ def main():
                 starting_gen += 1
                 model_path = "nets/tz_" + str(starting_gen) + ".pt"
                 print(model_path)
-                torch.jit.save(model, model_path)
+                with torch.no_grad():
+                    torch.jit.save(model, model_path)
 
                 # send to rust server
                 msg = make_msg_send(
