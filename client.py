@@ -158,12 +158,19 @@ def main():
 
     server = Server(HOST, PORT)
     server.connect()
-
-    server.send(
-        make_msg_send(
-            True, "python-training", None, None, None, model_path, True, MessageRecv.INIT.value
+    
+    # login loop
+    
+    while True:
+        server.send(
+            make_msg_send(
+                True, "python-training", None, None, None, model_path, True, MessageRecv.INIT.value
+            )
         )
-    )
+        received_data = server.receive()
+        received_data = json.loads(received_data)
+        if MessageSend.PYTHON_ID.value in received_data.values():
+            break
 
     loopbuf = LoopBuffer(
         Game.find("chess"), target_positions=BUFFER_SIZE, test_fraction=0.2
@@ -192,7 +199,6 @@ def main():
         received_data = json.loads(received_data)
         print(f"[Received] {received_data}")
 
-        print(MessageRecv.NET_REQUEST.value in list(received_data.values()))
         if (
             MessageSend.PYTHON_ID.value in list(received_data.values())
             or MessageRecv.RUST_ID.value in list(received_data.values())
