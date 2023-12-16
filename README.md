@@ -48,9 +48,10 @@ Rewrite in progress! After careful consideration, TrueZero will be written in Ru
 ## What each file does
 
 ### Internal testing (non-UCI compliant)
-- `getdecode.rs` - used for internal testing. Used for obtaining the encoded NN inputs.
-- `getmove.rs` - used for internal testing. Used for obtaining a single tree search.
-- `getgame.rs` - used for internal testing. Used for obtaining a game.
+- `getdecode.rs` - Used for obtaining the encoded NN inputs.
+- `getmove.rs` - Used for obtaining a single tree search.
+- `getgame.rs` - Used for obtaining a game.
+- `getinferencetime.rs` - Used for benchmarking inference times and batching effectiveness through calculating the nodes/s. 
 ### Source code for AI
 - `decoder.rs` - used to decode and encode inputs for AI. Also handles the creation of child nodes. This is where NN inference happens.
 - `mcts_trainer.rs` - used for MCTS tree search. Initialises the NN and manages the entire tree search. Adds Dirichlet noise .
@@ -60,6 +61,7 @@ Rewrite in progress! After careful consideration, TrueZero will be written in Ru
 - `selfplay.rs` - facilitates selfplay. This is where search is initialised. Contains temperature management.
 - `fileformat.rs` - contains the code for binary encoding.
 - `dataformat.rs` - contains necessary abstractions for `fileformat.rs`.
+- `message_types.rs` - contains the message protocols for processes (such as the Generator and the training loop) to communicate with the server and vice vera.
 
 ## Libraries/technologies used 
 
