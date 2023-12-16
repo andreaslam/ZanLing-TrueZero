@@ -186,7 +186,7 @@ fn collector_main(
         match msg {
             CollectorMessage::FinishedGame(sim) => {
                 let _ = bin_output.append(&sim).unwrap();
-                if bin_output.game_count() >= 5 {
+                if bin_output.game_count() >= 100 {
                     let _ = bin_output.finish().unwrap();
                     let message = ServerMessageSend {
                         is_continue: true,
