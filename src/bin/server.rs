@@ -12,13 +12,11 @@ fn handle_client(
     stream: TcpStream,
     clients: Arc<Mutex<Vec<TcpStream>>>,
     messages: Arc<Mutex<Vec<String>>>,
+    stats_counters: Arc<Mutex<(f32, f32)>>,
 ) {
     let mut cloned_handle = stream.try_clone().unwrap();
     let mut reader = BufReader::new(&stream);
-    let mut nps_start_time = Instant::now();
-    let mut nps_vec: Vec<f32> = Vec::new();
-    let mut evals_start_time = Instant::now();
-    let mut evals_vec: Vec<f32> = Vec::new();
+    let mut start_time = Instant::now();
 
     loop {
         let mut recv_msg = String::new();
@@ -80,28 +78,25 @@ fn handle_client(
                 }
                 println!("[Sent Identification] {:?}", message);
             }
-        } else if purpose.starts_with("statistics") { 
-            if purpose == "statistics-nps" {
-                if nps_start_time.elapsed() >= Duration::from_secs(1) {
-                    let nps: f32 = nps_vec.iter().sum();
-                    nps_start_time = Instant::now();
-                    nps_vec = Vec::new();
-                    println!("[Statistics-nps] {}", nps);
-                } else {
-                    nps_vec.push(message.nps.unwrap());
+        } else if purpose.starts_with("statistics") {
+            let mut stats = stats_counters.lock().unwrap();
+            let elapsed = start_time.elapsed().as_secs_f32();
+            if elapsed >= 1.0 {
+                println!("[Statistics-nps] {}", stats.0);
+                println!("[Statistics-evals] {}", stats.1);
+                *stats = (0.0, 0.0);
+                start_time = Instant::now();
+            } else {
+                if let Some(nps_value) = message.nps {
+                    stats.0 += nps_value;
                 }
-            } else if purpose == "statistics-evals" {
-                if evals_start_time.elapsed() >= Duration::from_secs(1) {
-                    let evals_per_second: f32 = evals_vec.iter().sum();
-                    evals_start_time = Instant::now();
-                    evals_vec = Vec::new();
-                    println!("[Statistics-evals] {}", evals_per_second);
-                } else {
-                    evals_vec.push(message.evals_per_second.unwrap());
+                if let Some(evals_value) = message.evals_per_second {
+                    stats.1 += evals_value;
                 }
             }
-        }
-        else {
+            recv_msg.clear();
+            continue;
+        } else {
             let all_clients = clients.lock().unwrap();
             for mut client in all_clients.iter() {
                 if let Err(msg) = client.write_all(recv_msg.as_bytes()) {
@@ -127,22 +122,24 @@ fn handle_client(
                 println!("[Sent to {}]: {}", client.peer_addr().unwrap(), disp_msg);
             }
         }
-
         recv_msg.clear();
     }
 
     println!("[Server] Client disconnected!");
 }
+
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:8080").expect("Failed to bind address");
     let clients: Arc<Mutex<Vec<TcpStream>>> = Arc::new(Mutex::new(Vec::new()));
     let messages: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let stats_counters: Arc<Mutex<(f32, f32)>> = Arc::new(Mutex::new((0.0, 0.0)));
 
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
                 let cloned_clients = Arc::clone(&clients);
                 let cloned_messages = Arc::clone(&messages);
+                let cloned_stats_counters = Arc::clone(&stats_counters);
                 let addr = stream.peer_addr().expect("Failed to get peer address");
                 println!("[Server] New connection: {}", addr);
 
@@ -153,7 +150,12 @@ fn main() {
 
                 let cloned_clients = Arc::clone(&clients);
                 thread::spawn(move || {
-                    handle_client(stream, cloned_clients, cloned_messages);
+                    handle_client(
+                        stream,
+                        cloned_clients,
+                        cloned_messages,
+                        cloned_stats_counters,
+                    );
                 });
             }
             Err(e) => {
