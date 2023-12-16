@@ -52,7 +52,7 @@ class MessageRecv(Enum):  # message from rust to python
     NEW_NETWORK = "send-net"
     STOP_SERVER = "shutdown"
     RUST_ID = "rust-datagen"
-    JOB = "new-training-data"
+    JOB = "jobsend"
     NET_REQUEST = "requesting-net"
     INIT = "initialise"
 
@@ -96,7 +96,7 @@ BATCH_SIZE = 256  # (power of 2, const)
 
 assert BATCH_SIZE > 0 and math.isqrt(BATCH_SIZE) ** 2 == BATCH_SIZE
 
-SAMPLING_RATIO = 0.5  # ~ 1 <-- how often to train on each pos
+SAMPLING_RATIO = 0.9  # ~ 1 <-- how often to train on each pos
 
 
 def load_file(games_path: str):
@@ -123,7 +123,13 @@ def main():
 
         # initialise a fresh batch of NN, if not already
 
-    if len(os.listdir("nets")) == 0:
+    # load the latest generation net
+
+    latest_file = list(
+        filter(lambda x: x.startswith("tz_") and x.endswith(".pt"), os.listdir("nets"))
+    )
+
+    if len(os.listdir("nets")) == 0 or len(latest_file) == 0:
         net = torch.jit.script(network.TrueNet(num_resBlocks=2, num_hidden=64).to(d))
 
         for m in net.modules():
@@ -155,12 +161,11 @@ def main():
     starting_gen = int(
         re.findall(pattern, model_path)[0]
     )  # can do this since only 1 match per file maximum
-
     server = Server(HOST, PORT)
     server.connect()
-    
+
     # login loop
-    
+
     while True:
         server.send(
             make_msg_send(
@@ -209,8 +214,8 @@ def main():
             )
             server.send(msg)
 
-        if MessageRecv.JOB.value in received_data.values():
-            file_path = received_data.split()[1].strip()
+        if MessageRecv.JOB.value in list(received_data.values()):
+            file_path = received_data["job_path"]
             data = load_file(file_path)
             loopbuf.append(log, data)
 
@@ -242,7 +247,8 @@ def main():
                 log.save("log.npz")
                 sample.close()
                 starting_gen += 1
-                model_path = "net/tz_" + str(starting_gen) + ".pt"
+                model_path = "nets/tz_" + str(starting_gen) + ".pt"
+                print(model_path)
                 torch.jit.save(model, model_path)
 
                 # send to rust server
