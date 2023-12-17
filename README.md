@@ -54,7 +54,7 @@ cargo run --bin server
 ```
 
 ## Features in progress
-Rewrite in progress! After careful consideration, TrueZero will be written in Rust. 
+Rewrite in progress! After careful consideration, TrueZero will be written in Rust. More details can be found on the [roadmap here](https://github.com/andreaslam/ZanLing-TrueZero/issues/1)
 
 ## Long term goals and vision
 - Implement reinforcement learning (specifically genetic algorithms) for the AI in order to allow for quicker realisation of chess concepts through gameplay.
