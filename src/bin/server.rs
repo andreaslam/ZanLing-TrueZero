@@ -3,7 +3,7 @@ use std::{
     net::{TcpListener, TcpStream},
     sync::{Arc, Mutex},
     thread,
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use tz_rust::message_types::{ServerMessageRecv, ServerMessageSend};
@@ -106,6 +106,7 @@ fn handle_client(
                 let mut disp_msg = recv_msg.clone();
                 disp_msg.retain(|c| c != '\n'); // remove newline
                 println!("[Sent to {}]: {}", client.peer_addr().unwrap(), disp_msg);
+                continue;
             }
         }
 
@@ -125,7 +126,7 @@ fn handle_client(
         recv_msg.clear();
     }
 
-    println!("[Server] Client disconnected!");
+    println!("[Server] Client disconnected: {:?}", stream.peer_addr().unwrap());
 }
 
 fn main() {
