@@ -3,7 +3,7 @@ use std::{
     net::{TcpListener, TcpStream},
     sync::{Arc, Mutex},
     thread,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use tz_rust::message_types::{ServerMessageRecv, ServerMessageSend};
@@ -106,8 +106,8 @@ fn handle_client(
                 let mut disp_msg = recv_msg.clone();
                 disp_msg.retain(|c| c != '\n'); // remove newline
                 println!("[Sent to {}]: {}", client.peer_addr().unwrap(), disp_msg);
-                continue;
             }
+            continue;
         }
 
         if message.has_net {
