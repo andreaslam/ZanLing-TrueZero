@@ -13,10 +13,10 @@ fn handle_client(
     clients: Arc<Mutex<Vec<TcpStream>>>,
     messages: Arc<Mutex<Vec<String>>>,
     stats_counters: Arc<Mutex<(f32, f32)>>,
+    start_time: Arc<Mutex<Instant>>,
 ) {
     let mut cloned_handle = stream.try_clone().unwrap();
     let mut reader = BufReader::new(&stream);
-    let mut start_time = Instant::now();
 
     loop {
         let mut recv_msg = String::new();
@@ -80,12 +80,13 @@ fn handle_client(
             }
         } else if purpose.starts_with("statistics") {
             let mut stats = stats_counters.lock().unwrap();
+            let mut start_time = start_time.lock().unwrap();
             let elapsed = start_time.elapsed().as_secs_f32();
             if elapsed >= 1.0 {
                 println!("[Statistics-nps] {}", stats.0);
                 println!("[Statistics-evals] {}", stats.1);
                 *stats = (0.0, 0.0);
-                start_time = Instant::now();
+                *start_time = Instant::now();
             } else {
                 if let Some(nps_value) = message.nps {
                     stats.0 += nps_value;
@@ -134,6 +135,7 @@ fn main() {
     let clients: Arc<Mutex<Vec<TcpStream>>> = Arc::new(Mutex::new(Vec::new()));
     let messages: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let stats_counters: Arc<Mutex<(f32, f32)>> = Arc::new(Mutex::new((0.0, 0.0)));
+    let start_time: Arc<Mutex<Instant>> = Arc::new(Mutex::new(Instant::now()));
 
     for stream in listener.incoming() {
         match stream {
@@ -141,6 +143,7 @@ fn main() {
                 let cloned_clients = Arc::clone(&clients);
                 let cloned_messages = Arc::clone(&messages);
                 let cloned_stats_counters = Arc::clone(&stats_counters);
+                let cloned_start_time = Arc::clone(&start_time);
                 let addr = stream.peer_addr().expect("Failed to get peer address");
                 println!("[Server] New connection: {}", addr);
 
@@ -156,6 +159,7 @@ fn main() {
                         cloned_clients,
                         cloned_messages,
                         cloned_stats_counters,
+                        cloned_start_time,
                     );
                 });
             }
