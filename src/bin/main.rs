@@ -2,7 +2,7 @@ use crossbeam::thread;
 use flume::{Receiver, Sender};
 use std::{
     env, fs,
-    io::{BufRead, BufReader, Read, Write},
+    io::{BufRead, BufReader, Write},
     net::TcpStream,
     panic,
     time::{Duration, Instant},
