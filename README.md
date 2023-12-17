@@ -37,6 +37,22 @@ cargo build
 
 Then choose a binary to run!
 
+## Running Data Generation
+
+To run data generation, simply run the python training client `client.py`, `main` binary and the `server` binary as follows. Open a new terminal window for each.
+
+```
+python client.py
+```
+
+```
+cargo run --bin main 
+```
+
+```
+cargo run --bin server
+```
+
 ## Features in progress
 Rewrite in progress! After careful consideration, TrueZero will be written in Rust. 
 
