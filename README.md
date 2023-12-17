@@ -7,9 +7,8 @@ The name of the Engine is 真零 (TrueZero), which is Chinese for "True Zero" an
 
 Instead of being hard-coded by humans, this AI learns how to play through playing games from itself and learning from randomly generated games. 
 
-The evaluation learns from randomly generated games with outcomes and move turns and based on move turn and final outcome, assign a score between 1/0/-1 for games that were won/lost/drawn respectively, accounting for move turn.
 
-The chess Engine will then play games against itself using the evaluation to evaluate chess positions, done using [Monte Carlo Tree Search (MCTS)]([https://en.wikipedia.org/wiki/Negamax#Negamax_with_alpha_beta_pruning](https://en.wikipedia.org/wiki/Monte_Carlo_tree_search)).
+The chess Engine will then play games against itself using the evaluation to evaluate chess positions, done using [Monte Carlo Tree Search (MCTS)](https://en.wikipedia.org/wiki/Monte_Carlo_tree_search)).
 
 ## Engine setup
 
