@@ -56,11 +56,6 @@ cargo run --bin server
 ## Features in progress
 Rewrite in progress! After careful consideration, TrueZero will be written in Rust. More details can be found on the [roadmap here](https://github.com/andreaslam/ZanLing-TrueZero/issues/1)
 
-## Long term goals and vision
-- Implement reinforcement learning (specifically genetic algorithms) for the AI in order to allow for quicker realisation of chess concepts through gameplay.
-- V2 will feature chess games that are randomly generated instead of taking from games that are played by humans before, to fully achieve TrueZero.
-- Create a [Data Engine](https://www.youtube.com/watch?v=zPH5O8hRfMA) where games are taken automatically and put to training DB and newly trained AIs can play against each other 24/7
-
 ## What each file does
 
 ### Internal testing (non-UCI compliant)
