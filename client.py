@@ -131,14 +131,8 @@ def main():
 
     if len(os.listdir("nets")) == 0 or len(latest_file) == 0:
         with torch.no_grad():
-            net = torch.jit.script(network.TrueNet(num_resBlocks=2, num_hidden=64).to(d))
-            for m in net.modules():
-                if isinstance(m, nn.Linear):
-                    nn.init.xavier_uniform_(m.weight)
-                    if m.bias is not None:
-                        nn.init.kaiming_uniform(m.bias)
-        net.eval()
-        with torch.no_grad():
+            net = torch.jit.script(network.TrueNet(num_resBlocks=2, num_hidden=64, head_nodes=100).to(d))
+            net.eval()
             torch.jit.save(
                 net, "nets/tz_0.pt"
             )  # if it doesn't exist, create one and save into folder
