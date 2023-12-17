@@ -6,14 +6,10 @@ use crate::{
 use cozy_chess::{Color, Move, Piece, Rank, Square};
 use tch::{IValue, Kind, Tensor};
 
-pub fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> {
-    // reshape the model (originally from 1D)
-    let b = board;
-    // let b = b.unsqueeze(0);
-    let b = b.reshape([-1, 21, 8, 8]);
-    // // println!("{:?}", b.size());
-    let b: Tensor = b.to(net.device);
-    let board = IValue::Tensor(b);
+pub fn eval_state(x: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)>{
+    let x = x.reshape([-1,21,8,8]);
+    let x = x.to(net.device);
+    let board = IValue::Tensor(x);
     let output = net.net.forward_is(&[board])?;
     let output_tensor = match output {
         IValue::Tuple(b) => b,
@@ -21,14 +17,14 @@ pub fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> 
     };
     let (board_eval, policy) = (&output_tensor[0], &output_tensor[1]);
     let board_eval = match board_eval {
-        IValue::Tensor(b) => b,
+        IValue::Tensor(b) => b.detach(),
         a => panic!("the output is not a Tensor {:?}", a),
     };
     let policy = match policy {
-        IValue::Tensor(b) => b,
+        IValue::Tensor(b) => b.detach(),
         a => panic!("the output is not a Tensor {:?}", a),
     };
-    Ok((board_eval.clone(board_eval), policy.clone(policy)))
+    Ok((board_eval.clone(&board_eval), policy.clone(&policy)))
 }
 
 pub fn board_data(bs: &BoardStack) -> (Vec<f32>, Vec<bool>) {
@@ -129,8 +125,7 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
         }
     }
 
-    all_data.extend(pieces_sqs.iter().map(|&x|x as u8 as f32));
-
+    all_data.extend(pieces_sqs.iter().map(|&x| x as u8 as f32));
 
     let all_data = Tensor::from_slice(&all_data);
     all_data // all_data is 1d
