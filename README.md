@@ -78,15 +78,17 @@ Rewrite in progress! After careful consideration, TrueZero will be written in Ru
 ### Python 
 
 This Python and Rust Engine uses the following:
-- **Pytorch** - used for creating NN
-- **Numpy** - used for processing data (chess board representation after one-hot encoding, handling final outcome and final game  result
+- **Pytorch** - used for creating and training the Neural Network 
+- **Numpy** - used for processing data (chess board representation after one-hot encoding, handling final outcome and final game result
+
 
 ### Rust
 
 - **cozy-chess** - chess move generation library. There is a [simple wrapper](https://github.com/andreaslam/ZanLing-TrueZero/blob/main/src/boardmanager.rs) of this library that TrueZero uses that covers draws, repetitions and serves as an interface between cozy-chess and the rest of the code.
 - **flume** - multi-sender, multi-producer channels used to send data between channels for data generation.
-- **tch-rs** - Rust wrapper of libtorch.
-- **crossbeam** - multithreading
+- **tch-rs** - Rust wrapper of libtorch. Used for Neural Network inference.
+- **crossbeam** - enables multithreading data generation.
+- **serde** - serialises messages to send across TCP server
 
 
 ## Credits and Acknowledgements
