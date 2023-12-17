@@ -1,9 +1,8 @@
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 class TrueNet(nn.Module):
-    def __init__(self, num_resBlocks, num_hidden):
+    def __init__(self, num_resBlocks, num_hidden, head_nodes):
         super().__init__()
         
         self.startBlock = nn.Sequential(
@@ -15,19 +14,19 @@ class TrueNet(nn.Module):
         self.backBone = nn.ModuleList([ResBlock(num_hidden) for _ in range(num_resBlocks)])
 
         self.policyHead = nn.Sequential(
-            nn.Conv2d(num_hidden, num_hidden, kernel_size=1, padding=0),
-            nn.BatchNorm2d(num_hidden),
+            nn.Conv2d(num_hidden, head_nodes, kernel_size=1, padding=0),
+            nn.BatchNorm2d(head_nodes),
             nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(num_hidden * 64, 1880),  
+            nn.Linear(head_nodes * 64, 1880),  
         )
 
         self.valueHead = nn.Sequential(
-            nn.Conv2d(num_hidden, 1000, kernel_size=1, padding=0),
-            nn.BatchNorm2d(1000), 
+            nn.Conv2d(num_hidden, head_nodes, kernel_size=1, padding=0),
+            nn.BatchNorm2d(head_nodes), 
             nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(1000 * 64, 5),
+            nn.Linear(head_nodes * 64, 5),
             nn.Tanh(),
         )
 
