@@ -108,6 +108,7 @@ fn handle_client(
                 disp_msg.retain(|c| c != '\n'); // remove newline
                 println!("[Sent to {}]: {}", client.peer_addr().unwrap(), disp_msg);
             }
+            recv_msg.clear();
             continue;
         }
 
