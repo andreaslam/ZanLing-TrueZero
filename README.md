@@ -58,10 +58,12 @@ Rewrite in progress! After careful consideration, TrueZero will be written in Ru
 ## What each file does
 
 ### Internal testing (non-UCI compliant)
-- `getdecode.rs` - Used for obtaining the encoded NN inputs.
-- `getmove.rs` - Used for obtaining a single tree search.
-- `getgame.rs` - Used for obtaining a game.
-- `getinferencetime.rs` - Used for benchmarking inference times and batching effectiveness through calculating the nodes/s. 
+- `getdecode.rs` - used for obtaining the encoded NN inputs.
+- `getmove.rs` - used for obtaining a single tree search.
+- `getgame.rs` - used for obtaining a game.
+- `getinferencetime.rs` - used for benchmarking inference times and batching effectiveness through calculating the nodes/s.
+
+
 ### Source code for AI
 - `decoder.rs` - used to decode and encode inputs for AI. Also handles the creation of child nodes. This is where NN inference happens.
 - `mcts_trainer.rs` - used for MCTS tree search. Initialises the NN and manages the entire tree search. Adds Dirichlet noise to search results.
@@ -72,6 +74,15 @@ Rewrite in progress! After careful consideration, TrueZero will be written in Ru
 - `fileformat.rs` - contains the code for binary encoding.
 - `dataformat.rs` - contains necessary abstractions for `fileformat.rs`.
 - `message_types.rs` - contains the message protocols for processes (such as the Generator and the training loop) to communicate with the server and vice vera.
+
+### Data Generation and Training components
+
+#### Rust binaries
+- `main.rs` - runs multi-threaded data generation code, where each thread runs an independent game. It needs to be connected to `server.rs` via TCP in order to get the latest Neural Net. It also sends key statistics for live telemetry. 
+- `server.rs` - a TCP server that co-ordinates Rust data generation and Python training. It sends each connected instance a unique identifier, broadcasts key information to different processes, which include statistics, Neural Network information and training settings.
+
+#### Python code
+- `client.py` - runs training and manages neural network training. Connects to `server.rs` via TCP to receive file paths for neural network training.
 
 ## Libraries/technologies used 
 
