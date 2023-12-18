@@ -64,7 +64,7 @@ Rewrite in progress! After careful consideration, TrueZero will be written in Ru
 - `getinferencetime.rs` - Used for benchmarking inference times and batching effectiveness through calculating the nodes/s. 
 ### Source code for AI
 - `decoder.rs` - used to decode and encode inputs for AI. Also handles the creation of child nodes. This is where NN inference happens.
-- `mcts_trainer.rs` - used for MCTS tree search. Initialises the NN and manages the entire tree search. Adds Dirichlet noise .
+- `mcts_trainer.rs` - used for MCTS tree search. Initialises the NN and manages the entire tree search. Adds Dirichlet noise to search results.
 - `boardmanager.rs` - a wrapper for the cozy-chess library. Manages and handles draw conditions, such as fifty-move repetition, threefold repetition and must-draw scenarios.
 - `dirichlet.rs` - Dirichlet noise generator.
 - `mvs.rs` - a large array that contains all possible moves in chess. Used for indexing and storing (legal) move order. Statically loads and stored during programme execution.
