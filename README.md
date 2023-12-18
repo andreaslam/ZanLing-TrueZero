@@ -78,7 +78,7 @@ Rewrite in progress! After careful consideration, TrueZero will be written in Ru
 ### Data Generation and Training components
 
 #### Rust binaries
-- `main.rs` - runs multi-threaded data generation code, where each thread runs an independent game. It needs to be connected to `server.rs` via TCP in order to get the latest Neural Net. It also sends key statistics for live telemetry. 
+- `main.rs` - runs multi-threaded data generation code, where each thread runs an independent game. It needs to be connected to `server.rs` via TCP in order to get the latest Neural Net. It also sends key statistics for live telemetry.
 - `server.rs` - a TCP server that co-ordinates Rust data generation and Python training. It sends each connected instance a unique identifier, broadcasts key information to different processes, which include statistics, Neural Network information and training settings.
 
 #### Python code
