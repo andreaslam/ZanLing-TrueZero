@@ -91,12 +91,12 @@ class Server:
 # Constants
 HOST = "127.0.0.1"
 PORT = 8080
-BUFFER_SIZE = 1000000
+BUFFER_SIZE = 50000
 BATCH_SIZE = 16384  # (power of 2, const)
 
 assert BATCH_SIZE > 0 and math.isqrt(BATCH_SIZE) ** 2 == BATCH_SIZE
 
-SAMPLING_RATIO = 0.3 # how often to train on each pos
+SAMPLING_RATIO = 0.3  # how often to train on each pos
 
 
 def load_file(games_path: str):
@@ -131,7 +131,9 @@ def main():
 
     if len(os.listdir("nets")) == 0 or len(latest_file) == 0:
         with torch.no_grad():
-            net = torch.jit.script(network.TrueNet(num_resBlocks=2, num_hidden=64, head_nodes=100).to(d))
+            net = torch.jit.script(
+                network.TrueNet(num_resBlocks=2, num_hidden=64, head_nodes=100).to(d)
+            )
             net.eval()
             torch.jit.save(
                 net, "nets/tz_0.pt"
@@ -164,7 +166,14 @@ def main():
     while True:
         server.send(
             make_msg_send(
-                True, "python-training", None, None, None, model_path, True, MessageRecv.INIT.value
+                True,
+                "python-training",
+                None,
+                None,
+                None,
+                model_path,
+                True,
+                MessageRecv.INIT.value,
             )
         )
         received_data = server.receive()
@@ -205,7 +214,14 @@ def main():
             or MessageRecv.NET_REQUEST.value in list(received_data.values())
         ):
             msg = make_msg_send(
-                True, None, None, None, None, model_path, True, MessageRecv.NEW_NETWORK.value
+                True,
+                None,
+                None,
+                None,
+                None,
+                model_path,
+                True,
+                MessageRecv.NEW_NETWORK.value,
             )
             server.send(msg)
 
