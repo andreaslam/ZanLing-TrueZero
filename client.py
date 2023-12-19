@@ -123,7 +123,7 @@ def main():
 
     if not os.path.exists("games"):  # no games folder
         os.makedirs("games")
-    
+
     # initialise a fresh batch of NN, if not already
 
     # load the latest generation net
