@@ -48,7 +48,7 @@ fn main() {
         .expect("Failed to send data");
     println!("Connected to server!");
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
-    let num_threads = 32;
+    let num_threads = 1024;
     let num_executors = 2;
     thread::scope(|s| {
         let mut selfplay_masters: Vec<DataGen> = Vec::new();
@@ -180,7 +180,6 @@ fn collector_main(
     let mut nps_vec: Vec<f32> = Vec::new();
     let mut evals_start_time = Instant::now();
     let mut evals_vec: Vec<f32> = Vec::new();
-
     loop {
         let msg = receiver.recv().unwrap();
         match msg {
