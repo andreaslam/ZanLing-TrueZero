@@ -142,7 +142,7 @@ def main():
 
         id_path[net] = id_net
 
-    id_path = dict(sorted(id_path.items(), key=lambda x: x[1]))
+    id_path = dict(sorted(id_path.items(), key=lambda x: x[1])) # sort the entries of the nets and get the latest one
 
     training_nets = list(id_path.keys())
 
@@ -164,19 +164,26 @@ def main():
         ) as f:  # overwrite all content and start new training session
             f.write("nets/tz_0.pt\n")
 
+        training_nets.append("nets/tz_0.pt")
+
     # load the latest generation net
     if os.path.isfile("traininglog.txt"):  # yes log, yes net
         with open("traininglog.txt", "r") as f:  # resume previous training session
             recorded_sessions = f.readlines()
-        print(len(recorded_sessions), len(training_nets))
+            recorded_sessions = [item.strip() for item in recorded_sessions if item != ""]
         if recorded_sessions != training_nets:
-            with open("traininglog.txt", "w") as f:
+            with open("traininglog.txt", "w") as f: # reset the entries in the document and reset according to available files
                 for net in training_nets:
                     f.write(net + "\n")
-            with open("traininglog.txt", "r") as f:  # resume previous training session
+            with open("traininglog.txt", "r") as f:  # reread the file with updated net
                 recorded_sessions = f.readlines()
     else:  # no log, yes net
-        f.write(training_nets[-1] + "\n")
+        with open("traininglog.txt", "r") as f:  # start a new session
+            f.write(training_nets[-1] + "\n")
+        with open("traininglog.txt", "r") as f:  # reread the file with updated net
+                recorded_sessions = f.readlines()
+        
+    
     model_path = recorded_sessions[-1].strip()  # take latest entry as starting
 
     print(model_path)
@@ -199,30 +206,23 @@ def main():
     ):  # create the file if it doesn't exist, this file stores the path of training data and reset every time after a net has been saved
         with open(
             "datafile.txt", "r"
-        ) as f:  # overwrite all content and start new training session
+        ) as f: 
             data_paths = f.readlines()
+            data_paths = [item.strip() for item in data_paths if item != ""]
             data_paths = [
                 x
                 for x in data_paths
-                if os.path.isfile(x + ".bin")
-                and os.path.isfile(x + ".json")
-                and os.path.isfile(x + ".off")
+                if os.path.isfile(x.strip() + ".bin")
+                and os.path.isfile(x.strip() + ".json")
+                and os.path.isfile(x.strip() + ".off")
             ]
-            data_paths = None if len(data_paths) == 0 else data_paths
-    else:  # no file
-        with open("datafile.txt", "w+") as f:
-            game_files = os.listdir("games")
-            filtered_files = set()
-            for string in game_files:
-                split_string = string.split(".", 1)
-                truncated_path = (
-                    split_string[0] if len(split_string) > 1 else string
-                )  # get the part before the first ".",
-                # reason is that loopbuffer opens a path not a file with extensions
-                filtered_files.add(truncated_path)
 
-            data_paths = [x for x in filtered_files if os.path.isfile(x)]
-            print(data_paths)
+            if len(data_paths) == 0:
+                data_paths = None
+            
+    else:  # no file, datafile start from scratch
+        with open("datafile.txt", "w+") as f:
+            pass
 
     while True:
         server.send(
@@ -270,8 +270,16 @@ def main():
         print(f"[Received] {received_data}")
         if data_paths:
             for file in data_paths:
-                data = load_file(file)
-                loopbuf.append(log, data)
+                log = Logger()
+                log.start_batch()
+                try:
+                    data = load_file(file)
+                    loopbuf.append(log, data)
+                except FileNotFoundError:
+                    continue
+                log = Logger()
+                log.start_batch()
+            print("[loaded files] buffer size:", loopbuf.position_count)
         if (
             MessageSend.PYTHON_ID.value in list(received_data.values())
             or MessageRecv.RUST_ID.value in list(received_data.values())
@@ -315,7 +323,6 @@ def main():
                     print("[Warning] set training step to 1")
                 num_steps_training = int(num_steps_training)
                 for _ in range(num_steps_training):
-                    log.start_batch()
                     batch = sample.next_batch()
                     train_settings.train_step(
                         batch, network=model, optimizer=op, logger=log
@@ -329,8 +336,8 @@ def main():
                     torch.jit.save(model, model_path)
                 with open("traininglog.txt", "a") as f:
                     f.write(model_path + "\n")
-                with open("datafile.txt", "w") as f:
-                    pass
+                with open("datafile.txt", 'w') as f:
+                    f.write("")
 
                 # send to rust server
                 msg = make_msg_send(
