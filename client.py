@@ -128,12 +128,10 @@ def main():
     training_nets = list(
         filter(lambda x: x.startswith("tz_") and x.endswith(".pt"), os.listdir("nets"))
     )
-    
-    
+
     training_nets.sort()
-    
-    
-    training_nets = ["nets/"+x for x in training_nets if os.path.isfile("nets/"+x)]
+
+    training_nets = ["nets/" + x for x in training_nets if os.path.isfile("nets/" + x)]
     print(training_nets)
     if (
         len(os.listdir("nets")) == 0 or len(training_nets) == 0
@@ -154,18 +152,14 @@ def main():
 
     # load the latest generation net
     if os.path.isfile("traininglog.txt"):  # yes log, yes net
-        with open(
-            "traininglog.txt", "r"
-        ) as f:  # resume previous training session
+        with open("traininglog.txt", "r") as f:  # resume previous training session
             recorded_sessions = f.readlines()
         print(len(recorded_sessions), len(training_nets))
         if len(recorded_sessions) != len(training_nets):
             with open("traininglog.txt", "w") as f:
-                for net in training_nets: 
-                    f.write(net +"\n")
-            with open(
-            "traininglog.txt", "r"
-        ) as f:  # resume previous training session
+                for net in training_nets:
+                    f.write(net + "\n")
+            with open("traininglog.txt", "r") as f:  # resume previous training session
                 recorded_sessions = f.readlines()
     else:  # no log, yes net
         f.write(training_nets[-1] + "\n")
