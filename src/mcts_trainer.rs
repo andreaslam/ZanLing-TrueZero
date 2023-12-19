@@ -74,6 +74,18 @@ impl Tree {
                     legal_moves.extend(moves);
                     false
                 });
+
+                // add policy softmax temperature
+
+                let mut sum = 0.0;
+                for child in self.nodes[0].children.clone() {
+                    self.nodes[child].policy = self.nodes[child].policy.powf(PST);
+                    sum += self.nodes[child].policy;
+                }
+                for child in self.nodes[0].children.clone() {
+                    self.nodes[child].policy /= sum;
+                }
+
                 // add Dirichlet noise
                 let mut std_rng = StdRng::from_entropy();
                 let distr = StableDirichlet::new(0.3, legal_moves.len()).expect("wrong params");
@@ -366,7 +378,8 @@ impl Node {
     }
 }
 
-pub const MAX_NODES: u32 = 1600;
+pub const MAX_NODES: u32 = 400;
+pub const PST: f32 = 1.2;
 
 pub fn get_move(
     bs: BoardStack,
