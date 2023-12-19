@@ -128,7 +128,13 @@ def main():
     training_nets = list(
         filter(lambda x: x.startswith("tz_") and x.endswith(".pt"), os.listdir("nets"))
     )
-
+    
+    
+    training_nets.sort()
+    
+    
+    training_nets = ["nets/"+x for x in training_nets if os.path.isfile("nets/"+x)]
+    print(training_nets)
     if (
         len(os.listdir("nets")) == 0 or len(training_nets) == 0
     ):  # no net folder or no net
@@ -150,11 +156,20 @@ def main():
     if os.path.isfile("traininglog.txt"):  # yes log, yes net
         with open(
             "traininglog.txt", "r"
-        ) as f:  # overwrite all content and start new training session
-            sessions = f.readlines()
+        ) as f:  # resume previous training session
+            recorded_sessions = f.readlines()
+        print(len(recorded_sessions), len(training_nets))
+        if len(recorded_sessions) != len(training_nets):
+            with open("traininglog.txt", "w") as f:
+                for net in training_nets: 
+                    f.write(net +"\n")
+            with open(
+            "traininglog.txt", "r"
+        ) as f:  # resume previous training session
+                recorded_sessions = f.readlines()
     else:  # no log, yes net
         f.write(training_nets[-1] + "\n")
-    model_path = sessions[-1].strip()  # take latest entry as starting
+    model_path = recorded_sessions[-1].strip()  # take latest entry as starting
 
     print(model_path)
     model = torch.jit.load(model_path, map_location=d)
@@ -172,6 +187,36 @@ def main():
     server.connect()
 
     # login loop
+    data_paths = None
+    if os.path.isfile(
+        "datafile.txt"
+    ):  # create the file if it doesn't exist, this file stores the path of training data and reset every time after a net has been saved
+        with open(
+            "datafile.txt", "r"
+        ) as f:  # overwrite all content and start new training session
+            data_paths = f.readlines()
+            data_paths = [
+                x
+                for x in data_paths
+                if os.path.isfile(x + ".bin")
+                and os.path.isfile(x + ".json")
+                and os.path.isfile(x + ".off")
+            ]
+            data_paths = None if len(data_paths) == 0 else data_paths
+    else:  # no file
+        with open("datafile.txt", "w+") as f:
+            game_files = os.listdir("games")
+            filtered_files = set()
+            for string in game_files:
+                split_string = string.split(".", 1)
+                truncated_path = (
+                    split_string[0] if len(split_string) > 1 else string
+                )  # get the part before the first ".",
+                # reason is that loopbuffer opens a path not a file with extensions
+                filtered_files.add(truncated_path)
+
+            data_paths = [x for x in filtered_files if os.path.isfile(x)]
+            print(data_paths)
 
     while True:
         server.send(
@@ -217,7 +262,10 @@ def main():
         received_data = server.receive()
         received_data = json.loads(received_data)
         print(f"[Received] {received_data}")
-
+        if data_paths:
+            for file in data_paths:
+                data = load_file(file)
+                loopbuf.append(log, data)
         if (
             MessageSend.PYTHON_ID.value in list(received_data.values())
             or MessageRecv.RUST_ID.value in list(received_data.values())
@@ -239,7 +287,8 @@ def main():
             file_path = received_data["job_path"]
             data = load_file(file_path)
             loopbuf.append(log, data)
-
+            with open("datafile.txt", "a") as f:
+                f.write(file_path + "\n")
             print("buffer size:", loopbuf.position_count)
             if loopbuf.position_count >= BUFFER_SIZE:
                 sample = loopbuf.sampler(
@@ -274,6 +323,8 @@ def main():
                     torch.jit.save(model, model_path)
                 with open("traininglog.txt", "a") as f:
                     f.write(model_path + "\n")
+                with open("datafile.txt", "w") as f:
+                    pass
 
                 # send to rust server
                 msg = make_msg_send(
