@@ -92,11 +92,11 @@ class Server:
 HOST = "127.0.0.1"
 PORT = 8080
 BUFFER_SIZE = 50000
-BATCH_SIZE = 16384  # (power of 2, const)
+BATCH_SIZE = 32768  # (power of 2, const)
 
-assert BATCH_SIZE > 0 and math.isqrt(BATCH_SIZE) ** 2 == BATCH_SIZE
+assert BATCH_SIZE > 0 and (BATCH_SIZE & (BATCH_SIZE - 1)) == 0
 
-SAMPLING_RATIO = 0.3  # how often to train on each pos
+SAMPLING_RATIO = 2  # how often to train on each pos
 
 
 def load_file(games_path: str):
@@ -118,18 +118,20 @@ def main():
 
     # check if neural net folder exists
 
-    if not os.path.exists("nets"):
+    if not os.path.exists("nets"):  # no net
         os.makedirs("nets")
 
         # initialise a fresh batch of NN, if not already
 
     # load the latest generation net
 
-    latest_file = list(
+    training_nets = list(
         filter(lambda x: x.startswith("tz_") and x.endswith(".pt"), os.listdir("nets"))
     )
 
-    if len(os.listdir("nets")) == 0 or len(latest_file) == 0:
+    if (
+        len(os.listdir("nets")) == 0 or len(training_nets) == 0
+    ):  # no net folder or no net
         with torch.no_grad():
             net = torch.jit.script(
                 network.TrueNet(num_resBlocks=2, num_hidden=64, head_nodes=100).to(d)
@@ -139,15 +141,21 @@ def main():
                 net, "nets/tz_0.pt"
             )  # if it doesn't exist, create one and save into folder
 
+        with open(
+            "traininglog.txt", "w+"
+        ) as f:  # overwrite all content and start new training session
+            f.write("nets/tz_0.pt\n")
+
     # load the latest generation net
+    if os.path.isfile("traininglog.txt"):  # yes log, yes net
+        with open(
+            "traininglog.txt", "r"
+        ) as f:  # overwrite all content and start new training session
+            sessions = f.readlines()
+    else:  # no log, yes net
+        f.write(training_nets[-1] + "\n")
+    model_path = sessions[-1].strip()  # take latest entry as starting
 
-    latest_file = list(
-        filter(lambda x: x.startswith("tz_") and x.endswith(".pt"), os.listdir("nets"))
-    )
-
-    latest_file.sort()
-
-    model_path = "nets/" + latest_file[-1]
     print(model_path)
     model = torch.jit.load(model_path, map_location=d)
 
@@ -158,6 +166,8 @@ def main():
     starting_gen = int(
         re.findall(pattern, model_path)[0]
     )  # can do this since only 1 match per file maximum
+
+    print("starting generation:", starting_gen)
     server = Server(HOST, PORT)
     server.connect()
 
@@ -262,6 +272,8 @@ def main():
                 print(model_path)
                 with torch.no_grad():
                     torch.jit.save(model, model_path)
+                with open("traininglog.txt", "a") as f:
+                    f.write(model_path + "\n")
 
                 # send to rust server
                 msg = make_msg_send(
