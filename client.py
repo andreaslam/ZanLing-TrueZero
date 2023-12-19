@@ -116,12 +116,15 @@ def main():
 
     print("Using: " + str(d))
 
-    # check if neural net folder exists
+    # check if neural net and games folder exists
 
     if not os.path.exists("nets"):  # no net
         os.makedirs("nets")
 
-        # initialise a fresh batch of NN, if not already
+    if not os.path.exists("games"):  # no games folder
+        os.makedirs("games")
+    
+    # initialise a fresh batch of NN, if not already
 
     # load the latest generation net
 
@@ -129,10 +132,21 @@ def main():
         filter(lambda x: x.startswith("tz_") and x.endswith(".pt"), os.listdir("nets"))
     )
 
-    training_nets.sort()
+    id_path = {}  # path:id
+
+    pattern = r"tz_(\d+)\.pt"
+    for net in training_nets:
+        id_net = int(
+            re.findall(pattern, net)[0]
+        )  # can do this since only 1 match per file maximum
+
+        id_path[net] = id_net
+
+    id_path = dict(sorted(id_path.items(), key=lambda x: x[1]))
+
+    training_nets = list(id_path.keys())
 
     training_nets = ["nets/" + x for x in training_nets if os.path.isfile("nets/" + x)]
-    print(training_nets)
     if (
         len(os.listdir("nets")) == 0 or len(training_nets) == 0
     ):  # no net folder or no net
@@ -155,7 +169,7 @@ def main():
         with open("traininglog.txt", "r") as f:  # resume previous training session
             recorded_sessions = f.readlines()
         print(len(recorded_sessions), len(training_nets))
-        if len(recorded_sessions) != len(training_nets):
+        if recorded_sessions != training_nets:
             with open("traininglog.txt", "w") as f:
                 for net in training_nets:
                     f.write(net + "\n")
@@ -169,8 +183,6 @@ def main():
     model = torch.jit.load(model_path, map_location=d)
 
     model.eval()
-
-    pattern = r"tz_(\d+)\.pt"
 
     starting_gen = int(
         re.findall(pattern, model_path)[0]
