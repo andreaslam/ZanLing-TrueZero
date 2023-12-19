@@ -92,7 +92,7 @@ class Server:
 HOST = "127.0.0.1"
 PORT = 8080
 BUFFER_SIZE = 50000
-BATCH_SIZE = 32768  # (power of 2, const)
+BATCH_SIZE = 1024  # (power of 2, const)
 
 assert BATCH_SIZE > 0 and (BATCH_SIZE & (BATCH_SIZE - 1)) == 0
 
@@ -142,7 +142,9 @@ def main():
 
         id_path[net] = id_net
 
-    id_path = dict(sorted(id_path.items(), key=lambda x: x[1])) # sort the entries of the nets and get the latest one
+    id_path = dict(
+        sorted(id_path.items(), key=lambda x: x[1])
+    )  # sort the entries of the nets and get the latest one
 
     training_nets = list(id_path.keys())
 
@@ -152,7 +154,7 @@ def main():
     ):  # no net folder or no net
         with torch.no_grad():
             net = torch.jit.script(
-                network.TrueNet(num_resBlocks=2, num_hidden=64, head_nodes=100).to(d)
+                network.TrueNet(num_resBlocks=8, num_hidden=64, head_channel_policy=8, head_channel_values=4).to(d)
             )
             net.eval()
             torch.jit.save(
@@ -170,9 +172,13 @@ def main():
     if os.path.isfile("traininglog.txt"):  # yes log, yes net
         with open("traininglog.txt", "r") as f:  # resume previous training session
             recorded_sessions = f.readlines()
-            recorded_sessions = [item.strip() for item in recorded_sessions if item != ""]
+            recorded_sessions = [
+                item.strip() for item in recorded_sessions if item != ""
+            ]
         if recorded_sessions != training_nets:
-            with open("traininglog.txt", "w") as f: # reset the entries in the document and reset according to available files
+            with open(
+                "traininglog.txt", "w"
+            ) as f:  # reset the entries in the document and reset according to available files
                 for net in training_nets:
                     f.write(net + "\n")
             with open("traininglog.txt", "r") as f:  # reread the file with updated net
@@ -181,9 +187,8 @@ def main():
         with open("traininglog.txt", "r") as f:  # start a new session
             f.write(training_nets[-1] + "\n")
         with open("traininglog.txt", "r") as f:  # reread the file with updated net
-                recorded_sessions = f.readlines()
-        
-    
+            recorded_sessions = f.readlines()
+
     model_path = recorded_sessions[-1].strip()  # take latest entry as starting
 
     print(model_path)
@@ -204,9 +209,7 @@ def main():
     if os.path.isfile(
         "datafile.txt"
     ):  # create the file if it doesn't exist, this file stores the path of training data and reset every time after a net has been saved
-        with open(
-            "datafile.txt", "r"
-        ) as f: 
+        with open("datafile.txt", "r") as f:
             data_paths = f.readlines()
             data_paths = [item.strip() for item in data_paths if item != ""]
             data_paths = [
@@ -217,9 +220,6 @@ def main():
                 and os.path.isfile(x.strip() + ".off")
             ]
 
-            if len(data_paths) == 0:
-                data_paths = None
-            
     else:  # no file, datafile start from scratch
         with open("datafile.txt", "w+") as f:
             pass
@@ -262,24 +262,19 @@ def main():
 
     op = optim.AdamW(params=model.parameters())
 
+    log = Logger()
+    log.start_batch()
+    for file in data_paths:
+        try:
+            data = load_file(file)
+            loopbuf.append(log, data)
+        except FileNotFoundError:
+            continue
     while True:
-        log = Logger()
-        log.start_batch()
         received_data = server.receive()
         received_data = json.loads(received_data)
         print(f"[Received] {received_data}")
-        if data_paths:
-            for file in data_paths:
-                log = Logger()
-                log.start_batch()
-                try:
-                    data = load_file(file)
-                    loopbuf.append(log, data)
-                except FileNotFoundError:
-                    continue
-                log = Logger()
-                log.start_batch()
-            print("[loaded files] buffer size:", loopbuf.position_count)
+        print("[loaded files] buffer size:", loopbuf.position_count)
         if (
             MessageSend.PYTHON_ID.value in list(received_data.values())
             or MessageRecv.RUST_ID.value in list(received_data.values())
@@ -305,7 +300,16 @@ def main():
                 f.write(file_path + "\n")
             print("buffer size:", loopbuf.position_count)
             if loopbuf.position_count >= BUFFER_SIZE:
-                sample = loopbuf.sampler(
+                train_sampler = loopbuf.sampler(
+                    batch_size=BATCH_SIZE,
+                    unroll_steps=None,
+                    include_final=False,
+                    random_symmetries=False,
+                    only_last_gen=False,
+                    test=False,
+                )
+
+                test_sampler = loopbuf.sampler(
                     batch_size=BATCH_SIZE,
                     unroll_steps=None,
                     include_final=False,
@@ -322,21 +326,31 @@ def main():
                     num_steps_training = 1
                     print("[Warning] set training step to 1")
                 num_steps_training = int(num_steps_training)
+                model.train()
                 for _ in range(num_steps_training):
-                    batch = sample.next_batch()
+                    batch = train_sampler.next_batch()
                     train_settings.train_step(
                         batch, network=model, optimizer=op, logger=log
                     )
+                with torch.no_grad():
+                    model.eval()
+                    test_batch = test_sampler.next_batch()
+                    train_settings.evaluate_batch(
+                        network=model, batch=test_batch, log_prefix="test", logger=log
+                    )
+
                 log.save("log.npz")
-                sample.close()
+                train_sampler.close()
+                test_sampler.close()
                 starting_gen += 1
                 model_path = "nets/tz_" + str(starting_gen) + ".pt"
                 print(model_path)
+                model.eval()
                 with torch.no_grad():
                     torch.jit.save(model, model_path)
                 with open("traininglog.txt", "a") as f:
                     f.write(model_path + "\n")
-                with open("datafile.txt", 'w') as f:
+                with open("datafile.txt", "w") as f:
                     f.write("")
 
                 # send to rust server
