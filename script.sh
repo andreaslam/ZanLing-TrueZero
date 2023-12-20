@@ -33,6 +33,9 @@ python -m venv
 apt install -y libglib2.0-0 libgl1 protobuf-compiler
 pip install -r requirements.txt
 
+pip3 install darkdetect
+pip3 install pyqtgraph
+
 # add tch-rs
 
 export LIBTORCH_USE_PYTORCH=1
