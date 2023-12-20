@@ -205,7 +205,7 @@ def main():
     server.connect()
 
     # login loop
-    data_paths = None
+
     if os.path.isfile(
         "datafile.txt"
     ):  # create the file if it doesn't exist, this file stores the path of training data and reset every time after a net has been saved
