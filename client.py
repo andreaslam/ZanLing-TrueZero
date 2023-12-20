@@ -267,14 +267,14 @@ def main():
     for file in data_paths:
         try:
             data = load_file(file)
-            loopbuf.append(log, data)
+            loopbuf.append(None, data)
+            print("[loaded files] buffer size:", loopbuf.position_count)
         except FileNotFoundError:
             continue
     while True:
         received_data = server.receive()
         received_data = json.loads(received_data)
         print(f"[Received] {received_data}")
-        print("[loaded files] buffer size:", loopbuf.position_count)
         if (
             MessageSend.PYTHON_ID.value in list(received_data.values())
             or MessageRecv.RUST_ID.value in list(received_data.values())
@@ -294,10 +294,12 @@ def main():
 
         if MessageRecv.JOB.value in list(received_data.values()):
             file_path = received_data["job_path"]
-            data = load_file(file_path)
-            loopbuf.append(log, data)
             with open("datafile.txt", "a") as f:
                 f.write(file_path + "\n")
+            data = load_file(file_path)
+            loopbuf.append(log, data)
+            log.finished_data()
+            log.save("log.npz")
             print("buffer size:", loopbuf.position_count)
             if loopbuf.position_count >= BUFFER_SIZE:
                 train_sampler = loopbuf.sampler(
@@ -327,7 +329,10 @@ def main():
                     print("[Warning] set training step to 1")
                 num_steps_training = int(num_steps_training)
                 model.train()
-                for _ in range(num_steps_training):
+                print("training model!")
+                for gen in range(num_steps_training):
+                    if gen != 0:
+                        log.start_batch()
                     batch = train_sampler.next_batch()
                     train_settings.train_step(
                         batch, network=model, optimizer=op, logger=log
@@ -339,6 +344,7 @@ def main():
                         network=model, batch=test_batch, log_prefix="test", logger=log
                     )
 
+                log.finished_data()
                 log.save("log.npz")
                 train_sampler.close()
                 test_sampler.close()
