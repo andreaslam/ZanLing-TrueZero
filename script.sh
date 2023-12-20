@@ -39,7 +39,7 @@ export LIBTORCH_BYPASS_VERSION_CHECK=1 # just in case
 
 pip install darkdetect
 pip install pyqtgraph
-pip install PyQt6
+conda install pyqtgraph
 
 # build code
 cargo build --release 
