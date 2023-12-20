@@ -16,7 +16,6 @@ curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.
 apt-get -y install speedtest
 
 
-git clone https://github.com/andreaslam/ZanLing-TrueZero
 
 
 # apt install -y valgrind
