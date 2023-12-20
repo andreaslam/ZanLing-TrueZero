@@ -37,6 +37,8 @@ apt install -y libglib2.0-0 libgl1 protobuf-compiler
 export LIBTORCH_USE_PYTORCH=1
 export LIBTORCH_BYPASS_VERSION_CHECK=1 # just in case
 
+
+# for some reason these deps arent imported correctly
 pip install darkdetect
 pip install pyqtgraph
 pip3 install pyqtgraph
