@@ -30,8 +30,8 @@ curl https://sh.rustup.rs -sSf | sh -s -- -y
 python -m venv
 
 # install project deps
-pip install -r requirements.txt
 apt install -y libglib2.0-0 libgl1 protobuf-compiler
+pip install -r requirements.txt
 
 # add tch-rs
 
