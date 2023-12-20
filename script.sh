@@ -1,6 +1,7 @@
 #!/bin/sh
 
-#!/bin/bash
+# Store the current directory
+ORIGINAL_DIR=$(pwd)
 
 # Define variables for Python version and download URL
 PYTHON_VERSION="3.11.4"
@@ -13,7 +14,7 @@ wget $PYTHON_URL
 tar -xf Python-$PYTHON_VERSION.tar.xz
 
 # Navigate to the extracted directory
-cd Python-$PYTHON_VERSION
+cd Python-$PYTHON_VERSION || exit 1 # Exit if directory doesn't exist
 
 # Install necessary dependencies
 sudo apt-get update
@@ -25,7 +26,7 @@ make -j$(nproc)
 sudo make altinstall
 
 # Clean up downloaded files
-cd ..
+cd "$ORIGINAL_DIR" || exit 1 # Return to the original directory
 rm -r Python-$PYTHON_VERSION
 rm Python-$PYTHON_VERSION.tar.xz
 
