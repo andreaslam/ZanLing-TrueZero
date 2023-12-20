@@ -20,10 +20,6 @@ apt-get -y install speedtest
 # set max file handles to unlimited
 ulimit -u 2048
 
-# # .gitconfig
-# curl https://gist.githubusercontent.com/KarelPeeters/a3421a43e60524b3f12c8f626f7545d3/raw/ > ~/.gitconfig
-# git config --global credential.helper cache
-
 # rust & deps
 apt install -y pkg-config libssl-dev libclang-dev clang
 curl https://sh.rustup.rs -sSf | sh -s -- -y
@@ -41,10 +37,6 @@ export LIBTORCH_USE_PYTORCH=1
 export LIBTORCH_BYPASS_VERSION_CHECK=1 # just in case
 
 
-# for some reason these deps arent imported correctly
-pip install darkdetect
-pip3 install PySide2
-pip3 install pyqtgraph
 
 # build code
 cargo build --release 
