@@ -38,6 +38,7 @@ export LIBTORCH_USE_PYTORCH=1
 export LIBTORCH_BYPASS_VERSION_CHECK=1 # just in case
 
 pip install darkdetect
+pip install pyqtgraph
 
 # build code
 cargo build --release 
