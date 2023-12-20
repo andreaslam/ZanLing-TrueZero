@@ -1,5 +1,34 @@
 #!/bin/sh
 
+#!/bin/bash
+
+# Define variables for Python version and download URL
+PYTHON_VERSION="3.11.4"
+PYTHON_URL="https://www.python.org/ftp/python/$PYTHON_VERSION/Python-$PYTHON_VERSION.tar.xz"
+
+# Download Python source code
+wget $PYTHON_URL
+
+# Extract the downloaded Python source code
+tar -xf Python-$PYTHON_VERSION.tar.xz
+
+# Navigate to the extracted directory
+cd Python-$PYTHON_VERSION
+
+# Install necessary dependencies
+sudo apt-get update
+sudo apt-get install -y build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev libssl-dev libreadline-dev libffi-dev wget
+
+# Configure and install Python
+./configure --enable-optimizations
+make -j$(nproc)
+sudo make altinstall
+
+# Clean up downloaded files
+cd ..
+rm -r Python-$PYTHON_VERSION
+rm Python-$PYTHON_VERSION.tar.xz
+
 # utilities
 add-apt-repository ppa:deadsnakes/ppa
 apt-get update
