@@ -43,7 +43,7 @@ export LIBTORCH_BYPASS_VERSION_CHECK=1 # just in case
 
 # for some reason these deps arent imported correctly
 pip install darkdetect
-pip install pyqtgraph
+pip3 install PySide2
 pip3 install pyqtgraph
 
 # build code
