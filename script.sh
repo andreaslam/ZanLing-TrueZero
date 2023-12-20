@@ -24,10 +24,6 @@ apt install -y pkg-config libssl-dev libclang-dev clang
 curl https://sh.rustup.rs -sSf | sh -s -- -y
 . ~/.cargo/env
 
-# custom repos
-cd /workspace/
-git clone https://github.com/andreaslam/ZanLing-TrueZero
-
 # install project deps
 pip install -r ZanLing-TrueZero/requirements.txt
 apt install -y libglib2.0-0 libgl1 protobuf-compiler
