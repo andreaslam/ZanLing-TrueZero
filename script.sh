@@ -53,6 +53,6 @@ export LD_LIBRARY_PATH="$PYTORCH_PATH/lib:$LD_LIBRARY_PATH"
 
 # build code
 cargo build --release 
-cargo run --bin main --release &
-cargo run --bin server --release &
-python client.py &
+# cargo run --bin main --release &
+# cargo run --bin server --release &
+# python client.py &
