@@ -19,14 +19,28 @@ ulimit -u 2048
 # curl https://gist.githubusercontent.com/KarelPeeters/a3421a43e60524b3f12c8f626f7545d3/raw/ > ~/.gitconfig
 # git config --global credential.helper cache
 
+
+pip uninstall torch
+
 # rust & deps
 apt install -y pkg-config libssl-dev libclang-dev clang
 curl https://sh.rustup.rs -sSf | sh -s -- -y
 . ~/.cargo/env
 
+# custom repos
+
+git clone https://github.com/andreaslam/ZanLing-TrueZero
+
+# install specific version of torch
+
 # install project deps
-pip install -r ZanLing-TrueZero/requirements.txt
+pip install -r requirements.txt
 apt install -y libglib2.0-0 libgl1 protobuf-compiler
+
+# add tch-rs
+
+export LIBTORCH_USE_PYTORCH=1
+# export LIBTORCH_BYPASS_VERSION_CHECK=1 # just in case
 
 # build code
 cargo build --release
