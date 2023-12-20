@@ -263,7 +263,6 @@ def main():
     op = optim.AdamW(params=model.parameters())
 
     log = Logger()
-    log.start_batch()
     for file in data_paths:
         try:
             data = load_file(file)
@@ -272,6 +271,7 @@ def main():
         except FileNotFoundError:
             continue
     while True:
+        log.start_batch()
         received_data = server.receive()
         received_data = json.loads(received_data)
         print(f"[Received] {received_data}")
@@ -330,6 +330,7 @@ def main():
                 num_steps_training = int(num_steps_training)
                 model.train()
                 print("training model!")
+                print("num_steps_training:", num_steps_training)
                 for gen in range(num_steps_training):
                     if gen != 0:
                         log.start_batch()
