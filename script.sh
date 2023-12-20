@@ -15,6 +15,10 @@ RUN apt update && \
 curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | bash
 apt-get -y install speedtest
 
+
+git clone https://github.com/andreaslam/ZanLing-TrueZero
+
+
 # apt install -y valgrind
 
 # set max file handles to unlimited
