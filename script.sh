@@ -6,6 +6,11 @@ apt-get update
 apt-get install -y curl wget git htop nano iputils-ping tree nethogs rsync unzip zip tmux
 apt-get upgrade -y git
 
+RUN apt update && \
+    apt install -y libopencv-dev && \
+    apt clean && \
+    rm -rf /var/lib/apt/lists/*
+
 # speedtest
 curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | bash
 apt-get -y install speedtest
