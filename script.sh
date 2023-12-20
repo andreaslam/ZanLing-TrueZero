@@ -25,7 +25,9 @@ apt install -y pkg-config libssl-dev libclang-dev clang
 curl https://sh.rustup.rs -sSf | sh -s -- -y
 . ~/.cargo/env
 
-# custom repos
+# python venv 
+
+python -m venv
 
 # install project deps
 pip install -r requirements.txt
@@ -35,7 +37,6 @@ apt install -y libglib2.0-0 libgl1 protobuf-compiler
 
 export LIBTORCH_USE_PYTORCH=1
 export LIBTORCH_BYPASS_VERSION_CHECK=1 # just in case
-
 
 
 # build code
