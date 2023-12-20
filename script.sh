@@ -25,8 +25,6 @@ curl https://sh.rustup.rs -sSf | sh -s -- -y
 
 # custom repos
 
-git clone https://github.com/andreaslam/ZanLing-TrueZero
-
 # install project deps
 pip install -r requirements.txt
 apt install -y libglib2.0-0 libgl1 protobuf-compiler
