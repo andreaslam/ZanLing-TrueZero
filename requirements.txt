@@ -1,3 +1,4 @@
+absl-py==1.4.0
 aiohttp==3.8.4
 aiosignal==1.3.1
 albumentations==1.3.1
@@ -29,6 +30,7 @@ Cython==0.29.35
 darkdetect==0.5.1
 decorator==5.1.1
 defusedxml==0.7.1
+discord.py==2.3.1
 einops==0.6.1
 executing==1.2.0
 Farama-Notifications==0.0.4
@@ -40,6 +42,9 @@ fonttools==4.40.0
 frozenlist==1.4.0
 fsspec==2023.4.0
 gast==0.4.0
+google-auth==2.22.0
+google-auth-oauthlib==1.0.0
+google-pasta==0.2.0
 gpustat==1.1.1
 grpcio==1.57.0
 gym==0.26.2
@@ -71,6 +76,7 @@ Markdown==3.4.4
 MarkupSafe==2.1.3
 matplotlib==3.7.1
 matplotlib-inline==0.1.6
+mediapy @ git+https://github.com/PWhiddy/mediapy.git@45101800d4f6adeffe814cad93de1db67c1bd614
 mistune==3.0.1
 ml-dtypes==0.2.0
 mpmath==1.3.0
@@ -147,6 +153,13 @@ stack-data==0.6.2
 sympy==1.12
 tabulate==0.8.3
 tee==0.0.3
+tensorboard==2.13.0
+tensorboard-data-server==0.7.1
+tensordict==0.2.1
+tensorflow==2.13.0
+tensorflow-estimator==2.13.0
+tensorflow-intel==2.13.0
+tensorflow-io-gcs-filesystem==0.31.0
 termcolor==2.3.0
 threadpoolctl==3.1.0
 tifffile==2023.4.12
@@ -163,3 +176,9 @@ traitlets==5.9.0
 typing_extensions==4.6.3
 tzdata==2023.3
 urllib3==1.25.11
+wcwidth==0.2.6
+webencodings==0.5.1
+Werkzeug==2.3.7
+windows-curses==2.3.1
+wrapt==1.15.0
+yarl==1.9.2
