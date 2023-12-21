@@ -37,15 +37,6 @@ class TrueNet(nn.Module):
             nn.Tanh(),
         )
 
-        self.valueHead = nn.Sequential(
-            nn.Conv2d(num_hidden, head_channel_values, kernel_size=1, padding=0),
-            nn.BatchNorm2d(head_channel_values),
-            nn.ReLU(),
-            nn.Flatten(),
-            nn.Linear(head_channel_values * 64, 5),
-            nn.Tanh(),
-        )
-
     def forward(self, x):
         x = self.startBlock(x)
         for block in self.backBone:
