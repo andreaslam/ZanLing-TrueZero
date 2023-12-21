@@ -1,6 +1,6 @@
 import torch.nn as nn
 import torch.nn.functional as F
-
+import torch.nn.init as init
 
 class TrueNet(nn.Module):
     def __init__(self, num_resBlocks, num_hidden, head_channel_policy, head_channel_values):
@@ -22,6 +22,19 @@ class TrueNet(nn.Module):
             nn.ReLU(),
             nn.Flatten(),
             nn.Linear(head_channel_policy * 64, 1880),
+        )
+
+        # initialize the weights of the policyHead Linear layer to zeros to achieve flat policy
+        self.policyHead[-1].weight.data.fill_(0)
+        self.policyHead[-1].bias.data.fill_(0)
+
+        self.valueHead = nn.Sequential(
+            nn.Conv2d(num_hidden, head_channel_values, kernel_size=1, padding=0),
+            nn.BatchNorm2d(head_channel_values),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(head_channel_values * 64, 5),
+            nn.Tanh(),
         )
 
         self.valueHead = nn.Sequential(
