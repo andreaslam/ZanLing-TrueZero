@@ -90,7 +90,7 @@ class Server:
 
 # Constants
 HOST = "127.0.0.1"
-PORT = 8080
+PORT = 63105
 BUFFER_SIZE = 50000
 BATCH_SIZE = 1024  # (power of 2, const)
 
@@ -205,7 +205,7 @@ def main():
     server.connect()
 
     # login loop
-
+    data_paths = None
     if os.path.isfile(
         "datafile.txt"
     ):  # create the file if it doesn't exist, this file stores the path of training data and reset every time after a net has been saved
@@ -263,13 +263,14 @@ def main():
     op = optim.AdamW(params=model.parameters())
 
     log = Logger()
-    for file in data_paths:
-        try:
-            data = load_file(file)
-            loopbuf.append(None, data)
-            print("[loaded files] buffer size:", loopbuf.position_count)
-        except FileNotFoundError:
-            continue
+    if data_paths:
+        for file in data_paths:
+            try:
+                data = load_file(file)
+                loopbuf.append(None, data)
+                print("[loaded files] buffer size:", loopbuf.position_count)
+            except FileNotFoundError:
+                continue
     while True:
         log.start_batch()
         received_data = server.receive()
