@@ -90,7 +90,7 @@ class Server:
 
 # Constants
 HOST = "127.0.0.1"
-PORT = 63105
+PORT = 38475
 BUFFER_SIZE = 50000
 BATCH_SIZE = 1024  # (power of 2, const)
 
