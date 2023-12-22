@@ -12,6 +12,8 @@ The chess Engine will then play games against itself using the evaluation to eva
 
 ## Engine setup
 
+### Using git
+
 Firstly, download this repository onto your computer. 
 
 ```
@@ -36,7 +38,7 @@ cargo build
 
 Then choose a binary to run!
 
-## Running Data Generation
+## Running Data Generation and Training
 
 To run data generation, simply run the python training client `client.py`, `main` binary and the `server` binary as follows. Open a new terminal window for each.
 
@@ -51,6 +53,8 @@ cargo run --bin main
 ```
 cargo run --bin server
 ```
+
+### Using Docker
 
 Alternately, you can use Docker to set up this project for training. This assumes that you are using Linux Ubuntu to train since the base Docker Image uses Ubuntu. 
 
