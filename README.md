@@ -54,7 +54,7 @@ cargo run --bin server
 
 Alternately, you can use Docker to set up this project for training. This assumes that you are using Linux Ubuntu to train since the base Docker Image uses Ubuntu. 
 
-firstly, run
+Firstly, run
 
 ```
 https://hub.docker.com/repository/docker/andreaslam/tz/general
