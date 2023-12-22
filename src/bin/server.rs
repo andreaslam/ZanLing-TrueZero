@@ -27,10 +27,10 @@ fn handle_client(
         let message: ServerMessageSend = match serde_json::from_str(&recv_msg) {
             Ok(msg) => msg,
             Err(err) => {
-                eprintln!(
-                    "[Error] Error deserialising message! {:?} {}",
-                    recv_msg, err
-                );
+                // eprintln!(
+                //     "[Error] Error deserialising message! {:?} {}",
+                //     recv_msg, err
+                // );
                 recv_msg.clear();
                 continue;
             }
