@@ -49,7 +49,7 @@ fn main() {
     println!("Connected to server!");
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
     let num_threads = 2;
-    let num_executors = 2;
+    let num_executors = 1;
     thread::scope(|s| {
         let mut selfplay_masters: Vec<DataGen> = Vec::new();
         // commander
