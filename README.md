@@ -54,6 +54,13 @@ cargo run --bin server
 
 Alternately, you can use Docker to set up this project for training. This assumes that you are using Linux Ubuntu to train since the base Docker Image uses Ubuntu. 
 
+You may need to change your directory and locate this project.
+
+```
+cd ..
+cd app
+```
+
 Firstly, run
 
 ```
