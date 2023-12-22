@@ -7,6 +7,8 @@ The name of the Engine is 真零 (TrueZero), which is Chinese for "True Zero" an
 
 Instead of being hard-coded by humans, this AI learns how to play through playing games from itself and learning from randomly generated games. 
 
+## Features in progress
+Rewrite in progress! After careful consideration, TrueZero will be written in Rust. More details can be found on the [roadmap here](https://github.com/andreaslam/ZanLing-TrueZero/issues/1)
 
 The chess Engine will then play games against itself using the evaluation to evaluate chess positions, done using [Monte Carlo Tree Search (MCTS)](https://en.wikipedia.org/wiki/Monte_Carlo_tree_search).
 
@@ -38,22 +40,6 @@ cargo build
 
 Then choose a binary to run!
 
-## Running Data Generation and Training
-
-To run data generation, simply run the python training client `client.py`, `main` binary and the `server` binary as follows. Open a new terminal window for each.
-
-```
-python client.py
-```
-
-```
-cargo run --bin main 
-```
-
-```
-cargo run --bin server
-```
-
 ### Using Docker
 
 Alternately, you can use Docker to set up this project for training. This assumes that you are using Linux Ubuntu to train since the base Docker Image uses Ubuntu. 
@@ -77,8 +63,21 @@ PYTORCH_PATH=$(python3 -c "import torch; print(torch.__path__[0])")
 export LD_LIBRARY_PATH="$PYTORCH_PATH/lib:$LD_LIBRARY_PATH"
 ```
 
-## Features in progress
-Rewrite in progress! After careful consideration, TrueZero will be written in Rust. More details can be found on the [roadmap here](https://github.com/andreaslam/ZanLing-TrueZero/issues/1)
+## Running Data Generation and Training
+
+To run data generation, simply run the python training client `client.py`, `main` binary and the `server` binary as follows. Open a new terminal window for each.
+
+```
+python client.py
+```
+
+```
+cargo run --bin main 
+```
+
+```
+cargo run --bin server
+```
 
 ## What each file does
 
