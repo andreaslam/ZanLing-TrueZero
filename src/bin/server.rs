@@ -132,7 +132,7 @@ fn handle_client(
 }
 
 fn main() {
-    let listener = TcpListener::bind("127.0.0.1:8080").expect("Failed to bind address");
+    let listener = TcpListener::bind("127.0.0.1:38475").expect("Failed to bind address");
     let clients: Arc<Mutex<Vec<TcpStream>>> = Arc::new(Mutex::new(Vec::new()));
     let messages: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let stats_counters: Arc<Mutex<(f32, f32)>> = Arc::new(Mutex::new((0.0, 0.0)));
