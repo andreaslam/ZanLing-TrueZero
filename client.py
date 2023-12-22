@@ -269,7 +269,7 @@ def main():
                 data = load_file(file)
                 loopbuf.append(None, data)
                 print("[loaded files] buffer size:", loopbuf.position_count)
-            except FileNotFoundError:
+            except Exception:
                 continue
     while True:
         log.start_batch()
