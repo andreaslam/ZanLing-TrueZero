@@ -24,7 +24,7 @@ fn main() {
     }));
     // connect to python-rust server
     let mut stream = loop {
-        match TcpStream::connect("127.0.0.1:8080") {
+        match TcpStream::connect("127.0.0.1:38475") {
             Ok(s) => break s,
             Err(_) => continue,
         };
