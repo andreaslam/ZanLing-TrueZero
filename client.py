@@ -96,7 +96,7 @@ BATCH_SIZE = 1024  # (power of 2, const)
 
 assert BATCH_SIZE > 0 and (BATCH_SIZE & (BATCH_SIZE - 1)) == 0
 
-SAMPLING_RATIO = 2  # how often to train on each pos
+SAMPLING_RATIO = 0.9  # how often to train on each pos
 
 
 def load_file(games_path: str):
@@ -269,7 +269,7 @@ def main():
                 data = load_file(file)
                 loopbuf.append(None, data)
                 print("[loaded files] buffer size:", loopbuf.position_count)
-            except Exception:
+            except FileNotFoundError:
                 continue
     while True:
         log.start_batch()
