@@ -63,7 +63,7 @@ You may need to change your directory and locate this project.
 Firstly, run
 
 ```
-https://hub.docker.com/repository/docker/andreaslam/tz/general
+docker pull andreaslam/tz
 ```
 
 ```
