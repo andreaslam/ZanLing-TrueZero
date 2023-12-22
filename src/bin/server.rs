@@ -21,7 +21,8 @@ fn handle_client(
     loop {
         let mut recv_msg = String::new();
         if let Err(_) = reader.read_line(&mut recv_msg) {
-            return;
+            recv_msg.clear();
+            continue;
         }
 
         let message: ServerMessageSend = match serde_json::from_str(&recv_msg) {
