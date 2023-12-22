@@ -52,6 +52,23 @@ cargo run --bin main
 cargo run --bin server
 ```
 
+Alternately, you can use Docker to set up this project for training. This assumes that you are using Linux Ubuntu to train since the base Docker Image uses Ubuntu. 
+
+firstly, run
+
+```
+https://hub.docker.com/repository/docker/andreaslam/tz/general
+```
+
+Next, set the following environment variables.
+```
+
+export LIBTORCH_USE_PYTORCH=1
+export LIBTORCH_BYPASS_VERSION_CHECK=1 
+PYTORCH_PATH=$(python3 -c "import torch; print(torch.__path__[0])")
+export LD_LIBRARY_PATH="$PYTORCH_PATH/lib:$LD_LIBRARY_PATH"
+```
+
 ## Features in progress
 Rewrite in progress! After careful consideration, TrueZero will be written in Rust. More details can be found on the [roadmap here](https://github.com/andreaslam/ZanLing-TrueZero/issues/1)
 
