@@ -60,15 +60,15 @@ Alternately, you can use Docker to set up this project for training. This assume
 
 You may need to change your directory and locate this project.
 
-```
-cd ..
-cd app
-```
-
 Firstly, run
 
 ```
 https://hub.docker.com/repository/docker/andreaslam/tz/general
+```
+
+```
+cd ..
+cd app
 ```
 
 Next, set the following environment variables.
