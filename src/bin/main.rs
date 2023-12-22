@@ -286,7 +286,7 @@ fn commander_main(
                 // process the received JSON data
             }
             Err(err) => {
-                println!("error deserialising message! {}, {}", recv_msg, err);
+                // println!("error deserialising message! {}, {}", recv_msg, err);
                 continue;
             }
         };
