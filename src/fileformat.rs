@@ -178,8 +178,13 @@ impl BinaryOutput {
             let moves_left = game_length + 1 - pos_index;
             let stored_policy = &zero_evaluation.policy;
             let final_values = match outcome {
-                Some(Color::White) => net_evaluation.values,
-                Some(Color::Black) => -net_evaluation.values,
+                Some(outcome) => {
+                    if outcome == board.board().side_to_move() {
+                        1.0
+                    } else {
+                        -1.0
+                    }
+                },
                 None => 0.0,
             };
             let scalars = Scalars {
@@ -202,10 +207,15 @@ impl BinaryOutput {
             self.append_position(board, &scalars, &policy_indices, stored_policy)?;
         }
         let final_values = match outcome {
-            Some(Color::White) => 1.0,
-            Some(Color::Black) => -1.0,
-            None => 0.0,
-        };
+                Some(outcome) => {
+                    if outcome == final_board.board().side_to_move() {
+                        1.0
+                    } else {
+                        -1.0
+                    }
+                },
+                None => 0.0,
+            };
         let scalars = Scalars {
             game_id,
             pos_index: game_length,
