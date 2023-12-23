@@ -65,6 +65,12 @@ export LD_LIBRARY_PATH="$PYTORCH_PATH/lib:$LD_LIBRARY_PATH"
 
 ## Running Data Generation and Training
 
+Before data generation, ensure that the loaded copy of the Repository is up-to-date.
+
+```
+git pull
+```
+
 To run data generation, simply run the python training client `client.py`, `main` binary and the `server` binary as follows. Open a new terminal window for each.
 
 ```
