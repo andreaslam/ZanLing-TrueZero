@@ -96,7 +96,7 @@ BATCH_SIZE = 1024  # (power of 2, const)
 
 assert BATCH_SIZE > 0 and (BATCH_SIZE & (BATCH_SIZE - 1)) == 0
 
-SAMPLING_RATIO = 0.9  # how often to train on each pos
+SAMPLING_RATIO = 0.75  # how often to train on each pos
 
 
 def load_file(games_path: str):
@@ -317,7 +317,7 @@ def main():
                     unroll_steps=None,
                     include_final=False,
                     random_symmetries=False,
-                    only_last_gen=False,
+                    only_last_gen=True,
                     test=True,
                 )
 
