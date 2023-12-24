@@ -80,8 +80,8 @@ fn handle_client(
                 println!("[Sent Identification] {:?}", message);
             }
         } else if purpose.starts_with("statistics") {
-            let mut stats = stats_counters.lock().unwrap();
-            let mut start_time = start_time.lock().unwrap();
+            let mut stats = stats_counters.lock().unwrap_or_else(|e| e.into_inner());
+            let mut start_time = start_time.lock().unwrap_or_else(|e| e.into_inner());
             let elapsed = start_time.elapsed().as_secs_f32();
             if elapsed >= 1.0 {
                 println!("[Statistics-nps] {}", stats.0);
