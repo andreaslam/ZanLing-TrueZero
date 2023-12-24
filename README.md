@@ -113,6 +113,7 @@ cargo run --bin server
 
 #### Python code
 - `client.py` - runs training and manages neural network training. Connects to `server.rs` via TCP to receive file paths for neural network training.
+- `visualiser.py` - visualises training data and progress.
 
 ## Libraries/technologies used 
 
