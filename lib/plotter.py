@@ -308,3 +308,49 @@ def show_log(path: str):
         plotter.set_title(path)
 
     run_with_plotter(f)
+
+def run_with_plotter_direct(target: Callable[[LogPlotter], None]):
+    """
+    Run the given function with a newly constructed `LogPlotter`.
+    This ensures the QApplication and GUI elements are created on a new thread, which then becomes the QT event loop.
+    If an exception is thrown the QT event loop is also stopped allowing the program to fully exit.
+    """
+
+    plotter: Optional[LogPlotter] = None
+    lock = Lock()
+    lock.acquire()
+
+    def gui_main():
+        nonlocal plotter
+        try:
+            lock.acquire()
+
+            target(plotter)
+            print("Main thread finished")
+
+            # if target finishes, we still need to keep this thread alive to detect KeyboardInterrupt
+            while True:
+                time.sleep(1000.0)
+
+        except BaseException as e:
+            QApplication.quit()
+            raise e
+    gui_thread = Thread(target=gui_main)
+    gui_thread.start()
+    
+    app = QApplication([])
+
+    plotter = LogPlotter()
+    lock.release()
+
+    app.exec()
+
+
+def show_log_direct(path: str):
+    logger = Logger.load(path)
+
+    def f(plotter: LogPlotter):
+        plotter.update(logger)
+        plotter.set_title(path)
+
+    run_with_plotter_direct(f)
