@@ -154,7 +154,12 @@ def main():
     ):  # no net folder or no net
         with torch.no_grad():
             net = torch.jit.script(
-                network.TrueNet(num_resBlocks=8, num_hidden=64, head_channel_policy=8, head_channel_values=4).to(d)
+                network.TrueNet(
+                    num_resBlocks=8,
+                    num_hidden=64,
+                    head_channel_policy=8,
+                    head_channel_values=4,
+                ).to(d)
             )
             net.eval()
             torch.jit.save(
@@ -271,6 +276,10 @@ def main():
                 print("[loaded files] buffer size:", loopbuf.position_count)
             except FileNotFoundError:
                 continue
+    try:
+        log.load("log.npz")
+    except Exception:
+        pass
     while True:
         log.start_batch()
         received_data = server.receive()
@@ -317,6 +326,14 @@ def main():
                     unroll_steps=None,
                     include_final=False,
                     random_symmetries=False,
+                    only_last_gen=False,
+                    test=True,
+                )
+                last_gen_test_sampler = loopbuf.sampler(
+                    batch_size=BATCH_SIZE,
+                    unroll_steps=None,
+                    include_final=False,
+                    random_symmetries=False,
                     only_last_gen=True,
                     test=True,
                 )
@@ -345,11 +362,19 @@ def main():
                     train_settings.evaluate_batch(
                         network=model, batch=test_batch, log_prefix="test", logger=log
                     )
+                    last_gen_test_batch = last_gen_test_sampler.next_batch()
+                    train_settings.evaluate_batch(
+                        network=model,
+                        batch=last_gen_test_batch,
+                        log_prefix="last gen test",
+                        logger=log,
+                    )
 
                 log.finished_data()
                 log.save("log.npz")
                 train_sampler.close()
                 test_sampler.close()
+                last_gen_test_sampler.close()
                 starting_gen += 1
                 model_path = "nets/tz_" + str(starting_gen) + ".pt"
                 print(model_path)
