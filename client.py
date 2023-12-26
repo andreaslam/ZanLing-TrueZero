@@ -4,7 +4,8 @@ from enum import Enum
 from lib.data.file import DataFile
 from lib.train import ScalarTarget, TrainSettings
 from lib.games import Game
-import torchaimport re
+import torch
+import re
 import socket
 from enum import Enum
 from lib.data.file import DataFile
