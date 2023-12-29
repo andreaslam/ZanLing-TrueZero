@@ -1,4 +1,4 @@
-use cozy_chess::{Board, GameStatus, Color};
+use cozy_chess::{Board, Color, GameStatus};
 use crossbeam::thread;
 use flume::Sender;
 use std::{env, panic};
@@ -24,19 +24,18 @@ fn main() {
     }));
     let (tensor_exe_send_1, tensor_exe_recv_1) = flume::bounded::<Packet>(1);
     let (tensor_exe_send_0, tensor_exe_recv_0) = flume::bounded::<Packet>(1);
-    
-    let mut scores = (0,0,0); // Win, Draw, Loss (White POV)
-    
+
+    let mut scores = (0, 0, 0); // Win, Draw, Loss (White POV)
+
     let mut games_count = 0;
 
-    let mut target_games = 10;
+    let target_games = 10;
 
     // set up executor and sender pairs
-    
+
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
     let _ = thread::scope(|s| {
         while games_count < target_games {
-
             let board = Board::default();
             let mut bs = BoardStack::new(board);
             let tensor_exe_recv_clone_0 = tensor_exe_recv_0.clone();
@@ -88,27 +87,26 @@ fn main() {
             };
 
             match result {
-                Some(winner) => {
-                    match winner {
-                        Color::White => {
-                            println!("1-0");
-                            scores.0 += 1;
-                        },
-                        Color::Black => {
-                            println!("0-1");
-                            scores.2 += 1;
-                        },
+                Some(winner) => match winner {
+                    Color::White => {
+                        println!("1-0");
+                        scores.0 += 1;
                     }
-                }
+                    Color::Black => {
+                        println!("0-1");
+                        scores.2 += 1;
+                    }
+                },
                 None => {
                     println!("1/2-1/2");
                     scores.1 += 1;
-                },
+                }
             }
 
-            games_count +=1;
+            games_count += 1;
         }
         println!("{:?}", scores);
         ctrl_sender.send(StopServer()).unwrap();
-    }).unwrap();
+    })
+    .unwrap();
 }
