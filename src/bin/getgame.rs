@@ -9,7 +9,7 @@ use tz_rust::{
         Message::{self, StopServer},
         Packet,
     },
-    mcts_trainer::get_move,
+    mcts::get_move,
 };
 
 fn main() {
@@ -44,7 +44,7 @@ fn main() {
                 .name("executor_net_0".to_string())
                 .spawn(move |_| {
                     executor_static(
-                        "./nets/tz_1161.pt".to_string(),
+                        "./nets/tz_1302.pt".to_string(),
                         // "chess_16x128_gen3634.pt".to_string(),
                         tensor_exe_recv_clone_0,
                         ctrl_recv_clone,
@@ -59,7 +59,7 @@ fn main() {
                 .spawn(move |_| {
                     executor_static(
                         "chess_16x128_gen3634.pt".to_string(),
-                        // "chess_16x128_gen3634.pt".to_string(),
+                        // "./nets/tz_1202.pt".to_string(),
                         tensor_exe_recv_clone_1,
                         ctrl_recv_clone,
                         1,
