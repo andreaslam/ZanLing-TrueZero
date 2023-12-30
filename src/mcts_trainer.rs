@@ -16,6 +16,14 @@ pub struct Net {
     pub device: Device,
 }
 
+#[derive(Clone, Copy)]
+
+pub enum TypeRequest {
+    TrainerSearch(),
+    NonTrainerSearch(),
+    SyntheticSearch(),
+}
+
 impl Net {
     pub fn new(path: &str) -> Self {
         // let path = "tz.pt";
@@ -39,7 +47,7 @@ pub struct Tree {
 }
 
 impl Tree {
-    fn new(board: BoardStack) -> Tree {
+    pub fn new(board: BoardStack) -> Tree {
         let root_node = Node::new(0.0, None, None);
         let mut container: Vec<Node> = Vec::new();
         container.push(root_node);
@@ -49,7 +57,7 @@ impl Tree {
         }
     }
 
-    fn step(&mut self, tensor_exe_send: Sender<Packet>) {
+    pub fn step(&mut self, tensor_exe_send: Sender<Packet>, search_type: TypeRequest) {
         let display_str = self.display_node(0);
         // // println!("root node: {}", &display_str);
         const EPS: f32 = 0.3; // 0.3 for chess
@@ -74,26 +82,32 @@ impl Tree {
                     legal_moves.extend(moves);
                     false
                 });
+                match search_type {
+                    TypeRequest::TrainerSearch() => {
+                        // add policy softmax temperature and Dirichlet noise
+                        // TODO extract below as a function?
+                        let mut sum = 0.0;
+                        for child in self.nodes[0].children.clone() {
+                            self.nodes[child].policy = self.nodes[child].policy.powf(PST);
+                            sum += self.nodes[child].policy;
+                        }
+                        for child in self.nodes[0].children.clone() {
+                            self.nodes[child].policy /= sum;
+                        }
 
-                // add policy softmax temperature
-
-                let mut sum = 0.0;
-                for child in self.nodes[0].children.clone() {
-                    self.nodes[child].policy = self.nodes[child].policy.powf(PST);
-                    sum += self.nodes[child].policy;
-                }
-                for child in self.nodes[0].children.clone() {
-                    self.nodes[child].policy /= sum;
-                }
-
-                // add Dirichlet noise
-                let mut std_rng = StdRng::from_entropy();
-                let distr = StableDirichlet::new(0.3, legal_moves.len()).expect("wrong params");
-                let sample = std_rng.sample(distr);
-                // // println!("noise: {:?}", sample);
-                for child in self.nodes[0].children.clone() {
-                    self.nodes[child].policy =
-                        (1.0 - EPS) * self.nodes[child].policy + (EPS * sample[child - 1]);
+                        // add Dirichlet noise
+                        let mut std_rng = StdRng::from_entropy();
+                        let distr =
+                            StableDirichlet::new(0.3, legal_moves.len()).expect("wrong params");
+                        let sample = std_rng.sample(distr);
+                        // // println!("noise: {:?}", sample);
+                        for child in self.nodes[0].children.clone() {
+                            self.nodes[child].policy =
+                                (1.0 - EPS) * self.nodes[child].policy + (EPS * sample[child - 1]);
+                        }
+                    }
+                    TypeRequest::NonTrainerSearch() => {}
+                    TypeRequest::SyntheticSearch() => {}
                 }
                 // self.nodes[0].display_full_tree(self);
             }
@@ -237,7 +251,7 @@ impl Tree {
         }
     }
 
-    fn display_node(&self, id: usize) -> String {
+    pub fn display_node(&self, id: usize) -> String {
         let u: f32;
         let puct: f32;
 
@@ -303,14 +317,14 @@ impl fmt::Display for Tree {
 
 #[derive(PartialEq, Clone, Debug)] // maybe display and debug as helper funcs to check impl
 pub struct Node {
-    parent: Option<usize>,
+    pub parent: Option<usize>,
     pub children: Range<usize>,
     pub policy: f32,
     pub visits: u32,
     pub eval_score: f32, // -1 for black and 1 for white
-    total_action_value: f32,
+    pub total_action_value: f32,
     pub mv: Option<cozy_chess::Move>,
-    move_idx: Option<Vec<usize>>,
+    pub move_idx: Option<Vec<usize>>,
 }
 
 impl Node {
@@ -318,7 +332,7 @@ impl Node {
     //     self.visits == 0
     // }
 
-    fn get_q_val(&self) -> f32 {
+    pub fn get_q_val(&self) -> f32 {
         let fpu = 0.0; // First Player Urgency
         if self.visits > 0 {
             self.total_action_value / (self.visits as f32)
@@ -327,12 +341,12 @@ impl Node {
         }
     }
 
-    fn get_u_val(&self, parent_visits: u32) -> f32 {
+    pub fn get_u_val(&self, parent_visits: u32) -> f32 {
         let c_puct = 2.0; // "constant determining the level of exploration"
         c_puct * self.policy * ((parent_visits - 1) as f32).sqrt() / (1.0 + self.visits as f32)
     }
 
-    fn puct_formula(&self, parent_visits: u32, player: Color) -> f32 {
+    pub fn puct_formula(&self, parent_visits: u32, player: Color) -> f32 {
         let u = self.get_u_val(parent_visits);
         let q = self.get_q_val();
         match player {
@@ -354,7 +368,7 @@ impl Node {
         }
     }
 
-    fn layer_p(&self, depth: u8, max_tree_print_depth: u8, tree: &Tree) {
+    pub fn layer_p(&self, depth: u8, max_tree_print_depth: u8, tree: &Tree) {
         let indent = "    ".repeat(depth as usize + 2);
         if depth <= max_tree_print_depth {
             if !self.children.is_empty() {
@@ -367,7 +381,7 @@ impl Node {
         }
     }
 
-    fn display_full_tree(&self, tree: &Tree) {
+    pub fn display_full_tree(&self, tree: &Tree) {
         // // println!("        root node:");
         let display_str = tree.display_node(0);
         // // println!("            {}", display_str);
@@ -378,7 +392,7 @@ impl Node {
     }
 }
 
-pub const MAX_NODES: u32 = 400;
+pub const MAX_NODES: u32 = 800;
 pub const PST: f32 = 1.2;
 
 pub fn get_move(
@@ -403,6 +417,9 @@ pub fn get_move(
     if tree.board.is_terminal() {
         panic!("No valid move!/Board is already game over!");
     }
+
+    let search_type = TypeRequest::TrainerSearch();
+
     while tree.nodes[0].visits < MAX_NODES {
         let thread_name = std::thread::current()
             .name()
@@ -411,7 +428,7 @@ pub fn get_move(
         // println!("step {}", tree.nodes[0].visits);
         // // println!("thread {}, step {}", thread_name, tree.nodes[0].visits);
         let sw = Instant::now();
-        tree.step(tensor_exe_send.clone());
+        tree.step(tensor_exe_send.clone(), search_type.clone());
         // println!("Elapsed time for step: {}ms", sw.elapsed().as_nanos() as f32 / 1e6);
     }
     let best_move_node = tree.nodes[0]
