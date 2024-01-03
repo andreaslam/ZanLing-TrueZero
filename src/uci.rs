@@ -63,6 +63,7 @@ pub fn run_uci() {
             "quit" => process::exit(0),
             "eval" => {
                 let (value, _) = eval_state(convert_board(&bs), &net).unwrap();
+                let value = value.squeeze();
                 let value_raw: Vec<f32> = Vec::try_from(value).expect("Error");
                 let value: f32 = value_raw[0].tanh();
                 let cps = eval_in_cp(value);
