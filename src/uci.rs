@@ -1,7 +1,13 @@
-use cozy_chess::{Board, Move, Color, Piece, Square};
+use crate::{
+    boardmanager::BoardStack,
+    decoder::{convert_board, eval_state},
+    executor::{executor_static, Message, Packet},
+    mcts::get_move,
+    mcts_trainer::Net,
+};
+use cozy_chess::{Board, Color, Move, Piece, Square};
 use crossbeam::thread;
 use std::str::FromStr;
-use crate::{decoder::{eval_state, convert_board}, boardmanager::BoardStack, mcts::get_move, mcts_trainer::Net, executor::{executor_static, Message, Packet}};
 
 use std::{io, process};
 
@@ -24,7 +30,6 @@ pub fn run_uci() {
     let mut bs = BoardStack::new(board);
     let mut stack = Vec::new();
     let mut threads = 1;
-
 
     let mut stored_message: Option<String> = None;
     let net_path = r"C:\Users\andre\RemoteFolder\ZanLing-TrueZero\nets\tz_2074.pt";
@@ -52,22 +57,20 @@ pub fn run_uci() {
         match *commands.first().unwrap_or(&"oops") {
             "uci" => preamble(),
             "isready" => println!("readyok"),
-            "ucinewgame" => {
-            }
-            "go" => handle_go(
-                &commands,
-                &bs,
-                &net_path,
-            ),
+            "ucinewgame" => {}
+            "go" => handle_go(&commands, &bs, &net_path),
             "position" => set_position(commands, &mut bs, &mut stack),
             "quit" => process::exit(0),
             "eval" => {
-            let (value, _) = eval_state(convert_board(&bs), &net).unwrap();
-            let value_raw: Vec<f32>  = Vec::try_from(value).expect("Error");
-            let value: f32 = value_raw[0].tanh();
-            let cps = eval_in_cp(value);
-            println!("eval: {}", (cps * 100.).round().max(-1000.).min(1000.) as i64);
-        },
+                let (value, _) = eval_state(convert_board(&bs), &net).unwrap();
+                let value_raw: Vec<f32> = Vec::try_from(value).expect("Error");
+                let value: f32 = value_raw[0].tanh();
+                let cps = eval_in_cp(value);
+                println!(
+                    "eval: {}",
+                    (cps * 100.).round().max(-1000.).min(1000.) as i64
+                );
+            }
             _ => {}
         }
     }
@@ -137,12 +140,7 @@ fn set_position(commands: Vec<&str>, bs: &mut BoardStack, stack: &mut Vec<u64>) 
     }
 }
 
-
-pub fn handle_go(
-    commands: &[&str],
-    bs: &BoardStack,
-    net_path: &str
-) {
+pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
     let mut nodes = 10_000_000;
     let mut max_time = None;
     let mut max_depth = 256;
@@ -169,38 +167,38 @@ pub fn handle_go(
                 "depth" => max_depth = cmd.parse().unwrap_or(max_depth),
                 "wtime" => times[0] = Some(cmd.parse().unwrap_or(0)),
                 "btime" => times[1] = Some(cmd.parse().unwrap_or(0)),
-                "winc" =>  incs[0]= Some(cmd.parse().unwrap_or(0)),
-                "binc" =>  incs[1]= Some(cmd.parse().unwrap_or(0)),
+                "winc" => incs[0] = Some(cmd.parse().unwrap_or(0)),
+                "binc" => incs[1] = Some(cmd.parse().unwrap_or(0)),
                 "movestogo" => movestogo = cmd.parse().unwrap_or(30),
-                _ => mode = "none"
+                _ => mode = "none",
             },
         }
     }
     println!("max_time {:?}", max_time);
     let mut time: Option<u128> = None;
     let mut nodes: u128 = 1600; // TODO: dynamically set max_nodes using this setting thru SearchSettings struct
-    // `go wtime <wtime> btime <btime> winc <winc> binc <binc>``
+                                // `go wtime <wtime> btime <btime> winc <winc> binc <binc>``
     let stm = bs.board().side_to_move();
     let stm_num = match stm {
-        Color::White => {Some(0)},
-        Color::Black => {Some(1)},
+        Color::White => Some(0),
+        Color::Black => Some(1),
     };
     if let Some(t) = times[stm_num.unwrap()] {
-        println!("{}",t);
+        println!("{}", t);
         let mut base = t / movestogo.max(1);
 
         if let Some(i) = incs[stm_num.unwrap()] {
             base += i * 3 / 4;
         }
         time = Some(base.try_into().unwrap());
-        nodes = time.unwrap() as u128 /20;
+        nodes = time.unwrap() as u128 / 20;
     }
 
     // `go movetime <time>`
     if let Some(max) = max_time {
         // if both movetime and increment time controls given, use
         time = Some(time.unwrap_or(u128::MAX).min(max));
-        nodes = time.unwrap() as u128 /20;
+        nodes = time.unwrap() as u128 / 20;
     }
 
     // 5ms move overhead
@@ -212,14 +210,13 @@ pub fn handle_go(
     let _ = thread::scope(|s| {
         s.builder()
             .name("executor".to_string())
-            .spawn(move |_| {
-                executor_static(net_path.to_string(), tensor_exe_recv, ctrl_recv, 1)
-            })
+            .spawn(move |_| executor_static(net_path.to_string(), tensor_exe_recv, ctrl_recv, 1))
             .unwrap();
 
-    let (best_move, _, _, _, _) = get_move(bs.clone(), tensor_exe_send.clone());
+        let (best_move, _, _, _, _) = get_move(bs.clone(), tensor_exe_send.clone());
 
-    println!("bestmove {:#}", best_move);
-    let _ = ctrl_sender.send(Message::StopServer());
-}).unwrap();
+        println!("bestmove {:#}", best_move);
+        let _ = ctrl_sender.send(Message::StopServer());
+    })
+    .unwrap();
 }
