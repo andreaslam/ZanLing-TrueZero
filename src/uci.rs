@@ -181,22 +181,22 @@ pub fn handle_go(
             },
         }
     }
-
+    println!("max_time {:?}", max_time);
     let mut time: Option<u128> = None;
-    let mut nodes: u128 = 1600;
+    let mut nodes: u128 = 1600; // TODO: dynamically set max_nodes using this setting thru SearchSettings struct
     // `go wtime <wtime> btime <btime> winc <winc> binc <binc>``
     let stm = bs.board().side_to_move();
     let stm_num = match stm {
-        Color::White => {0},
-        Color::Black => {1},
+        Color::White => {Some(0)},
+        Color::Black => {Some(1)},
     };
-    if let t = stm_num {
+    if let Some(t) = times[stm_num.unwrap()] {
+        println!("{}",t);
         let mut base = t / movestogo.max(1);
 
-        if let Some(i) = incs[stm_num] {
+        if let Some(i) = incs[stm_num.unwrap()] {
             base += i * 3 / 4;
         }
-
         time = Some(base.try_into().unwrap());
         nodes = time.unwrap() as u128 /20;
     }
