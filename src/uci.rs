@@ -1,220 +1,226 @@
-use crate::{decoder::eval_state, mcts_trainer::Net, selfplay::CollectorMessage};
-use flume::{Receiver, RecvError, Selector, Sender};
-use std::{cmp::min, collections::VecDeque, time::Instant};
-use tch::Tensor;
+use cozy_chess::{Board, Move, Color, Piece, Square};
+use crossbeam::thread;
+use std::str::FromStr;
+use crate::decoder::{eval_board, eval_state, convert_board};
+use crate::boardmanager::BoardStack;
+use crate::mcts::get_move;
+use crate::mcts_trainer::Net;
+use crate::executor::executor_static;
+use crate::executor::{Message, Packet};
 
-pub struct Packet {
-    pub job: Tensor,
-    pub resender: Sender<ReturnMessage>,
-    pub id: String,
+use std::{io, process, sync::atomic::AtomicBool, time::Instant};
+
+const STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+fn eval_in_cp(eval: f32) -> f32 {
+    let cps = if eval > 0.5 {
+        18. * (eval - 0.5) + 1.
+    } else if eval < -0.5 {
+        18. * (eval + 0.5) - 1.
+    } else {
+        2. * eval
+    };
+    cps
 }
 
-pub struct ReturnPacket {
-    pub packet: (Tensor, Tensor),
-    pub id: String,
-}
+pub fn run_uci() {
+    // initialise engine
+    let mut board = Board::default();
+    let mut bs = BoardStack::new(board);
+    let mut stack = Vec::new();
+    let mut threads = 1;
 
-pub enum Message {
-    NewNetwork(Result<String, RecvError>),
-    JobTensor(Result<Packet, RecvError>), // (converted) tensor from mcts search that needs NN evaluation
 
-    StopServer(), // end the executor process
-}
-
-pub enum ReturnMessage {
-    ReturnMessage(Result<ReturnPacket, RecvError>),
-}
-
-fn handle_new_graph(network: &mut Option<Net>, graph: Option<String>, thread_name: &str) {
-    // drop previous network if any to save GPU memory
-    if let Some(network) = network.take() {
-        // // println!("{} dropping network", thread_name);
-        drop(network);
-    }
-
-    // load the new network if any
-    *network = graph.map(|graph| Net::new(&graph[..]));
-}
-
-pub fn executor_main(
-    net_receiver: Receiver<String>,
-    tensor_receiver: Receiver<Packet>, // receive tensors from mcts
-    num_threads: usize,
-    evals_per_sec_sender: Sender<CollectorMessage>,
-) {
-    let max_batch_size = min(256, num_threads);
-    let mut graph_disconnected = false;
-    let mut network: Option<Net> = None;
-    let thread_name = std::thread::current()
-        .name()
-        .unwrap_or("unnamed-executor")
-        .to_owned();
-    let mut input_vec: VecDeque<Tensor> = VecDeque::new();
-    let mut debug_counter = 0;
-    let mut output_senders = VecDeque::new(); // collect senders
-    let mut id_vec = VecDeque::new(); // collect senders
-                                      // println!("num_threads (generator): {}", num_threads);
-
+    let mut stored_message: Option<String> = None;
+    let net = Net::new(r"C:\Users\andre\RemoteFolder\ZanLing-TrueZero\nets\tz_2074.pt");
+    // main uci loop
     loop {
-        let sw = Instant::now();
-        // println!("thread {} loop {}:", thread_name, debug_counter);
-        // println!("    thread {} number of requests made from mcts: {}, {}", thread_name, output_senders.len(), num_threads);
-        // println!("    thread {} graph_disconnected: {}", thread_name, graph_disconnected);
-        assert!(network.is_some() || !graph_disconnected);
+        let input = if let Some(msg) = stored_message {
+            msg.clone()
+        } else {
+            let mut input = String::new();
+            let bytes_read = io::stdin().read_line(&mut input).unwrap();
 
-        let mut selector = Selector::new();
+            // got EOF, exit (for OpenBench).
+            if bytes_read == 0 {
+                break;
+            }
 
-        if !graph_disconnected {
-            selector = selector.recv(&net_receiver, |res| Message::NewNetwork(res));
+            input
+        };
+
+        stored_message = None;
+
+        let commands = input.split_whitespace().collect::<Vec<_>>();
+
+        match *commands.first().unwrap_or(&"oops") {
+            "uci" => preamble(),
+            "isready" => println!("readyok"),
+            "ucinewgame" => {
+            }
+            "go" => handle_go(
+                &commands,
+                &bs,
+            ),
+            "position" => set_position(commands, &mut bs, &mut stack),
+            "quit" => process::exit(0),
+            "eval" => {
+            let (value, _) = eval_state(convert_board(&bs), &net).unwrap();
+            let value_raw: Vec<f32>  = Vec::try_from(value).expect("Error");
+            let value: f32 = value_raw[0].tanh();
+            let cps = eval_in_cp(value);
+            println!("eval: {}", (cps * 100.).round().max(-1000.).min(1000.) as i64);
+        },
+            _ => {}
         }
-
-        // register all tensor receivers in the selector
-        match network {
-            Some(_) => {
-                selector = selector.recv(&tensor_receiver, |res| Message::JobTensor(res));
-            }
-            None => (),
-        }
-
-        let message = selector.wait();
-        match message {
-            Message::StopServer() => break,
-            Message::NewNetwork(Ok(graph)) => {
-                // println!("    NEW NET!");
-                handle_new_graph(&mut network, Some(graph), &thread_name);
-            }
-            Message::JobTensor(job) => {
-                let job = job.expect("JobTensor should be available");
-                let network = network.as_mut().expect("Network should be available");
-
-                input_vec.push_back(job.job);
-                output_senders.push_back(job.resender);
-                id_vec.push_back(job.id);
-                // evaluate batches
-                while input_vec.len() >= max_batch_size {
-                    let batch_size = min(max_batch_size, input_vec.len());
-                    let i_v = input_vec.make_contiguous();
-                    let input_tensors = Tensor::cat(&i_v[..batch_size], 0);
-                    // println!("        thread {}: preparing tensors", thread_name);
-                    // println!("            thread {}: eval input tensors: {:?}", thread_name, input_tensors);
-                    // println!("        thread {}: NN evaluation:", thread_name);
-                    let sw_inference = Instant::now();
-                    let (board_eval, policy) =
-                        eval_state(input_tensors, network).expect("Evaluation failed");
-                    let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
-                    // let evals_per_sec = batch_size as f32 / elapsed;
-                    let _ = evals_per_sec_sender
-                        .send(CollectorMessage::ExecutorStatistics(batch_size as f32));
-                    // println!("            thread {}: NN evaluation done! {}s", thread_name, elapsed);
-                    // println!("        thread {}: processing outputs:",thread_name);
-                    // println!("            thread {}: output tensors: {:?}, {:?}", thread_name, board_eval, policy);
-                    // distribute results to the output senders
-                    // println!("        thread {}: sending tensors back to mcts:", thread_name);
-                    for i in 0..batch_size {
-                        let sender = output_senders
-                            .pop_front()
-                            .expect("There should be a sender for each job");
-                        let id = id_vec
-                            .pop_front()
-                            .expect("There should be an ID for each job");
-                        let result = (board_eval.get(i as i64), policy.get(i as i64));
-                        // println!("            thread {}, SENT! {:?}", i, &result);
-                        let return_pack = ReturnPacket { packet: result, id };
-                        sender
-                            .send(ReturnMessage::ReturnMessage(Ok(return_pack)))
-                            .expect("Should be able to send the result");
-                    }
-                    drop(input_vec.drain(0..batch_size));
-                }
-            }
-            Message::NewNetwork(Err(RecvError::Disconnected)) => {
-                // println!("DISCONNECTED NET!");
-                graph_disconnected = true;
-                if network.is_none() && input_vec.is_empty() {
-                    break; // exit if no network and no ongoing jobs
-                }
-            }
-        }
-        let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
-        // println!("thread {}, elapsed time: {}s", thread_name, elapsed);
-        debug_counter += 1;
     }
-    // Return the senders to avoid them being dropped and disconnected
 }
 
-pub fn executor_static(
-    net_path: String,
-    tensor_receiver: Receiver<Packet>, // receive tensors from mcts
-    ctrl_receiver: Receiver<Message>,  // receive control messages
-    num_threads: usize,
-) {
-    let max_batch_size = min(256, num_threads);
-    let mut network: Option<Net> = None;
-    let thread_name = std::thread::current()
-        .name()
-        .unwrap_or("unnamed-executor")
-        .to_owned();
-    let mut input_vec: VecDeque<Tensor> = VecDeque::new();
-    let mut debug_counter = 0;
-    let mut output_senders: VecDeque<Sender<ReturnMessage>> = VecDeque::new();
-    let mut id_vec: VecDeque<String> = VecDeque::new();
+fn preamble() {
+    println!("id name TrueZero {}", env!("CARGO_PKG_VERSION"));
+    println!("id author Andreas Lam");
+    println!("uciok");
+}
 
-    handle_new_graph(&mut network, Some(net_path), thread_name.as_str());
+fn check_castling_move(bs: &BoardStack, mut mv: Move) -> Move {
+    if bs.board().piece_on(mv.from) == Some(Piece::King) {
+        mv.to = match (mv.from, mv.to) {
+            (Square::E1, Square::G1) => Square::H1,
+            (Square::E8, Square::G8) => Square::H8,
+            (Square::E1, Square::C1) => Square::A1,
+            (Square::E8, Square::C8) => Square::A8,
+            _ => mv.to,
+        };
+    }
+    mv
+}
 
-    loop {
-        let sw = Instant::now();
+fn set_position(commands: Vec<&str>, bs: &mut BoardStack, stack: &mut Vec<u64>) {
+    let mut fen = String::new();
+    let mut move_list = Vec::new();
+    let mut moves = false;
 
-        let mut selector = Selector::new();
-
-        // Register all receivers in the selector
-        selector = selector.recv(&tensor_receiver, |res| Message::JobTensor(res));
-        selector = selector.recv(&ctrl_receiver, |_| Message::StopServer());
-        let message = selector.wait();
-
-        match message {
-            Message::StopServer() => {
-                break
-            }
-            Message::NewNetwork(_) => {
-                unreachable!(); // Handle new network message if needed
-            }
-            Message::JobTensor(job) => {
-                let job = job.expect("JobTensor should be available");
-                let network = network.as_mut().expect("Network should be available");
-
-                input_vec.push_back(job.job);
-                output_senders.push_back(job.resender);
-                id_vec.push_back(job.id);
-
-                while input_vec.len() >= max_batch_size {
-                    let batch_size = min(max_batch_size, input_vec.len());
-                    let i_v = input_vec.make_contiguous();
-                    let input_tensors = Tensor::cat(&i_v[..batch_size], 0);
-
-                    let sw_inference = Instant::now();
-                    let (board_eval, policy) =
-                        eval_state(input_tensors, network).expect("Evaluation failed");
-                    let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
-
-                    for i in 0..batch_size {
-                        let sender = output_senders
-                            .pop_front()
-                            .expect("There should be a sender for each job");
-                        let id = id_vec
-                            .pop_front()
-                            .expect("There should be an ID for each job");
-                        let result = (board_eval.get(i as i64), policy.get(i as i64));
-                        let return_pack = ReturnPacket { packet: result, id };
-                        sender
-                            .send(ReturnMessage::ReturnMessage(Ok(return_pack)))
-                            .expect("Should be able to send the result");
-                    }
-                    drop(input_vec.drain(0..batch_size));
+    for cmd in commands {
+        match cmd {
+            "position" | "startpos" | "fen" => {}
+            "moves" => moves = true,
+            _ => {
+                if moves {
+                    move_list.push(cmd)
+                } else {
+                    fen.push_str(&format!("{cmd} "))
                 }
             }
         }
-        let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
-        debug_counter += 1;
     }
-    // Return the senders to avoid them being dropped and disconnected
+    let fenstr = if fen.is_empty() {
+        STARTPOS
+    } else {
+        &fen.trim()
+    };
+    let board = Board::from_fen(fenstr, false).unwrap();
+    *bs = BoardStack::new(board.clone());
+    stack.clear();
+
+    for m in move_list {
+        stack.push(bs.board().hash());
+        let mut legal_moves = Vec::new();
+        bs.board().generate_moves(|moves| {
+            // Unpack dense move set into move list
+            legal_moves.extend(moves);
+            false
+        });
+        for mov in legal_moves.iter() {
+            let mv = Move::from_str(&m).unwrap();
+            let mv = check_castling_move(&bs, mv);
+            if mv == *mov {
+                bs.play(*mov);
+            }
+        }
+    }
+}
+
+
+pub fn handle_go(
+    commands: &[&str],
+    bs: &BoardStack,
+) {
+    let mut nodes = 10_000_000;
+    let mut max_time = None;
+    let mut max_depth = 256;
+
+    let mut times = [None; 2];
+    let mut incs = [None; 2];
+    let mut movestogo = 30;
+
+    let mut mode = "";
+
+    for cmd in commands {
+        match *cmd {
+            "nodes" => mode = "nodes",
+            "movetime" => mode = "movetime",
+            "depth" => mode = "depth",
+            "wtime" => mode = "wtime",
+            "btime" => mode = "btime",
+            "winc" => mode = "winc",
+            "binc" => mode = "binc",
+            "movestogo" => mode = "movestogo",
+            _ => match mode {
+                "nodes" => nodes = cmd.parse().unwrap_or(nodes),
+                "movetime" => max_time = cmd.parse().ok(),
+                "depth" => max_depth = cmd.parse().unwrap_or(max_depth),
+                "wtime" => times[0] = Some(cmd.parse().unwrap_or(0)),
+                "btime" => times[1] = Some(cmd.parse().unwrap_or(0)),
+                "winc" =>  incs[0]= Some(cmd.parse().unwrap_or(0)),
+                "binc" =>  incs[1]= Some(cmd.parse().unwrap_or(0)),
+                "movestogo" => movestogo = cmd.parse().unwrap_or(30),
+                _ => mode = "none"
+            },
+        }
+    }
+
+    let mut time: Option<u128> = None;
+
+    // `go wtime <wtime> btime <btime> winc <winc> binc <binc>``
+    let stm = bs.board().side_to_move();
+    let stm_num = match stm {
+        Color::White => {0},
+        Color::Black => {1},
+    };
+    if let t = stm_num {
+        let mut base = t / movestogo.max(1);
+
+        if let Some(i) = incs[stm_num] {
+            base += i * 3 / 4;
+        }
+
+        time = Some(base.try_into().unwrap());
+    }
+
+    // `go movetime <time>`
+    if let Some(max) = max_time {
+        // if both movetime and increment time controls given, use
+        time = Some(time.unwrap_or(u128::MAX).min(max));
+    }
+
+    // 5ms move overhead
+    if let Some(t) = time.as_mut() {
+        *t = t.saturating_sub(5);
+    }
+
+   let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(1);
+    let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
+    let _ = thread::scope(|s| {
+        s.builder()
+            .name("executor".to_string())
+            .spawn(move |_| {
+                executor_static(r"C:\Users\andre\RemoteFolder\ZanLing-TrueZero\nets\tz_2074.pt".to_string(), tensor_exe_recv, ctrl_recv, 1)
+            })
+            .unwrap();
+
+    let (best_move, nn_data, _, _, _) = get_move(bs.clone(), tensor_exe_send.clone());
+
+    println!("bestmove {:#}", best_move);
+    let _ = ctrl_sender.send(Message::StopServer());
+}).unwrap();
 }
