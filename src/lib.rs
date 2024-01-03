@@ -9,6 +9,8 @@ pub mod mcts_trainer;
 pub mod message_types;
 pub mod mvs;
 pub mod selfplay;
+pub mod settings;
+pub mod uci;
 
 #[cfg(test)]
 
