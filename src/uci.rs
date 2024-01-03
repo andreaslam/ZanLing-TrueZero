@@ -32,7 +32,8 @@ pub fn run_uci() {
 
 
     let mut stored_message: Option<String> = None;
-    let net = Net::new(r"C:\Users\andre\RemoteFolder\ZanLing-TrueZero\nets\tz_2074.pt");
+    let net_path = r"C:\Users\andre\RemoteFolder\ZanLing-TrueZero\nets\tz_2074.pt";
+    let net = Net::new(net_path);
     // main uci loop
     loop {
         let input = if let Some(msg) = stored_message {
@@ -61,6 +62,7 @@ pub fn run_uci() {
             "go" => handle_go(
                 &commands,
                 &bs,
+                &net_path,
             ),
             "position" => set_position(commands, &mut bs, &mut stack),
             "quit" => process::exit(0),
@@ -144,6 +146,7 @@ fn set_position(commands: Vec<&str>, bs: &mut BoardStack, stack: &mut Vec<u64>) 
 pub fn handle_go(
     commands: &[&str],
     bs: &BoardStack,
+    net_path: &str
 ) {
     let mut nodes = 10_000_000;
     let mut max_time = None;
@@ -180,7 +183,7 @@ pub fn handle_go(
     }
 
     let mut time: Option<u128> = None;
-
+    let mut nodes: u128 = 1600;
     // `go wtime <wtime> btime <btime> winc <winc> binc <binc>``
     let stm = bs.board().side_to_move();
     let stm_num = match stm {
@@ -195,30 +198,31 @@ pub fn handle_go(
         }
 
         time = Some(base.try_into().unwrap());
+        nodes = time.unwrap() as u128 /20;
     }
 
     // `go movetime <time>`
     if let Some(max) = max_time {
         // if both movetime and increment time controls given, use
         time = Some(time.unwrap_or(u128::MAX).min(max));
+        nodes = time.unwrap() as u128 /20;
     }
 
     // 5ms move overhead
     if let Some(t) = time.as_mut() {
         *t = t.saturating_sub(5);
     }
-
-   let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(1);
+    let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(1);
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
     let _ = thread::scope(|s| {
         s.builder()
             .name("executor".to_string())
             .spawn(move |_| {
-                executor_static(r"C:\Users\andre\RemoteFolder\ZanLing-TrueZero\nets\tz_2074.pt".to_string(), tensor_exe_recv, ctrl_recv, 1)
+                executor_static(net_path.to_string(), tensor_exe_recv, ctrl_recv, 1)
             })
             .unwrap();
 
-    let (best_move, nn_data, _, _, _) = get_move(bs.clone(), tensor_exe_send.clone());
+    let (best_move, _, _, _, _) = get_move(bs.clone(), tensor_exe_send.clone());
 
     println!("bestmove {:#}", best_move);
     let _ = ctrl_sender.send(Message::StopServer());
