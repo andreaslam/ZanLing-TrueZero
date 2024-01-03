@@ -1,14 +1,9 @@
 use cozy_chess::{Board, Move, Color, Piece, Square};
 use crossbeam::thread;
 use std::str::FromStr;
-use crate::decoder::{eval_board, eval_state, convert_board};
-use crate::boardmanager::BoardStack;
-use crate::mcts::get_move;
-use crate::mcts_trainer::Net;
-use crate::executor::executor_static;
-use crate::executor::{Message, Packet};
+use crate::{decoder::{eval_state, convert_board}, boardmanager::BoardStack, mcts::get_move, mcts_trainer::Net, executor::{executor_static, Message, Packet}};
 
-use std::{io, process, sync::atomic::AtomicBool, time::Instant};
+use std::{io, process};
 
 const STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
