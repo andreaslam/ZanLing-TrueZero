@@ -3,7 +3,7 @@ A Python and Rust chess engine that starts from Zero. This project is still very
 
 
 ## About the Engine 
-The name of the Engine is 真零 (TrueZero), which is Chinese for "True Zero" and romanised using [Jyutping](https://en.wikipedia.org/wiki/Jyutping) for Cantonese.
+The name of the Engine is 真零 (TrueZero), which is Chinese for "True Zero" and romanised using [Jyutping](https://en.wikipedia.org/wiki/Jyutping) for Cantonese (Zan1 Ling4).
 
 Instead of being hard-coded by humans, this AI learns how to play through playing games from itself and learning from randomly generated games. 
 
