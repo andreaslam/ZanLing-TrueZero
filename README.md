@@ -90,6 +90,9 @@ cargo run --bin server
 - `getgame.rs` - used for obtaining a game.
 - `getinferencetime.rs` - used for benchmarking inference times and batching effectiveness through calculating the nodes/s.
 
+### External testing (UCI compliant)
+- `uci.rs` - contains code for UCI implementation. Code currently work in progress.
+- `ucimain.rs` - used for running games using UCI.
 
 ### Source code for AI
 - `decoder.rs` - used to decode and encode inputs for AI. Also handles the creation of child nodes. This is where NN inference happens.
