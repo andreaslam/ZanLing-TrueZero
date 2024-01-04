@@ -82,6 +82,14 @@ cargo run --bin main
 cargo run --bin server
 ```
 
+## Running the Engine in UCI
+
+To use TrueZero through UCI, simply run the following:
+
+```
+cargo run --bin uciman
+```
+
 ## What each file does
 
 ### Internal testing (non-UCI compliant)
