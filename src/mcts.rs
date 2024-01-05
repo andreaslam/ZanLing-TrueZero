@@ -1,10 +1,10 @@
 use std::time::Instant;
 
+use crate::mcts_trainer::{Tree, MAX_NODES};
 use crate::{
     boardmanager::BoardStack, dataformat::ZeroEvaluation, executor::Packet,
     mcts_trainer::TypeRequest,
 };
-use crate::mcts_trainer::{Tree, MAX_NODES};
 use cozy_chess::Move;
 use flume::Sender;
 
@@ -27,7 +27,7 @@ pub fn get_move(
         panic!("No valid move!/Board is already game over!");
     }
 
-    let search_type = TypeRequest::NonTrainerSearch();
+    let search_type = TypeRequest::NonTrainerSearch;
 
     while tree.nodes[0].visits < MAX_NODES {
         let thread_name = std::thread::current()
@@ -47,7 +47,7 @@ pub fn get_move(
         .expect("Error");
     let best_move = tree.nodes[best_move_node].mv;
     let mut total_visits_list = Vec::new();
-    // // println!("{:#}", best_move.unwrap());
+    // println!("{:#}", best_move.unwrap());
     for child in tree.nodes[0].children.clone() {
         total_visits_list.push(tree.nodes[child].visits);
     }
@@ -58,7 +58,7 @@ pub fn get_move(
 
     let mut pi: Vec<f32> = Vec::new();
 
-    // // println!("{:?}", &total_visits_list);
+    // println!("{:?}", &total_visits_list);
 
     for &t in &total_visits_list {
         let prob = t as f32 / total_visits as f32;
