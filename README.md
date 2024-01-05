@@ -5,7 +5,7 @@ A Python and Rust chess engine that starts from Zero. This project is still very
 ## About the Engine 
 The name of the Engine is 真零 (TrueZero), which is Chinese for "True Zero" and romanised using [Jyutping](https://en.wikipedia.org/wiki/Jyutping) for Cantonese (Zan1 Ling4).
 
-Instead of using hand-crafted evaluatinons (HCE), this AI learns how to play through playing games from itself and learning from playing against itself, starting with zero prior knowledge, except the rules of chess.
+Instead of using hand-crafted evaluations (HCE), this AI learns how to play through playing games from itself and learning from playing against itself, starting with zero prior knowledge, except the rules of chess.
 
 The chess Engine will then play games against itself using the evaluation to evaluate chess positions, done using [Monte Carlo Tree Search (MCTS)](https://en.wikipedia.org/wiki/Monte_Carlo_tree_search).
 
