@@ -52,7 +52,11 @@ cd ..
 cd app
 ```
 
-Next, set the following environment variables.
+## Setting environment variables
+
+
+Set the following environment variables to configure `tch-rs` before running anything. This assumes you use PyTorch to set up. 
+
 ```
 export LIBTORCH_USE_PYTORCH=1
 export LIBTORCH_BYPASS_VERSION_CHECK=1 
@@ -87,7 +91,7 @@ cargo run --bin server
 To use TrueZero through UCI, simply run the following:
 
 ```
-cargo run --bin uciman
+cargo run --bin ucimain
 ```
 
 ## What each file does
