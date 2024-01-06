@@ -3,9 +3,7 @@
 
 # TrueZero
 #### A Python and Rust chess engine that starts from Zero.
-
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/andreaslam/ZanLing-TrueZero?style=for-the-badge)](https://github.com/andreaslam/ZanLing-TrueZero)
-[![Commits](https://img.shields.io/github/commits-since/andreaslam/ZanLing-TrueZero/latest?style=for-the-badge)](https://github.com/andreaslam/ZanLing-TrueZero)
+https://img.shields.io/badge/Powered%20by-Rust-b7410e
 
 </div>
 
