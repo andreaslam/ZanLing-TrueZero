@@ -5,6 +5,7 @@
 #### A Python and Rust chess engine that starts from Zero.
 <img src="https://img.shields.io/badge/Powered%20by-Rust-b7410e" alt="Powered by Rust">
 <img src="https://img.shields.io/badge/Powered%20by-Python-4b8bbe" alt="Powered by Python">
+[![commits](https://badgen.net/github/commits/andreaslam/ZanLing-TrueZero/main)]]
 </div>
 
 ## About the Engine 
