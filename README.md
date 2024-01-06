@@ -4,7 +4,7 @@
 # TrueZero
 #### A Python and Rust chess engine that starts from Zero.
 <img src="https://img.shields.io/badge/Powered%20by-Rust-b7410e" alt="Powered by Rust">
-<img src="https://img.shields.io/badge/Powered%20by-Python-FFD43B" alt="Powered by Python">
+<img src="https://img.shields.io/badge/Powered%20by-Python-306998" alt="Powered by Python">
 <img src="https://badgen.net/github/commits/andreaslam/ZanLing-TrueZero/main" alt="Total commits">
 </div>
 ## About the Engine 
