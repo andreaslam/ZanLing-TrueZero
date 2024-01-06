@@ -1,7 +1,6 @@
 <h1 align="center">
-TrueZero
+TrueZero - A Python and Rust chess engine that starts from Zero. 
 </h1>
-A Python and Rust chess engine that starts from Zero. This project is still very much work-in-progress.
 
 
 ## About the Engine 
@@ -10,6 +9,8 @@ The name of the Engine is 真零 (TrueZero), which is Chinese for "True Zero" an
 Instead of using hand-crafted evaluations (HCE), this AI learns how to play through playing against itself, starting with zero prior knowledge except for the rules of chess.
 
 The chess Engine will then play games against itself using the evaluation to evaluate chess positions, done using [Monte Carlo Tree Search (MCTS)](https://en.wikipedia.org/wiki/Monte_Carlo_tree_search).
+
+This project is still very much work-in-progress.
 
 ## Engine setup
 
