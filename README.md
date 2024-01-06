@@ -5,7 +5,7 @@
 #### A Python and Rust chess engine that starts from Zero.
 <img src="https://img.shields.io/badge/Powered%20by-Rust-b7410e" alt="Powered by Rust">
 <img src="https://img.shields.io/badge/Powered%20by-Python-4b8bbe" alt="Powered by Python">
-<img src="https://badgen.net/github/total commits/andreaslam/ZanLing-TrueZero/main" alt="Total commits">
+<img src="https://badgen.net/github/commits/andreaslam/ZanLing-TrueZero/main" alt="Total commits">
 </div>
 ## About the Engine 
 The name of the Engine is 真零 (TrueZero), which is Chinese for "True Zero" and romanised using [Jyutping](https://en.wikipedia.org/wiki/Jyutping) for Cantonese (Zan1 Ling4).
