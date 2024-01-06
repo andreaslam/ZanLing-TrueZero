@@ -1,4 +1,6 @@
-# ZanLing-TrueZero
+<p align="center">
+TrueZero
+</p>
 A Python and Rust chess engine that starts from Zero. This project is still very much work-in-progress.
 
 
