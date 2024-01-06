@@ -1,7 +1,9 @@
 <h1 align="center">
-TrueZero - A Python and Rust chess engine that starts from Zero. 
+TrueZero
 </h1>
-
+<h2 align="center">
+A Python and Rust chess engine that starts from Zero. 
+</h2>
 
 ## About the Engine 
 The name of the Engine is 真零 (TrueZero), which is Chinese for "True Zero" and romanised using [Jyutping](https://en.wikipedia.org/wiki/Jyutping) for Cantonese (Zan1 Ling4).
