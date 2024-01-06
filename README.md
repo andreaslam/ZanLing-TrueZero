@@ -1,6 +1,6 @@
-<p align="center">
+<h1 align="center">
 TrueZero
-</p>
+</h1>
 A Python and Rust chess engine that starts from Zero. This project is still very much work-in-progress.
 
 
