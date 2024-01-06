@@ -1,44 +1,36 @@
-<h1 align="center">
-TrueZero - A Python and Rust chess engine that starts from Zero. 
-</h1>
+<html>
 
+<head>
+    <title>TrueZero - A Python and Rust chess engine that starts from Zero.</title>
+    <style>
+        h2 {
+            text-align: center;
+        }
+    </style>
+</head>
 
-## About the Engine 
-The name of the Engine is 真零 (TrueZero), which is Chinese for "True Zero" and romanised using [Jyutping](https://en.wikipedia.org/wiki/Jyutping) for Cantonese (Zan1 Ling4).
+<body>
 
-Instead of using hand-crafted evaluations (HCE), this AI learns how to play through playing against itself, starting with zero prior knowledge except for the rules of chess.
+    <h1 align="center">TrueZero - A Python and Rust chess engine that starts from Zero.</h1>
 
-The chess Engine will then play games against itself using the evaluation to evaluate chess positions, done using [Monte Carlo Tree Search (MCTS)](https://en.wikipedia.org/wiki/Monte_Carlo_tree_search).
+    <h2>About the Engine</h2>
+    <p>The name of the Engine is 真零 (TrueZero), which is Chinese for "True Zero" and romanised using <a href="https://en.wikipedia.org/wiki/Jyutping">Jyutping</a> for Cantonese (Zan1 Ling4).</p>
+    <p>Instead of using hand-crafted evaluations (HCE), this AI learns how to play through playing against itself, starting with zero prior knowledge except for the rules of chess.</p>
+    <p>The chess Engine will then play games against itself using the evaluation to evaluate chess positions, done using <a href="https://en.wikipedia.org/wiki/Monte_Carlo_tree_search">Monte Carlo Tree Search (MCTS)</a>.</p>
+    <p>This project is still very much work-in-progress.</p>
 
-This project is still very much work-in-progress.
+    <h2>Engine setup</h2>
 
-## Engine setup
-
-### Using git
-
-Firstly, download this repository onto your computer. 
-
-```
-git clone https://github.com/andreaslam/ZanLing-TrueZero
-```
-
-Make sure you have Rust installed. If not, follow the instructions [here](https://doc.rust-lang.org/book/ch01-01-installation.html). 
-Make sure you have Python installed. If not, download the latest version [here]([https://doc.rust-lang.org/book/ch01-01-installation.html](https://www.python.org/downloads/)). 
-Configure `tch-rs` from the instructions [here](https://github.com/LaurentMazare/tch-rs/blob/main/README.md). For now, the neural net for this project is not provided but the NN architecture is available [here](https://github.com/andreaslam/ZanLing-TrueZero/blob/main/network.py) for reference.
-
-Navigate to `ZanLing-TrueZero`:
-
-```
-cd ZanLing-TrueZero
-```
-
-Then, build using `cargo`:
-
-```
-cargo build
-```
-
-Then choose a binary to run!
+    <h3>Using git</h3>
+    <p>Firstly, download this repository onto your computer.</p>
+    <pre><code>git clone https://github.com/andreaslam/ZanLing-TrueZero</code></pre>
+    <p>Make sure you have Rust installed. If not, follow the instructions <a href="https://doc.rust-lang.org/book/ch01-01-installation.html">here</a>.</p>
+    <p>Make sure you have Python installed. If not, download the latest version <a href="https://www.python.org/downloads/">here</a>.</p>
+    <p>Configure `tch-rs` from the instructions <a href="https://github.com/LaurentMazare/tch-rs/blob/main/README.md">here</a>. For now, the neural net for this project is not provided but the NN architecture is available <a href="https://github.com/andreaslam/ZanLing-TrueZero/blob/main/network.py">here</a> for reference.</p>
+    <pre><code>cd ZanLing-TrueZero</code></pre>
+    <p>Then, build using `cargo`:</p>
+    <pre><code>cargo build</code></pre>
+    <p>Then choose a binary to run!</p>
 
 ### Using Docker
 
