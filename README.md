@@ -1,9 +1,14 @@
-<h1 align="center">
-TrueZero
-</h1>
-<h2 align="center">
-A Python and Rust chess engine that starts from Zero. 
-</h2>
+
+<div align="center">
+
+# TrueZero
+#### A Python and Rust chess engine that starts from Zero.
+
+![License](https://img.shields.io/github/license/andreaslam/ZanLing-TrueZero?style=for-the-badge)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/andreaslam/ZanLing-TrueZero?style=for-the-badge)](https://github.com/andreaslam/ZanLing-TrueZero/releases/latest)
+[![Commits](https://img.shields.io/github/commits-since/andreaslam/ZanLing-TrueZero/latest?style=for-the-badge)](https://github.com/andreaslam/ZanLing-TrueZero/commits/main)
+
+</div>
 
 ## About the Engine 
 The name of the Engine is 真零 (TrueZero), which is Chinese for "True Zero" and romanised using [Jyutping](https://en.wikipedia.org/wiki/Jyutping) for Cantonese (Zan1 Ling4).
