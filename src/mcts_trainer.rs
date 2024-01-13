@@ -1,28 +1,30 @@
 use crate::{
     boardmanager::BoardStack,
     dataformat::ZeroEvaluation,
-    decoder::{convert_board, eval_board, process_board_output},
+    decoder::{convert_board, process_board_output},
     dirichlet::StableDirichlet,
-    executor::{Message, Packet, ReturnMessage},
+    executor::{Packet, ReturnMessage},
     settings::SearchSettings,
 };
 use cozy_chess::{Color, GameStatus, Move};
-use flume::{Receiver, Sender};
+use flume::Sender;
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use std::{fmt, ops::Range, thread, time::Instant};
-use tch::{CModule, Device, Kind, Tensor};
+use std::{fmt, ops::Range, time::Instant};
+use tch::{CModule, Device};
 
 pub struct Net {
     pub net: CModule,
     pub device: Device,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 
 pub enum TypeRequest {
     TrainerSearch,
     NonTrainerSearch,
     SyntheticSearch,
+
+    UCISearch,
 }
 
 #[derive(Clone, Copy)]
@@ -52,20 +54,22 @@ impl Net {
 pub struct Tree {
     pub board: BoardStack,
     pub nodes: Vec<Node>,
+    pub settings: SearchSettings,
 }
 
 impl Tree {
-    pub fn new(board: BoardStack) -> Tree {
+    pub fn new(board: BoardStack, settings: SearchSettings) -> Tree {
         let root_node = Node::new(0.0, None, None);
         let mut container: Vec<Node> = Vec::new();
         container.push(root_node);
         Tree {
             board,
             nodes: container,
+            settings,
         }
     }
 
-    pub fn step(&mut self, tensor_exe_send: Sender<Packet>, search_type: TypeRequest) {
+    pub fn step(&mut self, tensor_exe_send: Sender<Packet>) {
         let display_str = self.display_node(0);
         // // println!("root node: {}", &display_str);
         const EPS: f32 = 0.3; // 0.3 for chess
@@ -90,7 +94,7 @@ impl Tree {
                     legal_moves.extend(moves);
                     false
                 });
-                match search_type {
+                match self.settings.search_type {
                     TypeRequest::TrainerSearch => {
                         // add policy softmax temperature and Dirichlet noise
                         // TODO extract below as a function?
@@ -116,6 +120,7 @@ impl Tree {
                     }
                     TypeRequest::NonTrainerSearch => {}
                     TypeRequest::SyntheticSearch => {}
+                    TypeRequest::UCISearch => {}
                 }
                 // self.nodes[0].display_full_tree(self);
             }
@@ -164,10 +169,16 @@ impl Tree {
                 .max_by(|a, b| {
                     let a_node = &self.nodes[*a];
                     let b_node = &self.nodes[*b];
-                    let a_puct =
-                        a_node.puct_formula(curr_node.visits, input_b.board().side_to_move());
-                    let b_puct =
-                        b_node.puct_formula(curr_node.visits, input_b.board().side_to_move());
+                    let a_puct = a_node.puct_formula(
+                        curr_node.visits,
+                        input_b.board().side_to_move(),
+                        self.settings,
+                    );
+                    let b_puct = b_node.puct_formula(
+                        curr_node.visits,
+                        input_b.board().side_to_move(),
+                        self.settings,
+                    );
                     // // println!("{}, {}", self.display_node(**a), self.display_node(**b));
                     // // println!("{}, {}", a_puct, b_puct);
                     // // println!("    CURRENT {:?}, {:?}", &a_node, &b_node);
@@ -237,16 +248,18 @@ impl Tree {
         let idx_li = process_board_output(output.packet, &selected_node_idx, self, &bs);
 
         // let idx_li = eval_board(&bs, &net, self, &selected_node_idx);
-        let thread_name = std::thread::current()
-            .name()
-            .unwrap_or("unnamed")
-            .to_owned();
         (selected_node_idx, idx_li)
     }
 
     fn backpropagate(&mut self, node: usize) {
         // println!("    backup:");
-        let n = self.nodes[node].eval_score;
+        let n: f32 = match self.settings.wdl {
+            Some(_) => {
+                1.0 * self.nodes[node].wdl.w
+                    + (-1.0 * self.nodes[node].wdl.l)
+            }
+            None => self.nodes[node].eval_score,
+        };
         let mut curr: Option<usize> = Some(node); // used to index parent
                                                   // // println!("    curr: {:?}", curr);
         while let Some(current) = curr {
@@ -269,10 +282,11 @@ impl Tree {
                     u = f32::NAN;
                     puct = f32::NAN;
                 } else {
-                    u = self.nodes[id].get_u_val(self.nodes[*parent].visits);
+                    u = self.nodes[id].get_u_val(self.nodes[*parent].visits, self.settings);
                     puct = self.nodes[id].puct_formula(
                         self.nodes[*parent].visits,
                         self.board.board().side_to_move(),
+                        self.settings,
                     );
                 }
             }
@@ -292,16 +306,22 @@ impl Tree {
         }
 
         format!(
-            "Node(action= {}, V= {}, N={}, W={}, P={}, Q={}, U={}, PUCT={}, len_children={})",
+            "Node(action= {}, V= {}, N={}, W={}, P={}, Q={}, U={}, PUCT={}, len_children={}, wdl={}, w={}, d={}, l={})",
             mv_n,
             self.nodes[id].eval_score,
             self.nodes[id].visits,
             self.nodes[id].total_action_value,
             self.nodes[id].policy,
-            self.nodes[id].get_q_val(),
+            self.nodes[id].get_q_val(self.settings),
             u,
             puct,
-            self.nodes[id].children.len()
+            self.nodes[id].children.len(),
+            self.nodes[id].wdl.w,
+            self.nodes[id].wdl.d,
+            self.nodes[id].wdl.l,
+            1.0 * self.nodes[id].wdl.w
+                    + (-1.0 * self.nodes[id].wdl.l)
+            ,
         )
     }
 }
@@ -333,12 +353,12 @@ pub struct Node {
     pub wdl: Wdl,
     pub total_wdl: Wdl,
     pub total_action_value: f32,
-    pub mv: Option<cozy_chess::Move>,
+    pub mv: Option<Move>,
     pub moves_left: f32,
     pub moves_left_total: f32,
     pub move_idx: Option<Vec<usize>>,
 }
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Copy)]
 pub struct Wdl {
     pub w: f32,
     pub d: f32,
@@ -350,8 +370,8 @@ impl Node {
     //     self.visits == 0
     // }
 
-    pub fn get_q_val(&self) -> f32 {
-        let fpu = 0.0; // First Player Urgency
+    pub fn get_q_val(&self, settings: SearchSettings) -> f32 {
+        let fpu = settings.fpu; // First Player Urgency
         if self.visits > 0 {
             self.total_action_value / (self.visits as f32)
         } else {
@@ -359,14 +379,14 @@ impl Node {
         }
     }
 
-    pub fn get_u_val(&self, parent_visits: u32) -> f32 {
-        let c_puct = 2.0; // "constant determining the level of exploration"
+    pub fn get_u_val(&self, parent_visits: u32, settings: SearchSettings) -> f32 {
+        let c_puct = settings.c_puct; // "constant determining the level of exploration"
         c_puct * self.policy * ((parent_visits - 1) as f32).sqrt() / (1.0 + self.visits as f32)
     }
 
-    pub fn puct_formula(&self, parent_visits: u32, player: Color) -> f32 {
-        let u = self.get_u_val(parent_visits);
-        let q = self.get_q_val();
+    pub fn puct_formula(&self, parent_visits: u32, player: Color, settings: SearchSettings) -> f32 {
+        let u = self.get_u_val(parent_visits, settings);
+        let q = self.get_q_val(settings);
         match player {
             Color::Black => -q + u,
             Color::White => q + u,
@@ -428,6 +448,7 @@ pub const PST: f32 = 1.2;
 pub fn get_move(
     bs: BoardStack,
     tensor_exe_send: Sender<Packet>,
+    settings: SearchSettings,
 ) -> (
     Move,
     ZeroEvaluation,
@@ -443,14 +464,14 @@ pub fn get_move(
     // net.net.set_eval();
     // net.net.to(net.device, Kind::Float, true);
     // // println!("{:?}", &bs);
-    let mut tree = Tree::new(bs);
+    let mut tree = Tree::new(bs, settings);
     if tree.board.is_terminal() {
         panic!("No valid move!/Board is already game over!");
     }
 
     let search_type = TypeRequest::TrainerSearch;
 
-    while tree.nodes[0].visits < MAX_NODES {
+    while tree.nodes[0].visits < settings.max_nodes as u32 {
         let thread_name = std::thread::current()
             .name()
             .unwrap_or("unnamed")
@@ -458,7 +479,7 @@ pub fn get_move(
         // println!("step {}", tree.nodes[0].visits);
         // // println!("thread {}, step {}", thread_name, tree.nodes[0].visits);
         let sw = Instant::now();
-        tree.step(tensor_exe_send.clone(), search_type.clone());
+        tree.step(tensor_exe_send.clone());
         // println!("Elapsed time for step: {}ms", sw.elapsed().as_nanos() as f32 / 1e6);
     }
     let best_move_node = tree.nodes[0]
@@ -510,7 +531,7 @@ pub fn get_move(
 
     let search_data = ZeroEvaluation {
         // search data
-        values: tree.nodes[0].get_q_val(),
+        values: tree.nodes[0].get_q_val(tree.settings),
         policy: pi,
     };
 
