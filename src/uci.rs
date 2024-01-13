@@ -182,7 +182,7 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
     }
     // println!("max_time {:?}", max_time);
     let mut time: Option<u128> = None;
-    let mut nodes: u128 = 1600; // TODO: dynamically set max_nodes using this setting thru SearchSettings struct
+    let mut nodes: u128 = 1600; // this is default value
                                 // `go wtime <wtime> btime <btime> winc <winc> binc <binc>``
     let stm = bs.board().side_to_move();
     let stm_num = match stm {
