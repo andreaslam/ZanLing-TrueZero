@@ -1,15 +1,19 @@
 use crate::{
     boardmanager::BoardStack,
-    mcts_trainer::{Net, Node, Tree},
+    mcts_trainer::{Net, Node, Tree, Wdl},
     mvs::get_contents,
 };
 use cozy_chess::{Color, Move, Piece, Rank, Square};
 use tch::{IValue, Kind, Tensor};
 
-pub fn eval_state(x: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)>{
-    let x = x.reshape([-1,21,8,8]);
-    let x = x.to(net.device);
-    let board = IValue::Tensor(x);
+pub fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> {
+    // reshape the model (originally from 1D)
+    let b = board;
+    // let b = b.unsqueeze(0);
+    let b = b.reshape([-1, 21, 8, 8]);
+    // println!("{:?}", b.size());
+    let b: Tensor = b.to(net.device);
+    let board = IValue::Tensor(b);
     let output = net.net.forward_is(&[board])?;
     let output_tensor = match output {
         IValue::Tuple(b) => b,
@@ -17,14 +21,14 @@ pub fn eval_state(x: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)>{
     };
     let (board_eval, policy) = (&output_tensor[0], &output_tensor[1]);
     let board_eval = match board_eval {
-        IValue::Tensor(b) => b.detach(),
+        IValue::Tensor(b) => b,
         a => panic!("the output is not a Tensor {:?}", a),
     };
     let policy = match policy {
-        IValue::Tensor(b) => b.detach(),
+        IValue::Tensor(b) => b,
         a => panic!("the output is not a Tensor {:?}", a),
     };
-    Ok((board_eval.clone(&board_eval), policy.clone(&policy)))
+    Ok((board_eval.clone(board_eval), policy.clone(policy)))
 }
 
 pub fn board_data(bs: &BoardStack) -> (Vec<f32>, Vec<bool>) {
@@ -158,12 +162,15 @@ pub fn process_board_output(
 
     let board_eval = board_eval.squeeze();
 
-    let board_eval: Vec<f32> = Vec::try_from(board_eval).expect("Error");
+    let board_evals: Vec<f32> = Vec::try_from(board_eval).expect("Error");
 
-    let board_eval = Tensor::from_slice(&vec![board_eval[0]]);
+    let value: f32 = board_evals[0].tanh();
 
-    let value = Tensor::tanh(&board_eval);
+    let wdl_logits: Tensor = Tensor::from_slice(&board_evals[1..4]);
 
+    let wdl = Tensor::softmax(&wdl_logits, 0, Kind::Float);
+
+    let wdl: Vec<f32> = Vec::try_from(wdl).expect("Error");
     let policy = policy.squeeze();
     let policy: Vec<f32> = Vec::try_from(policy).expect("Error");
     let value = f32::try_from(value).expect("Error");
@@ -231,7 +238,13 @@ pub fn process_board_output(
 
     // step 4 - iteratively append nodes into class
     let mut counter = 0;
+
     tree.nodes[*selected_node_idx].eval_score = value;
+    tree.nodes[*selected_node_idx].wdl = Wdl {
+        w: wdl[0],
+        d: wdl[1],
+        l: wdl[2],
+    };
     // tree.nodes[*selected_node_idx].eval_score = 0.0;
     let ct = tree.nodes.len();
     for (mv, pol) in legal_moves.iter().zip(pol_list.iter()) {
