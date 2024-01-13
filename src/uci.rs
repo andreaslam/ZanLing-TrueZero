@@ -8,8 +8,7 @@ use crate::{
 };
 use cozy_chess::{Board, Color, Move, Piece, Square};
 use crossbeam::thread;
-use flume::Sender;
-use std::{io, panic, process, str::FromStr};
+use std::{cmp::min, io, panic, process, str::FromStr};
 
 const STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -25,7 +24,7 @@ fn eval_in_cp(eval: f32) -> f32 {
 }
 
 pub fn run_uci() {
-    panic::set_hook(Box::new(|panic_info| {
+panic::set_hook(Box::new(|panic_info| {
         // print panic information
         eprintln!("Panic occurred: {:?}", panic_info);
         // exit the program immediately
@@ -38,59 +37,49 @@ pub fn run_uci() {
     let mut threads = 1;
 
     let mut stored_message: Option<String> = None;
-    let net_path = r"C:\Users\andre\RemoteFolder\ZanLing-TrueZero\nets\tz_4162.pt";
+    let net_path = r"C:\Users\andre\RemoteFolder\ZanLing-TrueZero\nets\tz_4448.pt";
     let net = Net::new(net_path);
     // main uci loop
-    let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(1);
-    let (_, ctrl_recv) = flume::bounded::<Message>(1);
+    loop {
+        let input = if let Some(msg) = stored_message {
+            msg.clone()
+        } else {
+            let mut input = String::new();
+            let bytes_read = io::stdin().read_line(&mut input).unwrap();
 
-    let _ = thread::scope(|s| {
-        s.builder()
-            .name("executor-manager-uci".to_string())
-            .spawn(move |_| executor_static(net_path.to_string(), tensor_exe_recv, ctrl_recv, 1))
-            .unwrap();
-        loop {
-            let input = if let Some(msg) = stored_message {
-                msg.clone()
-            } else {
-                let mut input = String::new();
-                let bytes_read = io::stdin().read_line(&mut input).unwrap();
-
-                // got EOF, exit (for OpenBench).
-                if bytes_read == 0 {
-                    break;
-                }
-
-                input
-            };
-
-            stored_message = None;
-
-            let commands = input.split_whitespace().collect::<Vec<_>>();
-
-            match *commands.first().unwrap_or(&"oops") {
-                "uci" => preamble(),
-                "isready" => println!("readyok"),
-                "ucinewgame" => {}
-                "go" => handle_go(&commands, &bs, tensor_exe_send.clone()),
-                "position" => set_position(commands, &mut bs, &mut stack),
-                "quit" => process::exit(0),
-                "eval" => {
-                    let (value, _) = eval_state(convert_board(&bs), &net).unwrap();
-                    let value = value.squeeze();
-                    let value_raw: Vec<f32> = Vec::try_from(value).expect("Error");
-                    let value: f32 = value_raw[0].tanh();
-                    let cps = eval_in_cp(value);
-                    println!(
-                        "eval: {}",
-                        (cps * 100.).round().max(-1000.).min(1000.) as i64
-                    );
-                }
-                _ => {}
+            // got EOF, exit (for OpenBench).
+            if bytes_read == 0 {
+                break;
             }
+
+            input
+        };
+
+        stored_message = None;
+
+        let commands = input.split_whitespace().collect::<Vec<_>>();
+
+        match *commands.first().unwrap_or(&"oops") {
+            "uci" => preamble(),
+            "isready" => println!("readyok"),
+            "ucinewgame" => {}
+            "go" => handle_go(&commands, &bs, &net_path),
+            "position" => set_position(commands, &mut bs, &mut stack),
+            "quit" => process::exit(0),
+            "eval" => {
+                let (value, _) = eval_state(convert_board(&bs), &net).unwrap();
+                let value = value.squeeze();
+                let value_raw: Vec<f32> = Vec::try_from(value).expect("Error");
+                let value: f32 = value_raw[0].tanh();
+                let cps = eval_in_cp(value);
+                println!(
+                    "eval: {}",
+                    (cps * 100.).round().max(-1000.).min(1000.) as i64
+                );
+            }
+            _ => {}
         }
-    })
-    .unwrap();
+    }
 }
 
 fn preamble() {
@@ -157,7 +146,7 @@ fn set_position(commands: Vec<&str>, bs: &mut BoardStack, stack: &mut Vec<u64>) 
     }
 }
 
-pub fn handle_go(commands: &[&str], bs: &BoardStack, tensor_exe_send: Sender<Packet>) {
+pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
     let mut nodes = 10_000_000;
     let mut max_time = None;
     let mut max_depth = 256;
@@ -193,13 +182,15 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, tensor_exe_send: Sender<Pac
     }
     // println!("max_time {:?}", max_time);
     let mut time: Option<u128> = None;
-    // `go wtime <wtime> btime <btime> winc <winc> binc <binc>``
+    let mut nodes: u128 = 1600; // TODO: dynamically set max_nodes using this setting thru SearchSettings struct
+                                // `go wtime <wtime> btime <btime> winc <winc> binc <binc>``
     let stm = bs.board().side_to_move();
     let stm_num = match stm {
         Color::White => Some(0),
         Color::Black => Some(1),
     };
     if let Some(t) = times[stm_num.unwrap()] {
+        // println!("{}", t);
         let mut base = t / movestogo.max(1);
 
         if let Some(i) = incs[stm_num.unwrap()] {
@@ -208,7 +199,7 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, tensor_exe_send: Sender<Pac
         time = Some(base.try_into().unwrap());
         nodes = time.unwrap() as u128 / 125;
     }
-
+    nodes = min(2,nodes);
     // `go movetime <time>`
     if let Some(max) = max_time {
         // if both movetime and increment time controls given, use
@@ -220,6 +211,7 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, tensor_exe_send: Sender<Pac
     if let Some(t) = time.as_mut() {
         *t = t.saturating_sub(5);
     }
+
     let settings: SearchSettings = SearchSettings {
         fpu: 2.0,
         wdl: None,
@@ -231,7 +223,18 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, tensor_exe_send: Sender<Pac
         search_type: UCISearch,
     };
 
-    let (best_move, _, _, _, _) = get_move(bs.clone(), tensor_exe_send.clone(), settings.clone());
+    let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(1);
+    let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
+    let _ = thread::scope(|s| {
+        s.builder()
+            .name("executor".to_string())
+            .spawn(move |_| executor_static(net_path.to_string(), tensor_exe_recv, ctrl_recv, 1))
+            .unwrap();
 
-    println!("bestmove {:#}", best_move);
+        let (best_move, _, _, _, _) = get_move(bs.clone(), tensor_exe_send.clone(), settings);
+
+        println!("bestmove {:#}", best_move);
+        let _ = ctrl_sender.send(Message::StopServer());
+    })
+    .unwrap();
 }
