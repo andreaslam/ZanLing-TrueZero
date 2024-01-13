@@ -1,8 +1,9 @@
 use crate::{
     boardmanager::BoardStack,
     dataformat::{Position, Simulation},
-    executor::{Packet},
-    mcts_trainer::{get_move, MAX_NODES},
+    executor::Packet,
+    mcts_trainer::get_move,
+    settings::SearchSettings,
 };
 use cozy_chess::{Board, GameStatus, Move};
 use flume::Sender;
@@ -28,6 +29,7 @@ impl DataGen {
         &self,
         tensor_exe_send: Sender<Packet>,
         nps_sender: Sender<CollectorMessage>,
+        settings: SearchSettings,
     ) -> Simulation {
         let mut bs = BoardStack::new(Board::default());
         // let mut value: Vec<f32> = Vec::new();
@@ -39,7 +41,7 @@ impl DataGen {
         while bs.status() == GameStatus::Ongoing {
             let sw = Instant::now();
             let (mv, v_p, move_idx_piece, search_data, visits) =
-                get_move(bs.clone(), tensor_exe_send.clone());
+                get_move(bs.clone(), tensor_exe_send.clone(), settings.clone());
             let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
             let final_mv = if positions.len() > 30 {
                 // when tau is "infinitesimally small", pick the best move
@@ -66,13 +68,15 @@ impl DataGen {
                 zero_evaluation: search_data, // q
                 net_evaluation: v_p,          // v
             };
-            let nps = MAX_NODES as f32 / elapsed;
+            let nps = settings.max_nodes as f32 / elapsed;
             // if thread_name == "generator_1" {
             //     println!("{:#}", final_mv,);
             // }
             println!("thread {}, {:#}, {}nps", thread_name, final_mv, nps);
             // println!("{:#}", final_mv);
-            let _ = nps_sender.send(CollectorMessage::GeneratorStatistics(MAX_NODES as f32));
+            let _ = nps_sender.send(CollectorMessage::GeneratorStatistics(
+                settings.max_nodes as f32,
+            ));
             bs.play(final_mv);
             positions.push(pos);
         }
