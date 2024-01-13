@@ -1,16 +1,20 @@
 use std::time::Instant;
 
-use crate::mcts_trainer::{Tree, MAX_NODES};
 use crate::{
-    boardmanager::BoardStack, dataformat::ZeroEvaluation, executor::Packet,
-    mcts_trainer::TypeRequest,
+    boardmanager::BoardStack,
+    dataformat::ZeroEvaluation,
+    executor::Packet,
+    mcts_trainer::Tree,
+    settings::SearchSettings,
 };
 use cozy_chess::Move;
+
 use flume::Sender;
 
 pub fn get_move(
     bs: BoardStack,
     tensor_exe_send: Sender<Packet>,
+    settings: SearchSettings,
 ) -> (
     Move,
     ZeroEvaluation,
@@ -22,14 +26,12 @@ pub fn get_move(
 
     // most search code is located in mcts_trainer.rs
 
-    let mut tree = Tree::new(bs);
+    let mut tree = Tree::new(bs, settings);
     if tree.board.is_terminal() {
         panic!("No valid move!/Board is already game over!");
     }
 
-    let search_type = TypeRequest::NonTrainerSearch;
-
-    while tree.nodes[0].visits < MAX_NODES {
+    while tree.nodes[0].visits < settings.max_nodes as u32 {
         let thread_name = std::thread::current()
             .name()
             .unwrap_or("unnamed")
@@ -37,9 +39,10 @@ pub fn get_move(
         // println!("step {}", tree.nodes[0].visits);
         // // println!("thread {}, step {}", thread_name, tree.nodes[0].visits);
         let sw = Instant::now();
-        tree.step(tensor_exe_send.clone(), search_type.clone());
+        tree.step(tensor_exe_send.clone());
         // println!("Elapsed time for step: {}ms", sw.elapsed().as_nanos() as f32 / 1e6);
     }
+    // println!("{}", tree.nodes[0].visits);
     let best_move_node = tree.nodes[0]
         .children
         .clone()
@@ -69,10 +72,10 @@ pub fn get_move(
     // // println!("{}", best_move.expect("Error").to_string());
     // // println!("best move: {}", best_move.expect("Error").to_string());
 
-    // for child in tree.nodes[0].children.clone() {
-    //     let display_str = tree.display_node(child);
-    //     // println!("{}", display_str);
-    // }
+    for child in tree.nodes[0].children.clone() {
+        let display_str = tree.display_node(child);
+        // println!("{}", display_str);
+    }
     // tree.nodes[0].display_full_tree(&tree);
 
     let mut all_pol = Vec::new();
@@ -89,7 +92,7 @@ pub fn get_move(
 
     let search_data = ZeroEvaluation {
         // search data
-        values: tree.nodes[0].get_q_val(),
+        values: tree.nodes[0].get_q_val(settings),
         policy: pi,
     };
 
