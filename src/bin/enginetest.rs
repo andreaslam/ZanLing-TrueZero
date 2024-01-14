@@ -28,8 +28,8 @@ fn main() {
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
     let num_games = 1000; // generate 10 games
     let num_threads = 2048;
-    let engine_0: String = "./nets/tz_4660.pt".to_string();
-    let engine_1: String = "./nets/tz_4675.pt".to_string();
+    let engine_0: String = "./nets/tz_4675.pt".to_string();
+    let engine_1: String = "./nets/tz_4000.pt".to_string();
     let engine_0_clone = engine_0.clone();
     let engine_1_clone = engine_1.clone();
     let num_executors = 2; // always be 2, 2 players, one each (one for each neural net)
@@ -143,7 +143,7 @@ fn generator_main(
         wdl: None,
         moves_left: None,
         c_puct: 2.0,
-        max_nodes: 400,
+        max_nodes: 2,
         alpha: 0.3,
         eps: 0.3,
         search_type: NonTrainerSearch,
@@ -221,12 +221,13 @@ fn collector_main(
                 panic!("not possible! this is to test engine changes");
             }
             CollectorMessage::GameResult(result) => {
-                if counter > games {
+                if counter == games {
                     // print elo stats
                     let (elo_min, elo_actual, elo_max) = elo_wld(results.0, results.1, results.2);
                     println!("===");
                     println!("{} vs {}", engine_0_path, engine_1_path);
-                    println!("{} games", games);
+                    println!("{} games", counter);
+                    println!("w: {}, l: {}, d: {}", results.0, results.1, results.2);
                     println!(
                         "elo_min={}, elo_actual={}, elo_max={}",
                         elo_min, elo_actual, elo_max
@@ -246,6 +247,7 @@ fn collector_main(
                     }
 
                     let (elo_min, elo_actual, elo_max) = elo_wld(results.0, results.1, results.2);
+                    println!("w: {}, l: {}, d: {}", results.0, results.1, results.2);
                     println!(
                         "elo_min={}, elo_actual={}, elo_max={}",
                         elo_min, elo_actual, elo_max
