@@ -1,4 +1,4 @@
-use std::f64::consts::{FRAC_1_SQRT_2, PI};
+use std::f64::consts::{SQRT_2, PI};
 
 fn erf_inv(x: f64) -> f64 {
     let a = 8.0 * (PI - 3.0) / (3.0 * PI * (4.0 - PI));
@@ -8,14 +8,14 @@ fn erf_inv(x: f64) -> f64 {
 }
 
 fn phi_inv(p: f64) -> f64 {
-    FRAC_1_SQRT_2 * erf_inv(2.0 * p - 1.0)
+    SQRT_2 * erf_inv(2.0 * p - 1.0)
 }
 
 fn elo(score: f64) -> f64 {
     if score <= 0.0 || score >= 1.0 {
         return 0.0;
     }
-    -400.0 * (10.0_f64).log10() * (1.0 / score - 1.0)
+    return -400.0 * f64::log10(1.0 / score - 1.0);
 }
 
 pub fn elo_wld(wins: u32, losses: u32, draws: u32) -> (f64, f64, f64) {
