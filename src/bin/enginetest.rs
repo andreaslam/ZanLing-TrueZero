@@ -109,7 +109,7 @@ fn main() {
             .unwrap();
 
         s.builder()
-            .name("executor_0".to_string())
+            .name("executor_1".to_string())
             .spawn(move |_| {
                 executor_static(
                     engine_1_clone,
