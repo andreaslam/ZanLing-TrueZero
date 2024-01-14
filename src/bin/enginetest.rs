@@ -1,20 +1,21 @@
+use cozy_chess::{Board, Color, GameStatus, Move};
 use crossbeam::thread;
 use flume::{Receiver, Sender};
+use rand::seq::SliceRandom;
 use std::{
     env,
-    panic,
-    process, fs::File, io::{self, BufRead},
+    fs::File,
+    io::{self, BufRead},
+    panic, process,
 };
-use rand::seq::SliceRandom;
 use tz_rust::{
-    executor::{executor_static, Packet, Message},
     boardmanager::BoardStack,
-    mcts_trainer::{TypeRequest::NonTrainerSearch, get_move},
+    elo::elo_wld,
+    executor::{executor_static, Message, Packet},
+    mcts_trainer::{get_move, TypeRequest::NonTrainerSearch},
     selfplay::CollectorMessage,
     settings::SearchSettings,
-    elo::elo_wld,
 };
-use cozy_chess::{GameStatus, Color, Board, Move};
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
     panic::set_hook(Box::new(|panic_info| {
@@ -23,7 +24,7 @@ fn main() {
         // exit the program immediately
         std::process::exit(1);
     }));
-    
+
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
     let num_games = 1000; // generate 10 games
     let num_threads = 2048;
@@ -93,7 +94,7 @@ fn main() {
         // send/recv pair between executor and commander
         let ctrl_recv_0 = ctrl_recv.clone();
         let ctrl_recv_1 = ctrl_recv.clone();
-        
+
         let engine_0_clone = engine_0.clone();
         let engine_1_clone = engine_1.clone();
         s.builder()
@@ -131,27 +132,26 @@ fn read_epd_file(file_path: &str) -> io::Result<Vec<String>> {
 
     Ok(positions)
 }
- 
+
 fn generator_main(
     sender_collector: &Sender<CollectorMessage>,
     tensor_exe_send_0: Sender<Packet>,
     tensor_exe_send_1: Sender<Packet>,
-
 ) {
     let settings: SearchSettings = SearchSettings {
-    fpu: 0.0,
-    wdl: None,
-    moves_left: None,
-    c_puct: 2.0,
-    max_nodes: 400,
-    alpha: 0.3,
-    eps: 0.3,
-    search_type: NonTrainerSearch,
-};
+        fpu: 0.0,
+        wdl: None,
+        moves_left: None,
+        c_puct: 2.0,
+        max_nodes: 400,
+        alpha: 0.3,
+        eps: 0.3,
+        search_type: NonTrainerSearch,
+    };
 
     let openings = read_epd_file("./8moves_v3.epd").unwrap();
     let engines = vec![tensor_exe_send_0.clone(), tensor_exe_send_1.clone()];
-    let mut swap_count = 0;
+    let mut swap_count = 0; // so that each engine can play same opening as black and white
     for (engine_idx, engine) in engines.iter().cycle().enumerate() {
         let fen = openings.choose(&mut rand::thread_rng()).unwrap();
         let board = Board::from_fen(fen, false).unwrap();
@@ -178,7 +178,7 @@ fn generator_main(
             GameStatus::Won => Some(!bs.board().side_to_move()),
             GameStatus::Ongoing => panic!("Game is still ongoing!"),
         };
-
+        // handle outcome based on engine and move colour
         let outcome: Option<Color> = match outcome {
             Some(colour) => {
                 if swap_count == 0 {
@@ -188,8 +188,8 @@ fn generator_main(
                 } else {
                     unreachable!()
                 }
-            },
-            None => None, 
+            }
+            None => None,
         };
 
         swap_count += 1;
@@ -197,7 +197,6 @@ fn generator_main(
             .send(CollectorMessage::GameResult(outcome))
             .unwrap();
     }
-
 }
 
 fn collector_main(
@@ -207,7 +206,7 @@ fn collector_main(
     engine_0_path: String,
     engine_1_path: String,
 ) {
-    let mut results = (0,0,0); // win, loss, draw (white POV)
+    let mut results = (0, 0, 0); // win, loss, draw (white POV)
     let mut counter = 0;
     loop {
         let msg = receiver.recv().unwrap();
@@ -218,37 +217,41 @@ fn collector_main(
             CollectorMessage::GeneratorStatistics(_) => {
                 panic!("not possible! this is to test engine changes");
             }
-            CollectorMessage::ExecutorStatistics(_)=> {
+            CollectorMessage::ExecutorStatistics(_) => {
                 panic!("not possible! this is to test engine changes");
             }
             CollectorMessage::GameResult(result) => {
-            if counter > games {
-                // print elo stats
-                let (elo_min, elo_actual, elo_max) = elo_wld(results.0,results.1,results.2);
-                println!("===");
-                println!("{} vs {}", engine_0_path, engine_1_path);
-                println!("{} games", games);
-                println!("elo_min={}, elo_actual={}, elo_max={}", elo_min, elo_actual, elo_max);
-                println!("===");
-                let _ = ctrl_sender.send(Message::StopServer());
-                process::exit(0)
-               } else {
-                // print elo stats
+                if counter > games {
+                    // print elo stats
+                    let (elo_min, elo_actual, elo_max) = elo_wld(results.0, results.1, results.2);
+                    println!("===");
+                    println!("{} vs {}", engine_0_path, engine_1_path);
+                    println!("{} games", games);
+                    println!(
+                        "elo_min={}, elo_actual={}, elo_max={}",
+                        elo_min, elo_actual, elo_max
+                    );
+                    println!("===");
+                    let _ = ctrl_sender.send(Message::StopServer());
+                    process::exit(0)
+                } else {
+                    // print elo stats
 
-                match result {
-                    Some(colour) => {
-                        match colour {
+                    match result {
+                        Some(colour) => match colour {
                             Color::White => results.0 += 1,
-                            Color::Black =>  results.1 += 1,
-                        }
-                    },
-                    None => results.2 += 1,
-                }
+                            Color::Black => results.1 += 1,
+                        },
+                        None => results.2 += 1,
+                    }
 
-                let (elo_min, elo_actual, elo_max) = elo_wld(results.0,results.1,results.2);
-                println!("elo_min={}, elo_actual={}, elo_max={}", elo_min, elo_actual, elo_max);
-                counter += 1;
-               }
+                    let (elo_min, elo_actual, elo_max) = elo_wld(results.0, results.1, results.2);
+                    println!(
+                        "elo_min={}, elo_actual={}, elo_max={}",
+                        elo_min, elo_actual, elo_max
+                    );
+                    counter += 1;
+                }
             }
         }
     }
