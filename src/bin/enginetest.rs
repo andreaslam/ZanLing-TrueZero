@@ -206,7 +206,7 @@ fn collector_main(
     engine_0_path: String,
     engine_1_path: String,
 ) {
-    let mut results = (0, 0, 0); // win, loss, draw (white POV)
+    let mut results = (0, 0, 0); // win, loss, draw (engine_0 POV)
     let mut counter = 0;
     loop {
         let msg = receiver.recv().unwrap();
