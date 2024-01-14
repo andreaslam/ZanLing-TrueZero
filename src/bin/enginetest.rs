@@ -178,7 +178,7 @@ fn generator_main(
             GameStatus::Won => Some(!bs.board().side_to_move()),
             GameStatus::Ongoing => panic!("Game is still ongoing!"),
         };
-        // handle outcome based on engine and move colour
+        // handle outcome based on engine and move colour (engine_0 POV)
         let outcome: Option<Color> = match outcome {
             Some(colour) => {
                 if swap_count == 0 {
