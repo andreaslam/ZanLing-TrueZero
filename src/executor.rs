@@ -17,7 +17,7 @@ pub struct ReturnPacket {
 pub enum Message {
     NewNetwork(Result<String, RecvError>),
     JobTensor(Result<Packet, RecvError>), // (converted) tensor from mcts search that needs NN evaluation
-    
+
     StopServer(), // end the executor process
 }
 
@@ -78,9 +78,7 @@ pub fn executor_main(
 
         let message = selector.wait();
         match message {
-            Message::StopServer() => {
-                break
-            }
+            Message::StopServer() => break,
             Message::NewNetwork(Ok(graph)) => {
                 // println!("    NEW NET!");
                 handle_new_graph(&mut network, Some(graph), &thread_name);
@@ -144,11 +142,10 @@ pub fn executor_main(
     // Return the senders to avoid them being dropped and disconnected
 }
 
-
 pub fn executor_static(
     net_path: String,
     tensor_receiver: Receiver<Packet>, // receive tensors from mcts
-    ctrl_receiver: Receiver<Message>, // receive control messages
+    ctrl_receiver: Receiver<Message>,  // receive control messages
     num_threads: usize,
 ) {
     let max_batch_size = min(256, num_threads);
@@ -175,9 +172,7 @@ pub fn executor_static(
         let message = selector.wait();
 
         match message {
-            Message::StopServer() => {
-                break;
-            }
+            Message::StopServer() => break,
             Message::NewNetwork(_) => {
                 unreachable!(); // Handle new network message if needed
             }
@@ -206,14 +201,8 @@ pub fn executor_static(
                         let id = id_vec
                             .pop_front()
                             .expect("There should be an ID for each job");
-                        let result = (
-                            board_eval.get(i as i64),
-                            policy.get(i as i64)
-                        );
-                        let return_pack = ReturnPacket {
-                            packet: result,
-                            id
-                        };
+                        let result = (board_eval.get(i as i64), policy.get(i as i64));
+                        let return_pack = ReturnPacket { packet: result, id };
                         sender
                             .send(ReturnMessage::ReturnMessage(Ok(return_pack)))
                             .expect("Should be able to send the result");
