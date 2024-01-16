@@ -12,24 +12,26 @@ use tz_rust::{
     boardmanager::BoardStack,
     elo::elo_wld,
     executor::{executor_static, Message, Packet},
-    mcts_trainer::{get_move, TypeRequest::NonTrainerSearch},
+    mcts_trainer::TypeRequest::NonTrainerSearch,
+    mcts::get_move,
     selfplay::CollectorMessage,
     settings::SearchSettings,
 };
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
-    panic::set_hook(Box::new(|panic_info| {
-        // print panic information
-        eprintln!("Panic occurred: {:?}", panic_info);
-        // exit the program immediately
-        std::process::exit(1);
-    }));
+    // panic::set_hook(Box::new(|panic_info| {
+    //     // print panic information
+    //     eprintln!("Panic occurred: {:?}", panic_info);
+    //     // exit the program immediately
+    //     std::process::exit(1);
+    // }));
 
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
-    let num_games = 1000; // generate 10 games
-    let num_threads = 2048;
-    let engine_0: String = "./nets/tz_4675.pt".to_string();
-    let engine_1: String = "./nets/tz_4000.pt".to_string();
+    let num_games = 10000; // generate 10 games
+    let num_threads = 4;
+    let engine_0: String = "./nets/tz_4786.pt".to_string(); // worse engine
+    // let engine_1: String = "./nets/tz_4786.pt".to_string(); // better engine
+    let engine_1: String = "./chess_16x128_gen3634.pt".to_string(); // better engine
     let engine_0_clone = engine_0.clone();
     let engine_1_clone = engine_1.clone();
     let num_executors = 2; // always be 2, 2 players, one each (one for each neural net)
@@ -229,8 +231,8 @@ fn collector_main(
                     println!("{} games", counter);
                     println!("w: {}, l: {}, d: {}", results.0, results.1, results.2);
                     println!(
-                        "elo_min={}, elo_actual={}, elo_max={}, +/- {}",
-                        elo_min, elo_actual, elo_max, elo_max-elo_min
+                        "elo_min={}, elo_actual={}, elo_max={}",
+                        elo_min, elo_actual, elo_max
                     );
                     println!("===");
                     let _ = ctrl_sender.send(Message::StopServer());
@@ -249,8 +251,8 @@ fn collector_main(
                     let (elo_min, elo_actual, elo_max) = elo_wld(results.0, results.1, results.2);
                     println!("w: {}, l: {}, d: {}", results.0, results.1, results.2);
                     println!(
-                        "elo_min={}, elo_actual={}, elo_max={}, +/- {}",
-                        elo_min, elo_actual, elo_max, elo_max-elo_min
+                        "elo_min={}, elo_actual={}, elo_max={}",
+                        elo_min, elo_actual, elo_max
                     );
                     counter += 1;
                 }
