@@ -183,9 +183,9 @@ fn generator_main(
         // handle outcome based on engine and move colour (engine_0 POV)
         let outcome: Option<Color> = match outcome {
             Some(colour) => {
-                if swap_count == 0 {
+                if swap_count % 2 == 0 {
                     Some(colour)
-                } else if swap_count == 1 {
+                } else if swap_count % 2 == 1 {
                     Some(!colour)
                 } else {
                     unreachable!()
