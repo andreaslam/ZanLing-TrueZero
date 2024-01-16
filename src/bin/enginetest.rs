@@ -157,7 +157,7 @@ fn generator_main(
     for (engine_idx, engine) in engines.iter().cycle().enumerate() {
         let fen = openings.choose(&mut rand::thread_rng()).unwrap();
         let board = Board::from_fen(fen, false).unwrap();
-        println!("starting fen: {}", fen);
+        // println!("starting fen: {}", fen);
         let mut bs = BoardStack::new(board);
 
         let mut counter = 0;
