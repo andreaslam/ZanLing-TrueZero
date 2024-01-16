@@ -12,8 +12,8 @@ use tz_rust::{
     boardmanager::BoardStack,
     elo::elo_wld,
     executor::{executor_static, Message, Packet},
-    mcts_trainer::TypeRequest::NonTrainerSearch,
     mcts::get_move,
+    mcts_trainer::TypeRequest::NonTrainerSearch,
     selfplay::CollectorMessage,
     settings::SearchSettings,
 };
@@ -28,9 +28,9 @@ fn main() {
 
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
     let num_games = 10000; // generate 10 games
-    let num_threads = 4;
+    let num_threads = 8192;
     let engine_0: String = "./nets/tz_4786.pt".to_string(); // worse engine
-    // let engine_1: String = "./nets/tz_4786.pt".to_string(); // better engine
+                                                            // let engine_1: String = "./nets/tz_4786.pt".to_string(); // better engine
     let engine_1: String = "./chess_16x128_gen3634.pt".to_string(); // better engine
     let engine_0_clone = engine_0.clone();
     let engine_1_clone = engine_1.clone();
@@ -231,8 +231,11 @@ fn collector_main(
                     println!("{} games", counter);
                     println!("w: {}, l: {}, d: {}", results.0, results.1, results.2);
                     println!(
-                        "elo_min={}, elo_actual={}, elo_max={}",
-                        elo_min, elo_actual, elo_max
+                        "elo_min={}, elo_actual={}, elo_max={}, +/- {}",
+                        elo_min,
+                        elo_actual,
+                        elo_max,
+                        elo_max - elo_min
                     );
                     println!("===");
                     let _ = ctrl_sender.send(Message::StopServer());
@@ -249,10 +252,12 @@ fn collector_main(
                     }
 
                     let (elo_min, elo_actual, elo_max) = elo_wld(results.0, results.1, results.2);
-                    println!("w: {}, l: {}, d: {}", results.0, results.1, results.2);
                     println!(
-                        "elo_min={}, elo_actual={}, elo_max={}",
-                        elo_min, elo_actual, elo_max
+                        "elo_min={}, elo_actual={}, elo_max={}, +/- {}",
+                        elo_min,
+                        elo_actual,
+                        elo_max,
+                        elo_max - elo_min
                     );
                     counter += 1;
                 }
