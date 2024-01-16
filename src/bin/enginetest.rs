@@ -229,8 +229,8 @@ fn collector_main(
                     println!("{} games", counter);
                     println!("w: {}, l: {}, d: {}", results.0, results.1, results.2);
                     println!(
-                        "elo_min={}, elo_actual={}, elo_max={}",
-                        elo_min, elo_actual, elo_max
+                        "elo_min={}, elo_actual={}, elo_max={}, +/- {}",
+                        elo_min, elo_actual, elo_max, elo_max-elo_min
                     );
                     println!("===");
                     let _ = ctrl_sender.send(Message::StopServer());
@@ -249,8 +249,8 @@ fn collector_main(
                     let (elo_min, elo_actual, elo_max) = elo_wld(results.0, results.1, results.2);
                     println!("w: {}, l: {}, d: {}", results.0, results.1, results.2);
                     println!(
-                        "elo_min={}, elo_actual={}, elo_max={}",
-                        elo_min, elo_actual, elo_max
+                        "elo_min={}, elo_actual={}, elo_max={}, +/- {}",
+                        elo_min, elo_actual, elo_max, elo_max-elo_min
                     );
                     counter += 1;
                 }
