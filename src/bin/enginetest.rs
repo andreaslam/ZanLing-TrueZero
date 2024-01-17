@@ -28,10 +28,10 @@ fn main() {
 
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
     let num_games = 10000; // generate 10 games
-    let num_threads = 8192;
-    let engine_0: String = "./nets/tz_4786.pt".to_string(); // worse engine
-                                                            // let engine_1: String = "./nets/tz_4786.pt".to_string(); // better engine
-    let engine_1: String = "./chess_16x128_gen3634.pt".to_string(); // better engine
+    let num_threads = 64;
+    let engine_0: String = "./nets/tz_5094.pt".to_string(); // new engine
+    // let engine_1: String = "./nets/tz_4948.pt".to_string(); // old engine
+    let engine_1: String = "./chess_16x128_gen3634.pt".to_string(); // old engine
     let engine_0_clone = engine_0.clone();
     let engine_1_clone = engine_1.clone();
     let num_executors = 2; // always be 2, 2 players, one each (one for each neural net)
@@ -144,60 +144,63 @@ fn generator_main(
         fpu: 0.0,
         wdl: None,
         moves_left: None,
-        c_puct: 2.0,
+        c_puct: 0.0,
         max_nodes: 2,
-        alpha: 0.3,
-        eps: 0.3,
+        alpha: 0.0,
+        eps: 0.0,
         search_type: NonTrainerSearch,
     };
 
     let openings = read_epd_file("./8moves_v3.epd").unwrap();
     let engines = vec![tensor_exe_send_0.clone(), tensor_exe_send_1.clone()];
-    let mut swap_count = 0; // so that each engine can play same opening as black and white
-    for (engine_idx, engine) in engines.iter().cycle().enumerate() {
+    loop {
+        let mut swap_count = 0; // so that each engine can play same opening as black and white
+
         let fen = openings.choose(&mut rand::thread_rng()).unwrap();
-        let board = Board::from_fen(fen, false).unwrap();
-        // println!("starting fen: {}", fen);
-        let mut bs = BoardStack::new(board);
+        for (engine_idx, engine) in engines.iter().enumerate() {
+            let board = Board::from_fen(fen, false).unwrap();
+            // println!("starting fen: {}", fen);
+            let mut bs = BoardStack::new(board);
 
-        let mut counter = 0;
-        while bs.status() == GameStatus::Ongoing {
-            let mv: Move;
-            if counter % 2 == 0 {
-                // white
-                (mv, _, _, _, _) = get_move(bs.clone(), engine.clone(), settings.clone());
-            } else {
-                // swap the engine for black
-                let opponent_engine = engines[(engine_idx + 1) % engines.len()].clone();
-                (mv, _, _, _, _) = get_move(bs.clone(), opponent_engine, settings.clone());
-            }
-            bs.play(mv);
-            counter += 1;
-        }
-
-        let outcome: Option<Color> = match bs.status() {
-            GameStatus::Drawn => None,
-            GameStatus::Won => Some(!bs.board().side_to_move()),
-            GameStatus::Ongoing => panic!("Game is still ongoing!"),
-        };
-        // handle outcome based on engine and move colour (engine_0 POV)
-        let outcome: Option<Color> = match outcome {
-            Some(colour) => {
-                if swap_count % 2 == 0 {
-                    Some(colour)
-                } else if swap_count % 2 == 1 {
-                    Some(!colour)
+            let mut counter = 0;
+            while bs.status() == GameStatus::Ongoing {
+                let mv: Move;
+                if counter % 2 == 0 {
+                    // white
+                    (mv, _, _, _, _) = get_move(bs.clone(), engine.clone(), settings.clone());
                 } else {
-                    unreachable!()
+                    // swap the engine for black
+                    let opponent_engine = engines[(engine_idx + 1) % engines.len()].clone();
+                    (mv, _, _, _, _) = get_move(bs.clone(), opponent_engine, settings.clone());
                 }
+                bs.play(mv);
+                counter += 1;
             }
-            None => None,
-        };
 
-        swap_count += 1;
-        sender_collector
-            .send(CollectorMessage::GameResult(outcome))
-            .unwrap();
+            let outcome: Option<Color> = match bs.status() {
+                GameStatus::Drawn => None,
+                GameStatus::Won => Some(!bs.board().side_to_move()),
+                GameStatus::Ongoing => panic!("Game is still ongoing!"),
+            };
+            // handle outcome based on engine and move colour (engine_0 POV)
+            let outcome: Option<Color> = match outcome {
+                Some(colour) => {
+                    if swap_count == 0 {
+                        Some(colour)
+                    } else if swap_count == 1 {
+                        Some(!colour)
+                    } else {
+                        unreachable!()
+                    }
+                }
+                None => None,
+            };
+
+            swap_count += 1;
+            sender_collector
+                .send(CollectorMessage::GameResult(outcome))
+                .unwrap();
+        }
     }
 }
 
@@ -252,6 +255,7 @@ fn collector_main(
                     }
 
                     let (elo_min, elo_actual, elo_max) = elo_wld(results.0, results.1, results.2);
+                    println!("w: {}, l: {}, d: {}", results.0, results.1, results.2);
                     println!(
                         "elo_min={}, elo_actual={}, elo_max={}, +/- {}",
                         elo_min,
