@@ -8,7 +8,8 @@ use crate::{
 };
 use cozy_chess::{Board, Color, Move, Piece, Square};
 use crossbeam::thread;
-use std::{cmp::min, io, panic, process, str::FromStr};
+use std::{cmp::max, io, panic, process, str::FromStr};
+use tch::{Device, Kind::Float, Tensor};
 
 const STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -24,7 +25,7 @@ fn eval_in_cp(eval: f32) -> f32 {
 }
 
 pub fn run_uci() {
-panic::set_hook(Box::new(|panic_info| {
+    panic::set_hook(Box::new(|panic_info| {
         // print panic information
         eprintln!("Panic occurred: {:?}", panic_info);
         // exit the program immediately
@@ -37,7 +38,7 @@ panic::set_hook(Box::new(|panic_info| {
     let mut threads = 1;
 
     let mut stored_message: Option<String> = None;
-    let net_path = r"C:\Users\andre\RemoteFolder\ZanLing-TrueZero\nets\tz_4448.pt";
+    let net_path = r"C:\Users\andre\RemoteFolder\ZanLing-TrueZero\nets\tz_5094.pt";
     let net = Net::new(net_path);
     // main uci loop
     loop {
@@ -83,7 +84,7 @@ panic::set_hook(Box::new(|panic_info| {
 }
 
 fn preamble() {
-    println!("id name TrueZero {}", env!("CARGO_PKG_VERSION"));
+    println!("id name TrueZero5094 {}", env!("CARGO_PKG_VERSION"));
     println!("id author Andreas Lam");
     println!("uciok");
 }
@@ -182,8 +183,6 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
     }
     // println!("max_time {:?}", max_time);
     let mut time: Option<u128> = None;
-    let mut nodes: u128 = 1600; // this is default value
-                                // `go wtime <wtime> btime <btime> winc <winc> binc <binc>``
     let stm = bs.board().side_to_move();
     let stm_num = match stm {
         Color::White => Some(0),
@@ -197,14 +196,14 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
             base += i * 3 / 4;
         }
         time = Some(base.try_into().unwrap());
-        nodes = time.unwrap() as u128 / 125;
+        nodes = time.unwrap() as u128 / 10;
     }
-    nodes = min(2,nodes);
+    nodes = max(2, nodes);
     // `go movetime <time>`
     if let Some(max) = max_time {
         // if both movetime and increment time controls given, use
         time = Some(time.unwrap_or(u128::MAX).min(max));
-        nodes = time.unwrap() as u128 / 125;
+        nodes = time.unwrap() as u128 / 10;
     }
 
     // 5ms move overhead
