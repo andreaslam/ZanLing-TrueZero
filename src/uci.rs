@@ -24,7 +24,7 @@ fn eval_in_cp(eval: f32) -> f32 {
     cps
 }
 
-pub fn run_uci() {
+pub fn run_uci(net_path: &str) {
     panic::set_hook(Box::new(|panic_info| {
         // print panic information
         eprintln!("Panic occurred: {:?}", panic_info);
@@ -38,7 +38,6 @@ pub fn run_uci() {
     let mut threads = 1;
 
     let mut stored_message: Option<String> = None;
-    let net_path = r"C:\Users\andre\RemoteFolder\ZanLing-TrueZero\nets\tz_5094.pt";
     let net = Net::new(net_path);
     // main uci loop
     loop {
