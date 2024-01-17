@@ -183,6 +183,7 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
     }
     // println!("max_time {:?}", max_time);
     let mut time: Option<u128> = None;
+
     let stm = bs.board().side_to_move();
     let stm_num = match stm {
         Color::White => Some(0),
@@ -196,21 +197,21 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
             base += i * 3 / 4;
         }
         time = Some(base.try_into().unwrap());
-        nodes = time.unwrap() as u128 / 10;
+        nodes = time.unwrap() as u128 / 120;
     }
     nodes = max(2, nodes);
     // `go movetime <time>`
     if let Some(max) = max_time {
         // if both movetime and increment time controls given, use
         time = Some(time.unwrap_or(u128::MAX).min(max));
-        nodes = time.unwrap() as u128 / 10;
+        nodes = time.unwrap() as u128 / 120;
     }
 
     // 5ms move overhead
     if let Some(t) = time.as_mut() {
         *t = t.saturating_sub(5);
     }
-
+    println!("{}", nodes);
     let settings: SearchSettings = SearchSettings {
         fpu: 2.0,
         wdl: None,
