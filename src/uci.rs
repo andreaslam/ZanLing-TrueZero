@@ -83,7 +83,7 @@ pub fn run_uci(net_path: &str) {
 }
 
 fn preamble() {
-    println!("id name TrueZero5094 {}", env!("CARGO_PKG_VERSION"));
+    println!("id name TrueZero-latest {}", env!("CARGO_PKG_VERSION"));
     println!("id author Andreas Lam");
     println!("uciok");
 }
@@ -147,7 +147,7 @@ fn set_position(commands: Vec<&str>, bs: &mut BoardStack, stack: &mut Vec<u64>) 
 }
 
 pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
-    let mut nodes = 10_000_000;
+    let mut nodes = 1600;
     let mut max_time = None;
     let mut max_depth = 256;
 
