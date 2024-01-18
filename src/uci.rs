@@ -198,7 +198,7 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
         time = Some(base.try_into().unwrap());
         nodes = time.unwrap() as u128 / 120;
     }
-    nodes = max(2, nodes);
+    nodes = max(1, nodes);
     // `go movetime <time>`
     if let Some(max) = max_time {
         // if both movetime and increment time controls given, use
