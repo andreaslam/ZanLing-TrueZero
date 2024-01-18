@@ -72,7 +72,7 @@ impl Tree {
     pub fn step(&mut self, tensor_exe_send: Sender<Packet>) {
         let display_str = self.display_node(0);
         // // println!("root node: {}", &display_str);
-        const EPS: f32 = 0.3; // 0.3 for chess
+        // const EPS: f32 = 0.3; // 0.3 for chess
         let (selected_node, input_b) = self.select();
 
         // self.nodes[0].display_full_tree(self);
@@ -110,12 +110,12 @@ impl Tree {
                         // add Dirichlet noise
                         let mut std_rng = StdRng::from_entropy();
                         let distr =
-                            StableDirichlet::new(0.3, legal_moves.len()).expect("wrong params");
+                            StableDirichlet::new(self.settings.alpha, legal_moves.len()).expect("wrong params");
                         let sample = std_rng.sample(distr);
                         // // println!("noise: {:?}", sample);
                         for child in self.nodes[0].children.clone() {
                             self.nodes[child].policy =
-                                (1.0 - EPS) * self.nodes[child].policy + (EPS * sample[child - 1]);
+                                (1.0 - self.settings.eps) * self.nodes[child].policy + (self.settings.eps * sample[child - 1]);
                         }
                     }
                     TypeRequest::NonTrainerSearch => {}
@@ -254,10 +254,7 @@ impl Tree {
     fn backpropagate(&mut self, node: usize) {
         // println!("    backup:");
         let n: f32 = match self.settings.wdl {
-            Some(_) => {
-                1.0 * self.nodes[node].wdl.w
-                    + (-1.0 * self.nodes[node].wdl.l)
-            }
+            Some(_) => 1.0 * self.nodes[node].wdl.w + (-1.0 * self.nodes[node].wdl.l),
             None => self.nodes[node].eval_score,
         };
         let mut curr: Option<usize> = Some(node); // used to index parent
