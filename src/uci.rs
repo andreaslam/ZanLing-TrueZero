@@ -9,11 +9,10 @@ use crate::{
 use cozy_chess::{Board, Color, Move, Piece, Square};
 use crossbeam::thread;
 use std::{cmp::max, io, panic, process, str::FromStr};
-use tch::{Device, Kind::Float, Tensor};
 
 const STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-fn eval_in_cp(eval: f32) -> f32 {
+pub fn eval_in_cp(eval: f32) -> f32 {
     let cps = if eval > 0.5 {
         18. * (eval - 0.5) + 1.
     } else if eval < -0.5 {
@@ -210,15 +209,15 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
     if let Some(t) = time.as_mut() {
         *t = t.saturating_sub(5);
     }
-    println!("{}", nodes);
+    // println!("{}", nodes);
     let settings: SearchSettings = SearchSettings {
         fpu: 2.0,
         wdl: None,
         moves_left: None,
         c_puct: 2.0,
         max_nodes: nodes,
-        alpha: 0.3,
-        eps: 0.3,
+        alpha: 0.0,
+        eps: 0.0,
         search_type: UCISearch,
     };
 
