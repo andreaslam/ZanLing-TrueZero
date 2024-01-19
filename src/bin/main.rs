@@ -1,5 +1,7 @@
 use crossbeam::thread;
 use flume::{Receiver, Sender};
+use rand::prelude::*;
+use rand_distr::WeightedIndex;
 use std::{
     env, fs,
     io::{BufRead, BufReader, Write},
@@ -10,8 +12,10 @@ use std::{
 use tz_rust::{
     executor::{executor_main, Packet},
     fileformat::BinaryOutput,
+    mcts_trainer::TypeRequest::TrainerSearch,
     message_types::{ServerMessageRecv, ServerMessageSend},
-    selfplay::{CollectorMessage, DataGen},
+    selfplay::{synthetic_expansion, CollectorMessage, DataGen},
+    settings::SearchSettings,
 };
 
 fn main() {
@@ -48,8 +52,8 @@ fn main() {
         .expect("Failed to send data");
     println!("Connected to server!");
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
-    let num_threads = 256;
-    let num_executors = 1;
+    let num_threads = 512;
+    let num_executors = 2;
     thread::scope(|s| {
         let mut selfplay_masters: Vec<DataGen> = Vec::new();
         // commander
@@ -141,8 +145,52 @@ fn generator_main(
     tensor_exe_send: Sender<Packet>,
     nps_sender: Sender<CollectorMessage>,
 ) {
+    let settings: SearchSettings = SearchSettings {
+        fpu: 0.0,
+        wdl: None,
+        moves_left: None,
+        c_puct: 2.0,
+        max_nodes: 400,
+        alpha: 0.3,
+        eps: 0.3,
+        search_type: TrainerSearch(None),
+    };
     loop {
-        let sim = datagen.play_game(tensor_exe_send.clone(), nps_sender.clone());
+        let sim = datagen.play_game(
+            tensor_exe_send.clone(),
+            nps_sender.clone(),
+            settings.clone(),
+        );
+
+        match settings.search_type {
+            TrainerSearch(expansiontype) => match expansiontype {
+                Some(_) => {
+                    let num_positions_sample =
+                        rand::thread_rng().gen_range(1..=sim.positions.len());
+                    let mut rng = rand::thread_rng();
+                    let random_idx: Vec<usize> = (0..num_positions_sample)
+                        .map(|_| rng.gen_range(0..=sim.positions.len() - 1))
+                        .collect();
+
+                    for position in random_idx {
+                        let sim = synthetic_expansion(
+                            sim.clone(),
+                            position,
+                            tensor_exe_send.clone(),
+                            settings.clone(),
+                        );
+                        sender_collector
+                            .send(CollectorMessage::FinishedGame(sim))
+                            .unwrap();
+                    }
+                }
+                None => {}
+            },
+            tz_rust::mcts_trainer::TypeRequest::SyntheticSearch => {}
+            tz_rust::mcts_trainer::TypeRequest::NonTrainerSearch => {}
+            tz_rust::mcts_trainer::TypeRequest::UCISearch => {}
+        }
+
         sender_collector
             .send(CollectorMessage::FinishedGame(sim))
             .unwrap();
@@ -197,10 +245,6 @@ fn collector_main(
                         has_net: true,
                         purpose: "jobsend".to_string(),
                     };
-                    // TODO: keep a vec of all data training files sent, reset every time when python completes a training loop
-                    // if python code disconnects halfway, resend all the files missed
-                    // also filter for whether the files still exist in the meantime?
-                    // maybe better to do checking files still exist in python better, if done here, it may affect nps/eval scores
                     let mut serialised =
                         serde_json::to_string(&message).expect("serialisation failed");
                     serialised += "\n";
@@ -260,6 +304,7 @@ fn collector_main(
                     evals_vec.push(evals_per_sec);
                 }
             }
+            CollectorMessage::GameResult(_) => {}
         }
     }
 }
