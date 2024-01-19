@@ -162,6 +162,20 @@ impl Tree {
         let mut pv = String::new();
         loop {
             let curr_node = &self.nodes[curr];
+            match self.settings.search_type {
+                TypeRequest::UCISearch => {
+                    let cp_eval = eval_in_cp(self.nodes[curr].eval_score);
+
+                    println!(
+                        "info depth {} score cp {} nodes {} pv {}",
+                        depth,
+                        (cp_eval * 100.).round().max(-1000.).min(1000.) as i64,
+                        self.nodes.len(),
+                        pv
+                    );
+                }
+                _ => {}
+            }
             if curr_node.children.is_empty() || input_b.is_terminal() {
                 break;
             }
@@ -206,23 +220,6 @@ impl Tree {
             let display_str = self.display_node(curr);
             // println!("        selected: {}", display_str);
             input_b.play(self.nodes[curr].mv.expect("Error"));
-            match self.settings.search_type {
-                TypeRequest::UCISearch => {
-                    let cp_eval = eval_in_cp(self.nodes[curr].eval_score)
-                        .round()
-                        .max(-1000.)
-                        .min(1000.) as i64;
-
-                    println!(
-                        "info depth {} score cp {} nodes {} pv {}",
-                        depth,
-                        cp_eval,
-                        self.nodes.len(),
-                        pv
-                    );
-                }
-                _ => {}
-            }
             let fenstr = format!("{}", &input_b.board());
             // // println!("    board FEN: {}", fenstr);
             pv.push_str(&format!("{:#} ", self.nodes[curr].mv.unwrap()));
@@ -507,11 +504,35 @@ pub fn get_move(
         tree.step(tensor_exe_send.clone());
         // println!("Elapsed time for step: {}ms", sw.elapsed().as_nanos() as f32 / 1e6);
     }
-    let best_move_node = tree.nodes[0]
-        .children
-        .clone()
-        .max_by_key(|&n| tree.nodes[n].visits)
-        .expect("Error");
+
+    let mut child_visits: Vec<u32> = Vec::new();
+
+    for child in tree.nodes[0].children.clone() {
+        child_visits.push(tree.nodes[child].visits);
+    }
+
+    let all_same = child_visits.iter().all(|&x| x == child_visits[0]);
+
+    let best_move_node = if !all_same {
+        // if visits to nodes are the same eg max_nodes=1
+        tree.nodes[0]
+            .children
+            .clone()
+            .max_by_key(|&n| tree.nodes[n].visits)
+            .expect("Error")
+    } else {
+        tree.nodes[0]
+            .children
+            .clone()
+            .max_by(|a, b| {
+                let a_node = &tree.nodes[*a];
+                let b_node = &tree.nodes[*b];
+                let a_policy = a_node.policy;
+                let b_policy = b_node.policy;
+                a_policy.partial_cmp(&b_policy).unwrap()
+            })
+            .expect("Error")
+    };
     let best_move = tree.nodes[best_move_node].mv;
     let mut total_visits_list = Vec::new();
     // // println!("{:#}", best_move.unwrap());
