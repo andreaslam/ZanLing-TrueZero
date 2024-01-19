@@ -1,10 +1,7 @@
 use std::time::Instant;
 
 use crate::{
-    boardmanager::BoardStack,
-    dataformat::ZeroEvaluation,
-    executor::Packet,
-    mcts_trainer::Tree,
+    boardmanager::BoardStack, dataformat::ZeroEvaluation, executor::Packet, mcts_trainer::Tree,
     settings::SearchSettings,
 };
 use cozy_chess::Move;
@@ -37,17 +34,42 @@ pub fn get_move(
             .unwrap_or("unnamed")
             .to_owned();
         // println!("step {}", tree.nodes[0].visits);
-        // // println!("thread {}, step {}", thread_name, tree.nodes[0].visits);
+        // println!("thread {}, step {}",w thread_name, tree.nodes[0].visits);
         let sw = Instant::now();
         tree.step(tensor_exe_send.clone());
         // println!("Elapsed time for step: {}ms", sw.elapsed().as_nanos() as f32 / 1e6);
     }
     // println!("{}", tree.nodes[0].visits);
-    let best_move_node = tree.nodes[0]
-        .children
-        .clone()
-        .max_by_key(|&n| tree.nodes[n].visits)
-        .expect("Error");
+
+    let mut child_visits: Vec<u32> = Vec::new();
+
+    for child in tree.nodes[0].children.clone() {
+        child_visits.push(tree.nodes[child].visits);
+    }
+
+    let all_same = child_visits.iter().all(|&x| x == child_visits[0]);
+
+    let best_move_node = if !all_same {
+        // if visits to nodes are the same eg max_nodes=1
+        tree.nodes[0]
+            .children
+            .clone()
+            .max_by_key(|&n| tree.nodes[n].visits)
+            .expect("Error")
+    } else {
+        tree.nodes[0]
+            .children
+            .clone()
+            .max_by(|a, b| {
+                let a_node = &tree.nodes[*a];
+                let b_node = &tree.nodes[*b];
+                let a_policy = a_node.policy;
+                let b_policy = b_node.policy;
+                a_policy.partial_cmp(&b_policy).unwrap()
+            })
+            .expect("Error")
+    };
+
     let best_move = tree.nodes[best_move_node].mv;
     let mut total_visits_list = Vec::new();
     // println!("{:#}", best_move.unwrap());
