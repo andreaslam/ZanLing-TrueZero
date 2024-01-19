@@ -5,6 +5,7 @@ use crate::{
     dirichlet::StableDirichlet,
     executor::{Packet, ReturnMessage},
     settings::SearchSettings,
+    uci::eval_in_cp,
 };
 use cozy_chess::{Color, GameStatus, Move};
 use flume::Sender;
@@ -20,11 +21,16 @@ pub struct Net {
 #[derive(Clone, Copy, Debug, PartialEq)]
 
 pub enum TypeRequest {
-    TrainerSearch,
+    TrainerSearch(Option<ExpansionType>),
     NonTrainerSearch,
     SyntheticSearch,
 
     UCISearch,
+}
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ExpansionType {
+    PolicyExpansion,
+    RandomExpansion,
 }
 
 #[derive(Clone, Copy)]
@@ -95,7 +101,7 @@ impl Tree {
                     false
                 });
                 match self.settings.search_type {
-                    TypeRequest::TrainerSearch => {
+                    TypeRequest::TrainerSearch(_) => {
                         // add policy softmax temperature and Dirichlet noise
                         // TODO extract below as a function?
                         let mut sum = 0.0;
@@ -109,13 +115,14 @@ impl Tree {
 
                         // add Dirichlet noise
                         let mut std_rng = StdRng::from_entropy();
-                        let distr =
-                            StableDirichlet::new(self.settings.alpha, legal_moves.len()).expect("wrong params");
+                        let distr = StableDirichlet::new(self.settings.alpha, legal_moves.len())
+                            .expect("wrong params");
                         let sample = std_rng.sample(distr);
                         // // println!("noise: {:?}", sample);
                         for child in self.nodes[0].children.clone() {
-                            self.nodes[child].policy =
-                                (1.0 - self.settings.eps) * self.nodes[child].policy + (self.settings.eps * sample[child - 1]);
+                            self.nodes[child].policy = (1.0 - self.settings.eps)
+                                * self.nodes[child].policy
+                                + (self.settings.eps * sample[child - 1]);
                         }
                     }
                     TypeRequest::NonTrainerSearch => {}
@@ -151,6 +158,8 @@ impl Tree {
         input_b = self.board.clone();
         let fenstr = format!("{}", &input_b.board());
         // // println!("    board FEN: {}", fenstr);
+        let mut depth = 1;
+        let mut pv = String::new();
         loop {
             let curr_node = &self.nodes[curr];
             if curr_node.children.is_empty() || input_b.is_terminal() {
@@ -197,8 +206,27 @@ impl Tree {
             let display_str = self.display_node(curr);
             // println!("        selected: {}", display_str);
             input_b.play(self.nodes[curr].mv.expect("Error"));
+            match self.settings.search_type {
+                TypeRequest::UCISearch => {
+                    let cp_eval = eval_in_cp(self.nodes[curr].eval_score)
+                        .round()
+                        .max(-1000.)
+                        .min(1000.) as i64;
+
+                    println!(
+                        "info depth {} score cp {} nodes {} pv {}",
+                        depth,
+                        cp_eval,
+                        self.nodes.len(),
+                        pv
+                    );
+                }
+                _ => {}
+            }
             let fenstr = format!("{}", &input_b.board());
             // // println!("    board FEN: {}", fenstr);
+            pv.push_str(&format!("{:#} ", self.nodes[curr].mv.unwrap()));
+            depth += 1;
         }
         let display_str = self.display_node(curr);
         // // println!("    {}", display_str);
