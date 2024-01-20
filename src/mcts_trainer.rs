@@ -112,7 +112,7 @@ impl Tree {
                         // TODO extract below as a function?
                         let mut sum = 0.0;
                         for child in self.nodes[0].children.clone() {
-                            self.nodes[child].policy = self.nodes[child].policy.powf(PST);
+                            self.nodes[child].policy = self.nodes[child].policy.powf(self.settings.pst);
                             sum += self.nodes[child].policy;
                         }
                         for child in self.nodes[0].children.clone() {
@@ -496,9 +496,6 @@ impl Node {
         self.layer_p(0, max_tree_print_depth, tree);
     }
 }
-
-pub const MAX_NODES: u32 = 800;
-pub const PST: f32 = 1.2;
 
 pub fn get_move(
     bs: BoardStack,
