@@ -219,6 +219,7 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
         alpha: 0.0,
         eps: 0.0,
         search_type: UCISearch,
+        pst: 0.0,
     };
 
     let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(1);
