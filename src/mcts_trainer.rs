@@ -166,8 +166,8 @@ impl Tree {
                     max_depth,
                     (cp_eval * 100.).round().max(-1000.).min(1000.) as i64,
                     self.nodes.len(),
-                    elapsed_ms as usize,
                     nps as usize,
+                    elapsed_ms as usize,
                     pv,
                 );
             }
