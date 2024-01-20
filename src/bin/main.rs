@@ -154,6 +154,7 @@ fn generator_main(
         alpha: 0.3,
         eps: 0.3,
         search_type: TrainerSearch(None),
+        pst: 1.2,
     };
     loop {
         let sim = datagen.play_game(
