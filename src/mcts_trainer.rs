@@ -175,20 +175,25 @@ impl Tree {
         }
     }
     pub fn depth_range(&self, node: usize) -> (usize, usize) {
-        match self.nodes[node].children.len() {
-            0 => (0, 0),
-            _ => {
-                let mut total_min = usize::MAX;
-                let mut total_max = usize::MIN;
+        match self.settings.search_type {
+            TypeRequest::UCISearch => {
+                match self.nodes[node].children.len() {
+                    0 => (0, 0),
+                    _ => {
+                        let mut total_min = usize::MAX;
+                        let mut total_max = usize::MIN;
 
-                for child in self.nodes[node].children.clone() {
-                    let (c_min, c_max) = self.depth_range(child);
-                    total_min = min(total_min, c_min);
-                    total_max = max(total_max, c_max);
+                        for child in self.nodes[node].children.clone() {
+                            let (c_min, c_max) = self.depth_range(child);
+                            total_min = min(total_min, c_min);
+                            total_max = max(total_max, c_max);
+                        }
+
+                        (total_min + 1, total_max + 1)
+                    }
                 }
-
-                (total_min + 1, total_max + 1)
-            }
+            },
+            _ => (0,0),
         }
     }
     fn select(&mut self) -> (usize, BoardStack, String, (usize, usize)) {
