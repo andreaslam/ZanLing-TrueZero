@@ -19,6 +19,7 @@ pub fn get_move(
     ZeroEvaluation,
     u32,
 ) {
+    let sw = Instant::now();
     // non-generator version of mcts_trainer.rs
 
     // most search code is located in mcts_trainer.rs
@@ -35,8 +36,7 @@ pub fn get_move(
             .to_owned();
         // println!("step {}", tree.nodes[0].visits);
         // println!("thread {}, step {}",w thread_name, tree.nodes[0].visits);
-        let sw = Instant::now();
-        tree.step(tensor_exe_send.clone());
+        tree.step(tensor_exe_send.clone(), sw);
         // println!("Elapsed time for step: {}ms", sw.elapsed().as_nanos() as f32 / 1e6);
     }
     // println!("{}", tree.nodes[0].visits);
