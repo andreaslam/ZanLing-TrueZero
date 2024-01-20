@@ -10,6 +10,8 @@ use tz_rust::{
         Packet,
     },
     mcts::get_move,
+    mcts_trainer::TypeRequest::NonTrainerSearch,
+    settings::SearchSettings,
 };
 
 fn main() {
@@ -34,6 +36,17 @@ fn main() {
     // set up executor and sender pairs
 
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
+    let settings: SearchSettings = SearchSettings {
+        fpu: 0.0,
+        wdl: None,
+        moves_left: None,
+        c_puct: 2.0,
+        max_nodes: 800,
+        alpha: 0.0,
+        eps: 0.0,
+        search_type: NonTrainerSearch,
+        pst: 0.0
+    };
     let _ = thread::scope(|s| {
         while games_count < target_games {
             let board = Board::default();
@@ -44,7 +57,7 @@ fn main() {
                 .name("executor_net_0".to_string())
                 .spawn(move |_| {
                     executor_static(
-                        "./nets/tz_1302.pt".to_string(),
+                        "./nets/tz_5521.pt".to_string(),
                         // "chess_16x128_gen3634.pt".to_string(),
                         tensor_exe_recv_clone_0,
                         ctrl_recv_clone,
@@ -59,7 +72,7 @@ fn main() {
                 .spawn(move |_| {
                     executor_static(
                         "chess_16x128_gen3634.pt".to_string(),
-                        // "./nets/tz_1202.pt".to_string(),
+                        // "./nets/tz_4483.pt".to_string(),
                         tensor_exe_recv_clone_1,
                         ctrl_recv_clone,
                         1,
@@ -74,7 +87,8 @@ fn main() {
                 } else {
                     tensor_exe_send = tensor_exe_send_1.clone();
                 }
-                let (mv, _, _, _, _) = get_move(bs.clone(), tensor_exe_send.clone());
+                let (mv, _, _, _, _) =
+                    get_move(bs.clone(), tensor_exe_send.clone(), settings.clone());
                 bs.play(mv);
                 println!("{:#}", mv);
 
