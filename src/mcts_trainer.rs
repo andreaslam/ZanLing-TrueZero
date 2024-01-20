@@ -10,7 +10,7 @@ use crate::{
 use cozy_chess::{Color, GameStatus, Move};
 use flume::Sender;
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use std::{fmt, ops::Range, time::Instant};
+use std::{fmt, ops::Range, time::Instant, cmp::{min, max}};
 use tch::{CModule, Device};
 
 pub struct Net {
@@ -150,7 +150,23 @@ impl Tree {
         // }
         // self.nodes[0].display_full_tree(self);
     }
+    pub fn depth_range(&self, node: usize) -> (usize, usize) {
+        match self.nodes[node].children.len() {
+            0 => (0, 0),
+            _ => {
+                let mut total_min = usize::MAX;
+                let mut total_max = usize::MIN;
 
+                for child in self.nodes[node].children.clone() {
+                    let (c_min, c_max) = self.depth_range(child);
+                    total_min = min(total_min, c_min);
+                    total_max = max(total_max, c_max);
+                }
+
+                (total_min + 1, total_max + 1)
+            }
+        }
+    }
     fn select(&mut self) -> (usize, BoardStack) {
         let mut curr: usize = 0;
         // println!("    selection:");
@@ -164,11 +180,15 @@ impl Tree {
             let curr_node = &self.nodes[curr];
             match self.settings.search_type {
                 TypeRequest::UCISearch => {
-                    let cp_eval = eval_in_cp(self.nodes[curr].eval_score);
 
+
+
+                    let cp_eval = eval_in_cp(self.nodes[curr].eval_score);
+                    let (_, max_depth) = self.depth_range(curr);
                     println!(
-                        "info depth {} score cp {} nodes {} pv {}",
+                        "info depth {} seldepth {} score cp {} nodes {} pv {}",
                         depth,
+                        max_depth,
                         (cp_eval * 100.).round().max(-1000.).min(1000.) as i64,
                         self.nodes.len(),
                         pv
