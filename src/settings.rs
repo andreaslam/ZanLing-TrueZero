@@ -11,4 +11,5 @@ pub struct SearchSettings {
     pub alpha: f32,
     pub eps: f32,
     pub search_type: TypeRequest,
+    pub pst: f32,
 }
