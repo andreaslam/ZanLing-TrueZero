@@ -1,10 +1,16 @@
 use cozy_chess::{Board, GameStatus, Move};
 use crossbeam::thread;
-use std::{env, io, str::FromStr};
+use std::{env, io, panic, str::FromStr};
 use tz_rust::{
     boardmanager::BoardStack,
-    executor::{executor_static, Packet, Message::{StopServer, self}},
-    mcts_trainer::get_move,
+    executor::{
+        executor_static,
+        Message::{self, StopServer},
+        Packet,
+    },
+    mcts::get_move,
+    mcts_trainer::TypeRequest::NonTrainerSearch,
+    settings::SearchSettings,
 };
 
 fn get_input(bs: &BoardStack) -> Move {
@@ -40,7 +46,7 @@ fn get_input(bs: &BoardStack) -> Move {
         mv = Move::from_str(&input);
         match mv {
             Ok(valid_move) => {
-                let result = tb.board().clone().try_play(valid_move); // TODO: use try_play instead
+                let result = tb.board().clone().try_play(valid_move);
                 match result {
                     Ok(_) => break,
                     Err(_) => continue,
@@ -55,19 +61,37 @@ fn get_input(bs: &BoardStack) -> Move {
 
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
+
+    panic::set_hook(Box::new(|panic_info| {
+        // print panic information
+        eprintln!("Panic occurred: {:?}", panic_info);
+        // exit the program immediately
+        std::process::exit(1);
+    }));
+
     let board = Board::default();
     let mut bs = BoardStack::new(board);
     let mut input = String::new();
 
     // set up executor and sender pairs
-
+    let settings: SearchSettings = SearchSettings {
+        fpu: 0.0,
+        wdl: None,
+        moves_left: None,
+        c_puct: 2.0,
+        max_nodes: 400,
+        alpha: 0.0,
+        eps: 0.0,
+        search_type: NonTrainerSearch,
+        pst: 0.0,
+    };
     let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(1);
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
     let _ = thread::scope(|s| {
         s.builder()
             .name("executor".to_string())
             .spawn(move |_| {
-                executor_static("chess_16x128_gen3634.pt".to_string(), tensor_exe_recv, ctrl_recv,1)
+                executor_static("nets/tz_5524.pt".to_string(), tensor_exe_recv, ctrl_recv, 1)
             })
             .unwrap();
 
@@ -80,20 +104,22 @@ fn main() {
             while bs.status() == GameStatus::Ongoing {
                 let mv = get_input(&bs);
                 bs.play(mv);
-                let (mv, _, _, _, _) = get_move(bs.clone(), tensor_exe_send.clone());
+                let (mv, _, _, _, _) =
+                    get_move(bs.clone(), tensor_exe_send.clone(), settings.clone());
                 println!("{:#}", mv);
                 bs.play(mv);
             }
         } else if input == "b".to_string() {
             // bot plays first
             while bs.status() == GameStatus::Ongoing {
-                let (mv, _, _, _, _) = get_move(bs.clone(), tensor_exe_send.clone());
+                let (mv, _, _, _, _) =
+                    get_move(bs.clone(), tensor_exe_send.clone(), settings.clone());
                 bs.play(mv);
                 println!("{:#}", mv);
                 let mv = get_input(&bs);
                 bs.play(mv);
             }
         }
-    ctrl_sender.send(StopServer()).unwrap();
+        ctrl_sender.send(StopServer()).unwrap();
     });
 }
