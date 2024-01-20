@@ -10,7 +10,12 @@ use crate::{
 use cozy_chess::{Color, GameStatus, Move};
 use flume::Sender;
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use std::{fmt, ops::Range, time::Instant, cmp::{min, max}};
+use std::{
+    cmp::{max, min},
+    fmt,
+    ops::Range,
+    time::Instant,
+};
 use tch::{CModule, Device};
 
 pub struct Net {
@@ -75,11 +80,12 @@ impl Tree {
         }
     }
 
-    pub fn step(&mut self, tensor_exe_send: Sender<Packet>) {
+    pub fn step(&mut self, tensor_exe_send: Sender<Packet>, sw: Instant) {
+        // let sw = Instant::now();
         let display_str = self.display_node(0);
         // // println!("root node: {}", &display_str);
         // const EPS: f32 = 0.3; // 0.3 for chess
-        let (selected_node, input_b) = self.select();
+        let (selected_node, input_b, pv, (min_depth, max_depth)) = self.select();
 
         // self.nodes[0].display_full_tree(self);
 
@@ -149,6 +155,24 @@ impl Tree {
         //     // // println!("children: {}", &display_str);
         // }
         // self.nodes[0].display_full_tree(self);
+        match self.settings.search_type {
+            TypeRequest::UCISearch => {
+                let cp_eval = eval_in_cp(self.nodes[selected_node].eval_score);
+                let elapsed_ms = sw.elapsed().as_nanos() as f32 / 1e6;
+                let nps = self.nodes[0].visits as f32 / (sw.elapsed().as_nanos() as f32 / 1e9);
+                println!(
+                    "info depth {} seldepth {} score cp {} nodes {} nps {} time {} pv {}",
+                    min_depth,
+                    max_depth,
+                    (cp_eval * 100.).round().max(-1000.).min(1000.) as i64,
+                    self.nodes.len(),
+                    elapsed_ms as usize,
+                    nps as usize,
+                    pv,
+                );
+            }
+            _ => {}
+        }
     }
     pub fn depth_range(&self, node: usize) -> (usize, usize) {
         match self.nodes[node].children.len() {
@@ -167,35 +191,18 @@ impl Tree {
             }
         }
     }
-    fn select(&mut self) -> (usize, BoardStack) {
+    fn select(&mut self) -> (usize, BoardStack, String, (usize, usize)) {
         let mut curr: usize = 0;
         // println!("    selection:");
         let mut input_b: BoardStack;
         input_b = self.board.clone();
         let fenstr = format!("{}", &input_b.board());
         // // println!("    board FEN: {}", fenstr);
-        let mut depth = 1;
         let mut pv = String::new();
+        let mut depth = 1;
+        let mut max_depth: usize = 1;
         loop {
             let curr_node = &self.nodes[curr];
-            match self.settings.search_type {
-                TypeRequest::UCISearch => {
-
-
-
-                    let cp_eval = eval_in_cp(self.nodes[curr].eval_score);
-                    let (_, max_depth) = self.depth_range(curr);
-                    println!(
-                        "info depth {} seldepth {} score cp {} nodes {} pv {}",
-                        depth,
-                        max_depth,
-                        (cp_eval * 100.).round().max(-1000.).min(1000.) as i64,
-                        self.nodes.len(),
-                        pv
-                    );
-                }
-                _ => {}
-            }
             if curr_node.children.is_empty() || input_b.is_terminal() {
                 break;
             }
@@ -207,6 +214,7 @@ impl Tree {
             for child in children.clone() {
                 total_visits += &self.nodes[child].visits;
             }
+            (_, max_depth) = self.depth_range(curr);
             curr = children
                 .clone()
                 .max_by(|a, b| {
@@ -249,7 +257,7 @@ impl Tree {
         // // println!("    {}", display_str);
         // // println!("        children:");
 
-        (curr, input_b)
+        (curr, input_b, pv, (depth, max_depth))
     }
 
     fn eval_and_expand(
@@ -512,7 +520,7 @@ pub fn get_move(
     }
 
     let search_type = TypeRequest::TrainerSearch;
-
+    let sw = Instant::now();
     while tree.nodes[0].visits < settings.max_nodes as u32 {
         let thread_name = std::thread::current()
             .name()
@@ -520,8 +528,7 @@ pub fn get_move(
             .to_owned();
         // println!("step {}", tree.nodes[0].visits);
         // // println!("thread {}, step {}", thread_name, tree.nodes[0].visits);
-        let sw = Instant::now();
-        tree.step(tensor_exe_send.clone());
+        tree.step(tensor_exe_send.clone(), sw);
         // println!("Elapsed time for step: {}ms", sw.elapsed().as_nanos() as f32 / 1e6);
     }
 
