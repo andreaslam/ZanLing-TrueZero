@@ -250,7 +250,7 @@ impl Tree {
                 .expect("Error");
             // // println!("{}, {}", total_visits + 1, curr_node.visits);
             assert!(total_visits + 1 == curr_node.visits);
-            let display_str = self.display_node(curr);
+            // let display_str = self.display_node(curr);
             // println!("        selected: {}", display_str);
             input_b.play(self.nodes[curr].mv.expect("Error"));
             let fenstr = format!("{}", &input_b.board());
@@ -258,7 +258,7 @@ impl Tree {
             pv.push_str(&format!("{:#} ", self.nodes[curr].mv.unwrap()));
             depth += 1;
         }
-        let display_str = self.display_node(curr);
+        // let display_str = self.display_node(curr);
         // // println!("    {}", display_str);
         // // println!("        children:");
 
@@ -322,7 +322,7 @@ impl Tree {
             self.nodes[current].total_action_value += n;
             // // println!("    updated total action value: {}", self.nodes[current].total_action_value);
             curr = self.nodes[current].parent;
-            let display_str = self.display_node(current);
+            // let display_str = self.display_node(current);
             // println!("        updated node to {}", display_str);
         }
     }
@@ -572,7 +572,7 @@ pub fn get_move(
         total_visits_list.push(tree.nodes[child].visits);
     }
 
-    let display_str = tree.display_node(0); // print root node
+    // let display_str = tree.display_node(0); // print root node
                                             // // println!("{}", display_str);
     let total_visits: u32 = total_visits_list.iter().sum();
 
