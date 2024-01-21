@@ -12,6 +12,7 @@ import torch.optim as optim
 import network
 import json
 
+
 def make_msg_send(
     is_continue,
     initialise_identity,
@@ -88,12 +89,12 @@ class Server:
 # Constants
 HOST = "127.0.0.1"
 PORT = 38475
-BUFFER_SIZE = 50000
+BUFFER_SIZE = 500000
 BATCH_SIZE = 1024  # (power of 2, const)
 
 assert BATCH_SIZE > 0 and (BATCH_SIZE & (BATCH_SIZE - 1)) == 0
 
-SAMPLING_RATIO = 0.75  # how often to train on each pos
+SAMPLING_RATIO = 2.0  # how often to train on each pos
 
 
 def load_file(games_path: str):
@@ -262,10 +263,10 @@ def main():
         mask_policy=True,
     )
 
-    op = optim.AdamW(params=model.parameters())
-
+    op = optim.AdamW(params=model.parameters(), lr=2e-3)
     log = Logger()
     if data_paths:
+        data_paths = list(dict.fromkeys(data_paths)) # remove duplicates
         for file in data_paths:
             try:
                 data = load_file(file)
@@ -279,8 +280,7 @@ def main():
             print("loaded log")
         except Exception as e:
             print("[Error]", e)
-            os.remove("log.npz") # reset
-
+            os.remove("log.npz")  # reset
     while True:
         log.start_batch()
         received_data = server.receive()
@@ -310,7 +310,11 @@ def main():
             data = load_file(file_path)
             loopbuf.append(log, data)
             log.finished_data()
-            log.save("log.npz")
+            try:
+                log.save("log.npz")
+            except Exception:
+                print("[Warning] failed to save log.npz")
+
             print("buffer size:", loopbuf.position_count)
             if loopbuf.position_count >= BUFFER_SIZE:
                 train_sampler = loopbuf.sampler(
@@ -350,6 +354,7 @@ def main():
                 model.train()
                 print("training model!")
                 print("num_steps_training:", num_steps_training)
+                
                 for gen in range(num_steps_training):
                     if gen != 0:
                         log.start_batch()
@@ -357,6 +362,8 @@ def main():
                     train_settings.train_step(
                         batch, network=model, optimizer=op, logger=log
                     )
+                        
+                    
                 with torch.no_grad():
                     model.eval()
                     test_batch = test_sampler.next_batch()
@@ -372,7 +379,11 @@ def main():
                     )
 
                 log.finished_data()
-                log.save("log.npz")
+                try:
+                    log.save("log.npz")
+                except Exception:
+                    print("[Warning] failed to save log.npz")
+
                 train_sampler.close()
                 test_sampler.close()
                 last_gen_test_sampler.close()
