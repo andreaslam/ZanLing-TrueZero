@@ -14,46 +14,12 @@ import json
 
 
 def make_msg_send(
-    is_continue,
-    initialise_identity,
-    nps,
-    evals_per_second,
-    job_path,
-    net_request,
-    has_net,
     purpose,
 ):
     return {
-        "is_continue": is_continue,  #  set false if sending stop signal
-        "initialise_identity": initialise_identity,  #  rust-datagen
-        "nps": nps,  #  nps statistics
-        "evals_per_second": evals_per_second,  # evals/s statistics
-        "job_path": job_path,  #  game file path
-        "net_path": net_request,
-        "has_net": has_net,
         "purpose": purpose,
     }
-
-
-def make_msg_return(verification, net_path):
-    return {
-        "verification": verification,  #  set false if sending stop signal
-        "net_path": net_path,  #  rust-datagen
-    }
-
-
-class MessageSend(Enum):  # message from python to rust
-    PYTHON_ID = "python-training"
-
-
-class MessageRecv(Enum):  # message from rust to python
-    NEW_NETWORK = "send-net"
-    STOP_SERVER = "shutdown"
-    RUST_ID = "rust-datagen"
-    JOB = "jobsend"
-    NET_REQUEST = "requesting-net"
-    INIT = "initialise"
-
+    
 
 class Server:
     def __init__(self, host: str, port: int):
@@ -230,20 +196,15 @@ def main():
     while True:
         server.send(
             make_msg_send(
-                True,
-                "python-training",
-                None,
-                None,
-                None,
-                model_path,
-                True,
-                MessageRecv.INIT.value,
+                {"Initialise": "PythonTraining"},
             )
         )
         received_data = server.receive()
         received_data = json.loads(received_data)
-        if MessageSend.PYTHON_ID.value in received_data.values():
-            break
+        purpose = str(received_data)
+        if "IdentityConfirmation" in purpose:
+            if "PythonTraining" in purpose:
+                break
 
     loopbuf = LoopBuffer(
         Game.find("chess"), target_positions=BUFFER_SIZE, test_fraction=0.2
@@ -266,7 +227,7 @@ def main():
     op = optim.AdamW(params=model.parameters(), lr=2e-3)
     log = Logger()
     if data_paths:
-        data_paths = list(dict.fromkeys(data_paths)) # remove duplicates
+        data_paths = list(dict.fromkeys(data_paths))  # remove duplicates
         for file in data_paths:
             try:
                 data = load_file(file)
@@ -285,25 +246,19 @@ def main():
         log.start_batch()
         received_data = server.receive()
         received_data = json.loads(received_data)
+        received_data = str(received_data)
         print(f"[Received] {received_data}")
         if (
-            MessageSend.PYTHON_ID.value in list(received_data.values())
-            or MessageRecv.RUST_ID.value in list(received_data.values())
-            or MessageRecv.NET_REQUEST.value in list(received_data.values())
+            "PythonTraining" in received_data
+            or "RustDataGen" in received_data
+            or "RequestingNet" in received_data
         ):
             msg = make_msg_send(
-                True,
-                None,
-                None,
-                None,
-                None,
-                model_path,
-                True,
-                MessageRecv.NEW_NETWORK.value,
-            )
+                    {"NewNetworkPath": model_path},
+                )
             server.send(msg)
 
-        if MessageRecv.JOB.value in list(received_data.values()):
+        if "JobSendPath" in received_data:
             file_path = received_data["job_path"]
             with open("datafile.txt", "a") as f:
                 f.write(file_path + "\n")
@@ -354,7 +309,7 @@ def main():
                 model.train()
                 print("training model!")
                 print("num_steps_training:", num_steps_training)
-                
+
                 for gen in range(num_steps_training):
                     if gen != 0:
                         log.start_batch()
@@ -362,8 +317,7 @@ def main():
                     train_settings.train_step(
                         batch, network=model, optimizer=op, logger=log
                     )
-                        
-                    
+
                 with torch.no_grad():
                     model.eval()
                     test_batch = test_sampler.next_batch()
@@ -400,11 +354,11 @@ def main():
 
                 # send to rust server
                 msg = make_msg_send(
-                    True, None, None, None, None, model_path, True, "send-net"
+                    {"NewNetworkPath": model_path},
                 )
                 server.send(msg)
 
-        if MessageRecv.STOP_SERVER.value in received_data.values():
+        if "StopServer" in received_data:
             server.close()
             print("Connection closed.")
             break
