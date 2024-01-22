@@ -1,7 +1,6 @@
 use crossbeam::thread;
 use flume::{Receiver, Sender};
 use rand::prelude::*;
-use rand_distr::WeightedIndex;
 use std::{
     env, fs,
     io::{BufRead, BufReader, Write},
@@ -13,7 +12,9 @@ use tz_rust::{
     executor::{executor_main, Packet},
     fileformat::BinaryOutput,
     mcts_trainer::TypeRequest::TrainerSearch,
-    message_types::{ServerMessageRecv, ServerMessageSend},
+    message_types::{
+        Entity, MessageServer, MessageType, Statistics,
+    },
     selfplay::{synthetic_expansion, CollectorMessage, DataGen},
     settings::SearchSettings,
 };
@@ -35,15 +36,9 @@ fn main() {
     };
     // identification - this is rust data generation
 
-    let message = ServerMessageSend {
-        is_continue: true,
-        initialise_identity: Some("rust-datagen".to_string()),
-        nps: None,
-        evals_per_second: None,
-        job_path: None,
-        net_path: None,
-        has_net: false,
-        purpose: "initialise".to_string(),
+
+    let message = MessageServer {
+        purpose: MessageType::Initialise(Entity::RustDataGen),
     };
     let mut serialised = serde_json::to_string(&message).expect("serialisation failed");
     serialised += "\n";
@@ -69,7 +64,7 @@ fn main() {
 
         // send-recv pair between commander and collector
 
-        let (id_send, id_recv) = flume::bounded::<String>(1);
+        let (id_send, id_recv) = flume::bounded::<usize>(1);
 
         s.builder()
             .name("commander".to_string())
@@ -150,11 +145,11 @@ fn generator_main(
         wdl: None,
         moves_left: None,
         c_puct: 2.0,
-        max_nodes: 400,
+        max_nodes: 800,
         alpha: 0.3,
         eps: 0.3,
         search_type: TrainerSearch(None),
-        pst: 1.2,
+        pst: 1.75,
     };
     loop {
         let sim = datagen.play_game(
@@ -201,7 +196,7 @@ fn generator_main(
 fn collector_main(
     receiver: &Receiver<CollectorMessage>,
     server_handle: &mut TcpStream,
-    id_recv: Receiver<String>,
+    id_recv: Receiver<usize>,
 ) {
     let thread_name = std::thread::current()
         .name()
@@ -236,16 +231,11 @@ fn collector_main(
                 let _ = bin_output.append(&sim).unwrap();
                 if bin_output.game_count() >= 100 {
                     let _ = bin_output.finish().unwrap();
-                    let message = ServerMessageSend {
-                        is_continue: true,
-                        initialise_identity: None,
-                        nps: None,
-                        evals_per_second: None,
-                        job_path: Some(path.clone().to_string()),
-                        net_path: None,
-                        has_net: true,
-                        purpose: "jobsend".to_string(),
+
+                    let message = MessageServer {
+                        purpose: MessageType::JobSendPath(path.clone().to_string()),
                     };
+
                     let mut serialised =
                         serde_json::to_string(&message).expect("serialisation failed");
                     serialised += "\n";
@@ -262,17 +252,11 @@ fn collector_main(
                     // println!("{} nps", nps);
                     nps_start_time = Instant::now();
                     nps_vec = Vec::new();
-                    // let message = format!("statistics-nps: {}\n", nps.clone());
-                    let message = ServerMessageSend {
-                        is_continue: true,
-                        initialise_identity: None,
-                        nps: Some(nps),
-                        job_path: None,
-                        evals_per_second: None,
-                        net_path: None,
-                        has_net: true,
-                        purpose: "statistics-nps".to_string(),
+
+                    let message = MessageServer {
+                        purpose: MessageType::StatisticsSend(Statistics::NodesPerSecond(nps)),
                     };
+
                     let mut serialised =
                         serde_json::to_string(&message).expect("serialisation failed");
                     serialised += "\n";
@@ -287,15 +271,10 @@ fn collector_main(
                     // println!("{} evals/s", evals_per_second);
                     evals_start_time = Instant::now();
                     evals_vec = Vec::new();
-                    let message = ServerMessageSend {
-                        is_continue: true,
-                        initialise_identity: None,
-                        nps: None,
-                        evals_per_second: Some(evals_per_second),
-                        job_path: None,
-                        net_path: None,
-                        has_net: true,
-                        purpose: "statistics-evals".to_string(),
+                    let message = MessageServer {
+                        purpose: MessageType::StatisticsSend(Statistics::EvalsPerSecond(
+                            evals_per_second,
+                        )),
                     };
                     let mut serialised =
                         serde_json::to_string(&message).expect("serialisation failed");
@@ -312,7 +291,7 @@ fn collector_main(
 fn commander_main(
     vec_exe_sender: Vec<Sender<String>>,
     server_handle: &mut TcpStream,
-    id_sender: Sender<String>,
+    id_sender: Sender<usize>,
 ) {
     let mut curr_net = String::new();
     let mut is_initialised = false;
@@ -326,7 +305,7 @@ fn commander_main(
         }
         // deserialise data
         // println!("RAW message: {:?}", recv_msg);
-        let message = match serde_json::from_str::<ServerMessageRecv>(&recv_msg) {
+        let message = match serde_json::from_str::<MessageServer>(&recv_msg) {
             Ok(message) => {
                 message
                 // process the received JSON data
@@ -338,29 +317,34 @@ fn commander_main(
         };
 
         if is_initialised {
-            let np = message.net_path;
-            match np {
-                Some(net_p) => {
-                    net_path = net_p;
-                    net_path.retain(|c| c != '\0'); // remove invalid chars
-                }
-                None => {
-                    continue;
-                }
+            match message.purpose {
+                MessageType::Initialise(_) => {}
+                MessageType::JobSendPath(_) => {}
+                MessageType::StatisticsSend(_) => {}
+                MessageType::RequestingNet => {}
+                MessageType::NewNetworkPath(path) => net_path = path,
+                MessageType::IdentityConfirmation(_) => {}
             }
         } else {
-            let msg = message.verification.unwrap();
-            if msg.starts_with("rust-datagen") {
-                let segment: Vec<String> = msg.split_whitespace().map(String::from).collect();
-                let mut id = segment[1].clone();
-                id.retain(|c| c != '\n'); // remove invalid chars
-                                          // send to collector
-                id_sender.send(id).unwrap();
-
-                is_initialised = true;
-            } else {
-                // force quit, there is no ID, hence potentially overwriting existing game files should this process continue
-                std::process::exit(0);
+            match message.purpose {
+                MessageType::Initialise(_) => {}
+                MessageType::JobSendPath(_) => {}
+                MessageType::StatisticsSend(_) => {}
+                MessageType::RequestingNet => {}
+                MessageType::NewNetworkPath(_) => {}
+                MessageType::IdentityConfirmation((entity, id)) => match entity {
+                    Entity::RustDataGen => {
+                        println!("id {}", id);
+                        id_sender.send(id).unwrap();
+                        is_initialised = true;
+                    }
+                    Entity::PythonTraining => {
+                        println!("[Warning] Wrong entity, got {:?}", entity)
+                    }
+                    Entity::GUIMonitor => {
+                        println!("[Warning] Wrong entity, got {:?}", entity)
+                    }
+                },
             }
         }
 
@@ -377,22 +361,15 @@ fn commander_main(
             }
         }
         if net_path.is_empty() {
-            println!("no net yet");
+            // println!("no net yet");
             // actively request for net path
 
-            let message = ServerMessageSend {
-                is_continue: true,
-                initialise_identity: None,
-                nps: None,
-                evals_per_second: None,
-                job_path: None,
-                net_path: None,
-                has_net: false,
-                purpose: "requesting-net".to_string(),
+            let message = MessageServer {
+                purpose: MessageType::RequestingNet,
             };
             let mut serialised = serde_json::to_string(&message).expect("serialisation failed");
             serialised += "\n";
-            println!("serialised {:?}", serialised);
+            // println!("serialised {:?}", serialised);
             cloned_handle.write_all(serialised.as_bytes()).unwrap();
         }
         recv_msg.clear();
