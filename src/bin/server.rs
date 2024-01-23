@@ -55,7 +55,7 @@ fn handle_client(
                             })
                             .count()
                             - 1;
-                        println!("id {}", id);
+                        // println!("id {}", id);
                         message_send = MessageServer {
                             purpose: MessageType::IdentityConfirmation((entity, id)),
                         };
@@ -84,7 +84,7 @@ fn handle_client(
                                 eprintln!("Error sending identification! {}", msg);
                                 break;
                             } else {
-                                println!("[Sent Identification] {:?}", message_send);
+                                println!("Requesting net");
                             }
                         }
                     }
