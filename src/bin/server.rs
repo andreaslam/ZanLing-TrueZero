@@ -84,7 +84,7 @@ fn handle_client(
                                 eprintln!("Error sending identification! {}", msg);
                                 break;
                             } else {
-                                println!("Requesting net");
+                                println!("[Server] Requesting net");
                             }
                         }
                     }
