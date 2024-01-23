@@ -14,11 +14,11 @@ fn handle_client(
     messages: Arc<Mutex<Vec<MessageServer>>>,
     stats_counters: Arc<Mutex<(f32, f32)>>,
     start_time: Arc<Mutex<Instant>>,
+    net_path: Arc<Mutex<Option<String>>>,
 ) {
     let mut cloned_handle = stream.try_clone().unwrap();
     let mut reader = BufReader::new(&stream);
     let mut has_net = false;
-
     loop {
         let mut recv_msg = String::new();
         if let Err(_) = reader.read_line(&mut recv_msg) {
@@ -38,6 +38,7 @@ fn handle_client(
             }
         };
         let mut all_messages = messages.lock().unwrap();
+        let mut net_path = net_path.lock().unwrap();
         all_messages.push(message.clone());
         let purpose = message.purpose;
 
@@ -140,14 +141,32 @@ fn handle_client(
             MessageType::RequestingNet => {
                 if !has_net {
                     // skip this request
+                    match *net_path {
+                        Some(ref path) => {
+                            let extra_request = MessageServer {
+                                purpose: MessageType::NewNetworkPath(path.clone()),
+                            };
+                            let mut serialised = serde_json::to_string(&extra_request)
+                                .expect("serialisation failed");
+                            serialised += "\n";
+                            if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
+                                eprintln!("Error sending identification! {}", msg);
+                                break;
+                            } else {
+                                println!("[Server] Sending net path {}", path.clone());
+                            }
+                        }
+                        None => {}
+                    }
                     recv_msg.clear();
                     continue;
                 } else {
                     has_net = false;
                 }
             }
-            MessageType::NewNetworkPath(_) => {
-                has_net = true;
+            MessageType::NewNetworkPath(path) => {
+
+                *net_path = Some(path);
             }
             MessageType::IdentityConfirmation(_) => {
                 println!("[Warning] Identity Confirmation Message type is not possible")
@@ -178,6 +197,7 @@ fn main() {
     let listener = TcpListener::bind("127.0.0.1:38475").expect("Failed to bind address");
     let clients: Arc<Mutex<Vec<TcpStream>>> = Arc::new(Mutex::new(Vec::new()));
     let messages: Arc<Mutex<Vec<MessageServer>>> = Arc::new(Mutex::new(Vec::new()));
+    let net_path: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let stats_counters: Arc<Mutex<(f32, f32)>> = Arc::new(Mutex::new((0.0, 0.0)));
     let start_time: Arc<Mutex<Instant>> = Arc::new(Mutex::new(Instant::now()));
 
@@ -189,6 +209,7 @@ fn main() {
                 let cloned_stats_counters = Arc::clone(&stats_counters);
                 let cloned_start_time = Arc::clone(&start_time);
                 let addr = stream.peer_addr().expect("Failed to get peer address");
+                let cloned_net_path = Arc::clone(&net_path);
                 println!("[Server] New connection: {}", addr);
 
                 {
@@ -204,6 +225,7 @@ fn main() {
                         cloned_messages,
                         cloned_stats_counters,
                         cloned_start_time,
+                        cloned_net_path,
                     );
                 });
             }
