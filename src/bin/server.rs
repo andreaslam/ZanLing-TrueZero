@@ -3,7 +3,7 @@ use std::{
     net::{TcpListener, TcpStream},
     sync::{Arc, Mutex},
     thread,
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use tz_rust::message_types::{Entity, MessageServer, MessageType};
