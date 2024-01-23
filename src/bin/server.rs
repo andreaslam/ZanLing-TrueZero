@@ -3,12 +3,10 @@ use std::{
     net::{TcpListener, TcpStream},
     sync::{Arc, Mutex},
     thread,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
-use tz_rust::message_types::{
-    Entity, MessageServer, MessageType, ServerMessageRecv, ServerMessageSend,
-};
+use tz_rust::message_types::{Entity, MessageServer, MessageType};
 
 fn handle_client(
     stream: TcpStream,
@@ -19,6 +17,7 @@ fn handle_client(
 ) {
     let mut cloned_handle = stream.try_clone().unwrap();
     let mut reader = BufReader::new(&stream);
+    let mut has_net = false;
 
     loop {
         let mut recv_msg = String::new();
@@ -38,7 +37,6 @@ fn handle_client(
                 continue;
             }
         };
-        println!("[Message] {:?}", message);
         let mut all_messages = messages.lock().unwrap();
         all_messages.push(message.clone());
         let purpose = message.purpose;
@@ -75,6 +73,20 @@ fn handle_client(
                         message_send = MessageServer {
                             purpose: MessageType::IdentityConfirmation((entity, id)),
                         };
+                        if !has_net {
+                            let extra_request = MessageServer {
+                                purpose: MessageType::RequestingNet,
+                            };
+                            let mut serialised = serde_json::to_string(&extra_request)
+                                .expect("serialization failed");
+                            serialised += "\n";
+                            if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
+                                eprintln!("Error sending identification! {}", msg);
+                                break;
+                            } else {
+                                println!("[Sent Identification] {:?}", message_send);
+                            }
+                        }
                     }
                     Entity::GUIMonitor => {
                         let id = all_messages
@@ -103,30 +115,19 @@ fn handle_client(
                 recv_msg.clear();
                 continue;
             }
-            MessageType::JobSendPath(job_path) => {
-                // send to all python training instances
-                let target_receivers = all_messages
-                    .iter()
-                    .filter(|&n| {
-                        *n == MessageServer {
-                            purpose: MessageType::Initialise(Entity::GUIMonitor),
-                        }
-                    })
-                    .count()
-                    - 1;
-            }
+            MessageType::JobSendPath(_) => {}
             MessageType::StatisticsSend(statistics) => {
                 let mut stats = stats_counters.lock().unwrap_or_else(|e| e.into_inner());
                 let mut start_time = start_time.lock().unwrap_or_else(|e| e.into_inner());
                 let elapsed = start_time.elapsed().as_secs_f32();
                 match statistics {
-                        tz_rust::message_types::Statistics::NodesPerSecond(nps) => {
-                            stats.0 += nps;
-                        }
-                        tz_rust::message_types::Statistics::EvalsPerSecond(evals_per_sec) => {
-                            stats.1 += evals_per_sec;
-                        }
+                    tz_rust::message_types::Statistics::NodesPerSecond(nps) => {
+                        stats.0 += nps;
                     }
+                    tz_rust::message_types::Statistics::EvalsPerSecond(evals_per_sec) => {
+                        stats.1 += evals_per_sec;
+                    }
+                }
                 if elapsed >= 1.0 {
                     println!("[Statistics-nps] {}", stats.0);
                     println!("[Statistics-evals] {}", stats.1);
@@ -136,17 +137,27 @@ fn handle_client(
                 recv_msg.clear();
                 continue;
             }
-            MessageType::RequestingNet => {}
-            MessageType::NewNetworkPath(_) => {}
-            MessageType::IdentityConfirmation(_) => {
-                println!("[Warning] IdentityConfirmation Message type is not possible")
+            MessageType::RequestingNet => {
+                if !has_net {
+                    // skip this request
+                    recv_msg.clear();
+                    continue;
+                } else {
+                    has_net = false;
+                }
             }
-            // let received = message.initialise_identity.unwrap();
+            MessageType::NewNetworkPath(_) => {
+                has_net = true;
+            }
+            MessageType::IdentityConfirmation(_) => {
+                println!("[Warning] Identity Confirmation Message type is not possible")
+            }
         }
+        // println!("[Message] {:?}", message);
         let all_clients = clients.lock().unwrap();
         for mut client in all_clients.iter() {
             if let Err(msg) = client.write_all(recv_msg.as_bytes()) {
-                eprintln!("Error sending message to client! {}", msg);
+                // eprintln!("Error sending message to client! {}", msg);
                 continue;
             }
             let mut disp_msg = recv_msg.clone();
@@ -155,21 +166,6 @@ fn handle_client(
         }
         recv_msg.clear();
         continue;
-
-        // if message.has_net {
-        //     let all_clients = clients.lock().unwrap();
-        //     for mut client in all_clients.iter() {
-        //         if let Err(msg) = client.write_all(recv_msg.as_bytes()) {
-        //             // eprintln!("Error sending message to client! {}", msg);
-        //             continue;
-        //         }
-
-        //         let mut disp_msg = recv_msg.clone();
-        //         disp_msg.retain(|c| c != '\n'); // remove newline
-        //         println!("[Sent to {}]: {}", client.peer_addr().unwrap(), disp_msg);
-        //     }
-        // }
-        // recv_msg.clear();
     }
 
     println!(
