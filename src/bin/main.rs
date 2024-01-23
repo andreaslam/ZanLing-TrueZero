@@ -12,9 +12,7 @@ use tz_rust::{
     executor::{executor_main, Packet},
     fileformat::BinaryOutput,
     mcts_trainer::TypeRequest::TrainerSearch,
-    message_types::{
-        Entity, MessageServer, MessageType, Statistics,
-    },
+    message_types::{Entity, MessageServer, MessageType, Statistics},
     selfplay::{synthetic_expansion, CollectorMessage, DataGen},
     settings::SearchSettings,
 };
@@ -35,7 +33,6 @@ fn main() {
         };
     };
     // identification - this is rust data generation
-
 
     let message = MessageServer {
         purpose: MessageType::Initialise(Entity::RustDataGen),
@@ -369,7 +366,7 @@ fn commander_main(
             };
             let mut serialised = serde_json::to_string(&message).expect("serialisation failed");
             serialised += "\n";
-            // println!("serialised {:?}", serialised);
+            println!("serialised {:?}", serialised);
             cloned_handle.write_all(serialised.as_bytes()).unwrap();
         }
         recv_msg.clear();
