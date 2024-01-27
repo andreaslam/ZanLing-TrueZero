@@ -2,8 +2,9 @@ use crossbeam::thread;
 use flume::{Receiver, Sender};
 use rand::prelude::*;
 use std::{
-    env, fs,
-    io::{BufRead, BufReader, Write},
+    env,
+    fs::{self, File},
+    io::{self, BufRead, BufReader, Read, Write},
     net::TcpStream,
     panic,
     time::{Duration, Instant},
@@ -12,7 +13,7 @@ use tz_rust::{
     executor::{executor_main, Packet},
     fileformat::BinaryOutput,
     mcts_trainer::TypeRequest::TrainerSearch,
-    message_types::{Entity, MessageServer, MessageType, Statistics},
+    message_types::{DataFileType, Entity, MessageServer, MessageType, Statistics},
     selfplay::{synthetic_expansion, CollectorMessage, DataGen},
     settings::SearchSettings,
 };
@@ -44,7 +45,7 @@ fn main() {
         .expect("Failed to send data");
     println!("Connected to server!");
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
-    let num_threads = 512;
+    let num_threads = 1024;
     let num_executors = 2;
     thread::scope(|s| {
         let mut selfplay_masters: Vec<DataGen> = Vec::new();
@@ -146,7 +147,7 @@ fn generator_main(
         alpha: 0.3,
         eps: 0.3,
         search_type: TrainerSearch(None),
-        pst: 1.75,
+        pst: 1.2,
     };
     loop {
         let sim = datagen.play_game(
@@ -190,6 +191,19 @@ fn generator_main(
     }
 }
 
+fn serialise_file_to_bytes(file_path: &str) -> io::Result<Vec<u8>> {
+    let mut file = File::open(file_path)?;
+
+    let metadata = file.metadata()?;
+    let file_size = metadata.len() as usize;
+
+    let mut buffer = Vec::with_capacity(file_size);
+
+    file.read_to_end(&mut buffer)?;
+
+    Ok(buffer)
+}
+
 fn collector_main(
     receiver: &Receiver<CollectorMessage>,
     server_handle: &mut TcpStream,
@@ -221,22 +235,52 @@ fn collector_main(
     let mut nps_vec: Vec<f32> = Vec::new();
     let mut evals_start_time = Instant::now();
     let mut evals_vec: Vec<f32> = Vec::new();
+    let files = [".bin", ".off", ".json"];
+    let mut file_data: Vec<Vec<u8>> = Vec::new();
     loop {
         let msg = receiver.recv().unwrap();
         match msg {
             CollectorMessage::FinishedGame(sim) => {
                 let _ = bin_output.append(&sim).unwrap();
-                if bin_output.game_count() >= 100 {
+                if bin_output.game_count() >= 3 {
                     let _ = bin_output.finish().unwrap();
 
-                    let message = MessageServer {
-                        purpose: MessageType::JobSendPath(path.clone().to_string()),
-                    };
+                    for file in files {
+                        let file_path = format!("{}{}", path, file);
+                        let data = serialise_file_to_bytes(&file_path.to_owned())
+                            .unwrap()
+                            .clone();
+                        file_data.push(data);
+                    }
 
+                    let (bin_file, off_file, metadata) = (
+                        file_data[0].clone(),
+                        file_data[1].clone(),
+                        file_data[2].clone(),
+                    );
+
+                    let message = MessageServer {
+                        // purpose: MessageType::JobSendPath(path.clone().to_string()),
+                        purpose: MessageType::JobSendData(vec![
+                            DataFileType::BinFile(bin_file),
+                            DataFileType::OffFile(off_file),
+                            DataFileType::MetaDataFile(metadata),
+                        ]),
+                    };
                     let mut serialised =
                         serde_json::to_string(&message).expect("serialisation failed");
                     serialised += "\n";
                     server_handle.write_all(serialised.as_bytes()).unwrap();
+                    for file_path in files {
+                        // delete sent files
+                        // Attempt to delete the file
+                        match fs::remove_file(format!("{}{}", path, file_path)) {
+                            Ok(_) => {
+                                println!("Deleted file {}", format!("{}{}", path, file_path));
+                            }
+                            Err(e) => eprintln!("Error deleting the file: {}", e),
+                        }
+                    }
                     println!("{}, {}", thread_name, counter);
                     counter += 1;
                     path = format!("games/generator_{}_games_{}", id, counter);
@@ -295,6 +339,8 @@ fn commander_main(
     let mut net_path = String::new(); // initialize net_path with an empty string
     let mut cloned_handle = server_handle.try_clone().unwrap();
     let mut reader = BufReader::new(server_handle);
+    let mut net_path_counter = 0;
+    let mut generator_id: usize = 0;
     loop {
         let mut recv_msg = String::new();
         if let Err(_) = reader.read_line(&mut recv_msg) {
@@ -309,6 +355,7 @@ fn commander_main(
             }
             Err(err) => {
                 // println!("error deserialising message! {}, {}", recv_msg, err);
+                recv_msg.clear();
                 continue;
             }
         };
@@ -321,6 +368,14 @@ fn commander_main(
                 MessageType::RequestingNet => {}
                 MessageType::NewNetworkPath(path) => net_path = path,
                 MessageType::IdentityConfirmation(_) => {}
+                MessageType::JobSendData(_) => {}
+                MessageType::NewNetworkData(data) => {
+                    println!("SUP");
+                    net_path = format!("./nets/tz_temp_net_{}_{}.pt", generator_id, net_path_counter);
+                    let mut file = File::create(net_path.clone()).expect("Unable to create file");
+                    file.write_all(&data).expect("Unable to write data");
+                    net_path_counter += 1;
+                }
             }
         } else {
             match message.purpose {
@@ -331,7 +386,7 @@ fn commander_main(
                 MessageType::NewNetworkPath(_) => {}
                 MessageType::IdentityConfirmation((entity, id)) => match entity {
                     Entity::RustDataGen => {
-                        println!("id {}", id);
+                        generator_id = id;
                         id_sender.send(id).unwrap();
                         is_initialised = true;
                     }
@@ -342,13 +397,21 @@ fn commander_main(
                         println!("[Warning] Wrong entity, got {:?}", entity)
                     }
                 },
+                MessageType::JobSendData(_) => {}
+                MessageType::NewNetworkData(_) => {
+                }
             }
         }
 
         if curr_net != net_path {
             if !net_path.is_empty() {
                 println!("updating net to: {}", net_path.clone());
-
+                match fs::remove_file(curr_net.clone()) {
+                            Ok(_) => {
+                                println!("Deleted net {}", curr_net);
+                            }
+                            Err(e) => eprintln!("Error deleting the file: {}", e),
+                        }
                 for exe_sender in &vec_exe_sender {
                     exe_sender.send(net_path.clone()).unwrap();
                     // println!("SENT!");
@@ -366,7 +429,7 @@ fn commander_main(
             };
             let mut serialised = serde_json::to_string(&message).expect("serialisation failed");
             serialised += "\n";
-            println!("serialised {:?}", serialised);
+            // println!("serialised {:?}", serialised);
             cloned_handle.write_all(serialised.as_bytes()).unwrap();
         }
         recv_msg.clear();
