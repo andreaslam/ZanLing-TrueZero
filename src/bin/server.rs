@@ -15,6 +15,7 @@ fn handle_client(
     stats_counters: Arc<Mutex<(f32, f32)>>,
     start_time: Arc<Mutex<Instant>>,
     net_path: Arc<Mutex<Option<String>>>,
+    net_data: Arc<Mutex<Option<Vec<u8>>>>,
 ) {
     let mut cloned_handle = stream.try_clone().unwrap();
     let mut reader = BufReader::new(&stream);
@@ -37,11 +38,12 @@ fn handle_client(
                 continue;
             }
         };
+
         let mut all_messages = messages.lock().unwrap();
         let mut net_path = net_path.lock().unwrap();
+        let mut net_data = net_data.lock().unwrap();
         all_messages.push(message.clone());
         let purpose = message.purpose;
-
         match purpose {
             MessageType::Initialise(entity) => {
                 let message_send: MessageServer;
@@ -140,11 +142,11 @@ fn handle_client(
             }
             MessageType::RequestingNet => {
                 if !has_net {
-                    // skip this request
-                    match *net_path {
+                    match *net_data {
                         Some(ref path) => {
                             let extra_request = MessageServer {
-                                purpose: MessageType::NewNetworkPath(path.clone()),
+                                // purpose: MessageType::NewNetworkPath(path.clone()),
+                                purpose: MessageType::NewNetworkData(path.clone())
                             };
                             let mut serialised = serde_json::to_string(&extra_request)
                                 .expect("serialisation failed");
@@ -153,7 +155,7 @@ fn handle_client(
                                 eprintln!("Error sending identification! {}", msg);
                                 break;
                             } else {
-                                println!("[Server] Sending net path {}", path.clone());
+                                // println!("[Server] Sending net path {}", path.clone());
                             }
                         }
                         None => {}
@@ -165,11 +167,15 @@ fn handle_client(
                 }
             }
             MessageType::NewNetworkPath(path) => {
-
                 *net_path = Some(path);
             }
             MessageType::IdentityConfirmation(_) => {
                 println!("[Warning] Identity Confirmation Message type is not possible")
+            }
+            MessageType::JobSendData(_) => {}
+            MessageType::NewNetworkData(data) => {
+                println!("NET!!!!!!!!!!!!!!!");
+                *net_data = Some(data); 
             }
         }
         // println!("[Message] {:?}", message);
@@ -181,7 +187,7 @@ fn handle_client(
             }
             let mut disp_msg = recv_msg.clone();
             disp_msg.retain(|c| c != '\n'); // remove newline
-            println!("[Sent to {}]: {}", client.peer_addr().unwrap(), disp_msg);
+            // println!("[Sent to {}]: {}", client.peer_addr().unwrap(), disp_msg);
         }
         recv_msg.clear();
         continue;
@@ -198,6 +204,7 @@ fn main() {
     let clients: Arc<Mutex<Vec<TcpStream>>> = Arc::new(Mutex::new(Vec::new()));
     let messages: Arc<Mutex<Vec<MessageServer>>> = Arc::new(Mutex::new(Vec::new()));
     let net_path: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let net_data: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
     let stats_counters: Arc<Mutex<(f32, f32)>> = Arc::new(Mutex::new((0.0, 0.0)));
     let start_time: Arc<Mutex<Instant>> = Arc::new(Mutex::new(Instant::now()));
 
@@ -210,6 +217,7 @@ fn main() {
                 let cloned_start_time = Arc::clone(&start_time);
                 let addr = stream.peer_addr().expect("Failed to get peer address");
                 let cloned_net_path = Arc::clone(&net_path);
+                let cloned_net_data = Arc::clone(&net_data);
                 println!("[Server] New connection: {}", addr);
 
                 {
@@ -226,6 +234,7 @@ fn main() {
                         cloned_stats_counters,
                         cloned_start_time,
                         cloned_net_path,
+                        cloned_net_data,
                     );
                 });
             }
