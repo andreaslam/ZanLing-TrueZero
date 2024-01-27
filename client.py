@@ -11,7 +11,7 @@ import os
 import torch.optim as optim
 import network
 import json
-
+import io
 
 def make_msg_send(
     purpose,
@@ -19,7 +19,7 @@ def make_msg_send(
     return {
         "purpose": purpose,
     }
-    
+
 
 class Server:
     def __init__(self, host: str, port: int):
@@ -42,7 +42,7 @@ class Server:
     def send(self, message: dict) -> None:
         obj = json.dumps(message) + "\n"
         self.socket.sendall(obj.encode("utf-8"))
-        print(f"[Sent] {message}")
+        # print(f"[Sent] {message}")
 
     def receive(self) -> str:
         assert self.file is not None
@@ -55,12 +55,20 @@ class Server:
 # Constants
 HOST = "127.0.0.1"
 PORT = 38475
-BUFFER_SIZE = 500000
+# BUFFER_SIZE = 500000
+BUFFER_SIZE = 1000
 BATCH_SIZE = 1024  # (power of 2, const)
 
 assert BATCH_SIZE > 0 and (BATCH_SIZE & (BATCH_SIZE - 1)) == 0
 
 SAMPLING_RATIO = 2.0  # how often to train on each pos
+
+
+def serialise_net(model) -> list[int]:
+    buffer = io.BytesIO()
+    torch.jit.save(model, buffer)
+    serialised_data = buffer.getvalue()
+    return [byte for byte in serialised_data]
 
 
 def load_file(games_path: str):
@@ -242,24 +250,28 @@ def main():
         except Exception as e:
             print("[Error]", e)
             os.remove("log.npz")  # reset
+    counter = 0
     while True:
         log.start_batch()
         received_data = server.receive()
+        raw_data = json.loads(received_data)
         received_data = json.loads(received_data)
         received_data = str(received_data)
-        print(f"[Received] {received_data}")
+        # print(f"[Received] {received_data}")
         if (
             "PythonTraining" in received_data
             or "RustDataGen" in received_data
             or "RequestingNet" in received_data
         ):
+            net_send = serialise_net(model)
             msg = make_msg_send(
-                    {"NewNetworkPath": model_path},
-                )
+                {"NewNetworkData": net_send},
+            )
             server.send(msg)
 
         if "JobSendPath" in received_data:
-            file_path = received_data["job_path"]
+            file_path = raw_data["purpose"]["JobSendPath"]
+            print(file_path)
             with open("datafile.txt", "a") as f:
                 f.write(file_path + "\n")
             data = load_file(file_path)
@@ -362,6 +374,118 @@ def main():
             server.close()
             print("Connection closed.")
             break
+
+        if "JobSendData" in received_data:
+            bin_data = raw_data["purpose"]["JobSendData"][0]
+            off_data = raw_data["purpose"]["JobSendData"][1]
+            meta_data = raw_data["purpose"]["JobSendData"][2]
+            bin_data, off_data, meta_data = (
+                bytes(dict(bin_data)["BinFile"]),
+                bytes(dict(off_data)["OffFile"]),
+                bytes(dict(meta_data)["MetaDataFile"]),
+            )
+            path = "temp_loading_file_" + str(counter)
+            with open(path + ".bin", "wb") as file:
+                file.write(bin_data)
+
+            with open(path + ".off", "wb") as file:
+                file.write(off_data)
+
+            decoded_string = meta_data.decode("utf-8")
+            data = json.loads(decoded_string)
+            with open(path + ".json", "w") as file:
+                json.dump(
+                    data, file, indent=4
+                )  # Use indent parameter for pretty formatting (optional)
+            with open("datafile.txt", "a") as f:
+                f.write(path + "\n")
+            data = load_file(path)
+            loopbuf.append(log, data)
+            log.finished_data()
+            log.save("log.npz")
+            counter += 1
+            if loopbuf.position_count >= BUFFER_SIZE:
+                train_sampler = loopbuf.sampler(
+                    batch_size=BATCH_SIZE,
+                    unroll_steps=None,
+                    include_final=False,
+                    random_symmetries=False,
+                    only_last_gen=False,
+                    test=False,
+                )
+
+                test_sampler = loopbuf.sampler(
+                    batch_size=BATCH_SIZE,
+                    unroll_steps=None,
+                    include_final=False,
+                    random_symmetries=False,
+                    only_last_gen=False,
+                    test=True,
+                )
+
+                num_steps_training = (
+                    len(data.positions) / BATCH_SIZE
+                ) * SAMPLING_RATIO  # calculate number of training steps to take
+                if num_steps_training < 1:
+                    print("[Warning] minimum training step is", num_steps_training)
+                    num_steps_training = 1
+                    print("[Warning] set training step to 1")
+                num_steps_training = int(num_steps_training)
+                model.train()
+                print("training model!")
+                print("num_steps_training:", num_steps_training)
+                for gen in range(num_steps_training):
+                    if gen != 0:
+                        log.start_batch()
+                    batch = train_sampler.next_batch()
+                    train_settings.train_step(
+                        batch, network=model, optimizer=op, logger=log
+                    )
+                with torch.no_grad():
+                    model.eval()
+                    test_batch = test_sampler.next_batch()
+                    train_settings.evaluate_batch(
+                        network=model, batch=test_batch, log_prefix="test", logger=log
+                    )
+
+                log.finished_data()
+                log.save("log.npz")
+                train_sampler.close()
+                test_sampler.close()
+                starting_gen += 1
+                model_path = "nets/tz_" + str(starting_gen) + ".pt"
+                model.eval()
+                print("NETTTT")
+                # send to rust server
+                net_send = serialise_net(model)
+                msg = make_msg_send(
+                    {"NewNetworkData": net_send},
+                )
+                server.send(msg)
+                print(model_path)
+                with torch.no_grad():
+                    torch.jit.save(model, model_path)
+                with open("traininglog.txt", "a") as f:
+                    f.write(model_path + "\n")
+                with open("datafile.txt", "w") as f:
+                    f.write("")
+
+                if os.path.exists(path + ".json"):
+                    try:
+                        os.remove(path + ".json")
+                    except Exception:
+                        pass
+                if os.path.exists(path + ".bin"):
+                    try:
+                        os.remove(path + ".bin")
+                    except Exception:
+                        pass
+                if os.path.exists(path + ".off"):
+                    try:
+                        os.remove(path + ".off")
+                    except Exception:
+                        pass
+                
 
 
 if __name__ == "__main__":
