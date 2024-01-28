@@ -55,8 +55,7 @@ class Server:
 # Constants
 HOST = "127.0.0.1"
 PORT = 38475
-# BUFFER_SIZE = 500000
-BUFFER_SIZE = 1000
+BUFFER_SIZE = 500000
 BATCH_SIZE = 1024  # (power of 2, const)
 
 assert BATCH_SIZE > 0 and (BATCH_SIZE & (BATCH_SIZE - 1)) == 0
@@ -99,28 +98,29 @@ def main():
     # initialise a fresh batch of NN, if not already
 
     # load the latest generation net
-
-    training_nets = list(
-        filter(lambda x: x.startswith("tz_") and x.endswith(".pt"), os.listdir("nets"))
-    )
-
-    id_path = {}  # path:id
-
+    
     pattern = r"tz_(\d+)\.pt"
-    for net in training_nets:
-        id_net = int(
-            re.findall(pattern, net)[0]
-        )  # can do this since only 1 match per file maximum
-
-        id_path[net] = id_net
-
-    id_path = dict(
-        sorted(id_path.items(), key=lambda x: x[1])
+    training_nets = []
+    net_id = {}
+    for net in os.listdir("nets"):
+        # Use re.match to apply the regex pattern
+        match = re.match(pattern, net)
+        
+        # Check if there's a match
+        if match:
+            # Extract groups from the match object
+            group = int(match.groups()[0]) # only 1 match
+            net_id["./nets/"+net] = group
+            training_nets.append(net)
+    
+    net_id = dict(
+        sorted(net_id.items(), key=lambda x: x[1])
     )  # sort the entries of the nets and get the latest one
 
-    training_nets = list(id_path.keys())
-
-    training_nets = ["nets/" + x for x in training_nets if os.path.isfile("nets/" + x)]
+    training_nets = list(net_id.keys())
+    
+    print(training_nets)
+    
     if (
         len(os.listdir("nets")) == 0 or len(training_nets) == 0
     ):  # no net folder or no net
