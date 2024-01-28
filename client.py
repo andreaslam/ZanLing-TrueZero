@@ -119,7 +119,6 @@ def main():
 
     training_nets = list(net_id.keys())
     
-    print(training_nets)
     
     if (
         len(os.listdir("nets")) == 0 or len(training_nets) == 0
