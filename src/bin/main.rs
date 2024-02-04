@@ -308,7 +308,7 @@ fn collector_main(
             CollectorMessage::GeneratorStatistics(nps) => {
                 if nps_start_time.elapsed() >= Duration::from_secs(1) {
                     let nps: f32 = nps_vec.iter().sum();
-                    // println!("{} nps", nps);
+                    println!("{} nps", nps);
                     nps_start_time = Instant::now();
                     nps_vec = Vec::new();
 
@@ -327,7 +327,7 @@ fn collector_main(
             CollectorMessage::ExecutorStatistics(evals_per_sec) => {
                 if evals_start_time.elapsed() >= Duration::from_secs(1) {
                     let evals_per_second: f32 = evals_vec.iter().sum();
-                    // println!("{} evals/s", evals_per_second);
+                    println!("{} evals/s", evals_per_second);
                     evals_start_time = Instant::now();
                     evals_vec = Vec::new();
                     let message = MessageServer {
@@ -366,14 +366,14 @@ fn commander_main(
             return;
         }
         // deserialise data
-        // println!("RAW message: {:?}", recv_msg);
+        println!("RAW message: {:?}", recv_msg);
         let message = match serde_json::from_str::<MessageServer>(&recv_msg) {
             Ok(message) => {
                 message
                 // process the received JSON data
             }
             Err(err) => {
-                // println!("error deserialising message! {}, {}", recv_msg, err);
+                println!("error deserialising message! {}, {}", recv_msg, err);
                 recv_msg.clear();
                 continue;
             }
@@ -435,14 +435,14 @@ fn commander_main(
                 }
                 for exe_sender in &vec_exe_sender {
                     exe_sender.send(net_path.clone()).unwrap();
-                    // println!("SENT!");
+                    println!("SENT!");
                 }
 
                 curr_net = net_path.clone();
             }
         }
         if net_path.is_empty() {
-            // println!("no net yet");
+            println!("no net yet");
             // actively request for net path
 
             let message = MessageServer {
@@ -450,7 +450,7 @@ fn commander_main(
             };
             let mut serialised = serde_json::to_string(&message).expect("serialisation failed");
             serialised += "\n";
-            // println!("serialised {:?}", serialised);
+            println!("serialised {:?}", serialised);
             cloned_handle.write_all(serialised.as_bytes()).unwrap();
         }
         recv_msg.clear();
