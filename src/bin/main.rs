@@ -157,7 +157,7 @@ async fn generator_main(
         wdl: None,
         moves_left: None,
         c_puct: 2.0,
-        max_nodes: 800,
+        max_nodes: 400,
         alpha: 0.3,
         eps: 0.3,
         search_type: TrainerSearch(None),
