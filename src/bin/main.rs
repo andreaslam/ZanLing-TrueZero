@@ -260,7 +260,7 @@ fn collector_main(
         match msg {
             CollectorMessage::FinishedGame(sim) => {
                 bin_output.append(&sim).unwrap();
-                if bin_output.game_count() >= 3 {
+                if bin_output.game_count() >= 100 {
                     bin_output.finish().unwrap();
 
                     for file in files {
