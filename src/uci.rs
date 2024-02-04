@@ -224,7 +224,7 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
 
     let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(1);
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
-    let _ = thread::scope(|s| {
+    thread::scope(|s| {
         s.builder()
             .name("executor".to_string())
             .spawn(move |_| executor_static(net_path.to_string(), tensor_exe_recv, ctrl_recv, 1))
