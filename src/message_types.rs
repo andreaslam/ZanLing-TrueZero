@@ -2,7 +2,6 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct MessageServer {
     pub purpose: MessageType,
@@ -20,6 +19,16 @@ pub enum MessageType {
 
     NewNetworkPath(String),
     IdentityConfirmation((Entity, usize)),
+    JobSendData(Vec<DataFileType>),
+    NewNetworkData(Vec<u8>),
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+
+pub enum DataFileType {
+    OffFile(Vec<u8>),
+    MetaDataFile(Vec<u8>),
+    BinFile(Vec<u8>),
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -30,23 +39,6 @@ pub enum Entity {
 
     GUIMonitor,
 }
-
-// impl fmt::Display for MessageType {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         let msg: String;
-//         match &self.nodes[0].mv {
-//             Some(mv) => {
-//                 let m1 = "This is object of type Node and represents action ";
-//                 let m2 = format!("{}", mv);
-//                 msg = m1.to_string() + &m2;
-//             }
-//             None => {
-//                 msg = "Node at starting board position".to_string();
-//             }
-//         }
-//         write!(f, "{}", msg)
-//     }
-// }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub enum Statistics {
