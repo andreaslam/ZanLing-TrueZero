@@ -281,7 +281,137 @@ def main():
             except Exception:
                 print("[Warning] failed to save log.npz")
 
-            print("buffer size:", loopbuf.position_count)
+            print("[loaded files] buffer size:", loopbuf.position_count)
+            if loopbuf.position_count >= BUFFER_SIZE:
+                train_sampler = loopbuf.sampler(
+                    batch_size=BATCH_SIZE,
+                    unroll_steps=None,
+                    include_final=False,
+                    random_symmetries=False,
+                    only_last_gen=False,
+                    test=False,
+                )
+
+                test_sampler = loopbuf.sampler(
+                    batch_size=BATCH_SIZE,
+                    unroll_steps=None,
+                    include_final=False,
+                    random_symmetries=False,
+                    only_last_gen=False,
+                    test=True,
+                )
+                last_gen_test_sampler = loopbuf.sampler(
+                    batch_size=BATCH_SIZE,
+                    unroll_steps=None,
+                    include_final=False,
+                    random_symmetries=False,
+                    only_last_gen=True,
+                    test=True,
+                )
+
+                num_steps_training = (
+                    len(data.positions) / BATCH_SIZE
+                ) * SAMPLING_RATIO  # calculate number of training steps to take
+                if num_steps_training < 1:
+                    print("[Warning] minimum training step is", num_steps_training)
+                    num_steps_training = 1
+                    print("[Warning] set training step to 1")
+                num_steps_training = int(num_steps_training)
+                model.train()
+                print("training model!")
+                print("num_steps_training:", num_steps_training)
+
+                for gen in range(num_steps_training):
+                    if gen != 0:
+                        log.start_batch()
+                    batch = train_sampler.next_batch()
+                    train_settings.train_step(
+                        batch, network=model, optimizer=op, logger=log
+                    )
+
+                with torch.no_grad():
+                    model.eval()
+                    test_batch = test_sampler.next_batch()
+                    train_settings.evaluate_batch(
+                        network=model, batch=test_batch, log_prefix="test", logger=log
+                    )
+                    last_gen_test_batch = last_gen_test_sampler.next_batch()
+                    train_settings.evaluate_batch(
+                        network=model,
+                        batch=last_gen_test_batch,
+                        log_prefix="last gen test",
+                        logger=log,
+                    )
+
+                log.finished_data()
+                try:
+                    log.save("log.npz")
+                except Exception:
+                    print("[Warning] failed to save log.npz")
+
+                train_sampler.close()
+                test_sampler.close()
+                last_gen_test_sampler.close()
+                starting_gen += 1
+                model_path = "nets/tz_" + str(starting_gen) + ".pt"
+                print(model_path)
+                model.eval()
+                with torch.no_grad():
+                    torch.jit.save(model, model_path)
+                with open("traininglog.txt", "a") as f:
+                    f.write(model_path + "\n")
+                with open("datafile.txt", "w") as f:
+                    f.write("")
+
+                # send to rust server
+                msg = make_msg_send(
+                    {"NewNetworkPath": model_path},
+                )
+                server.send(msg)
+
+        if "StopServer" in received_data:
+            server.close()
+            print("Connection closed.")
+            break
+
+        if "JobSendData" in received_data:
+            bin_data = raw_data["purpose"]["JobSendData"][0]
+            off_data = raw_data["purpose"]["JobSendData"][1]
+            meta_data = raw_data["purpose"]["JobSendData"][2]
+            bin_data, off_data, meta_data = (
+                bytes(dict(bin_data)["BinFile"]),
+                bytes(dict(off_data)["OffFile"]),
+                bytes(dict(meta_data)["MetaDataFile"]),
+            )
+            
+            if not os.path.exists("./python_client_games"):
+                os.makedirs("./python_client_games")
+            else:
+                pass
+            path = "./python_client_games/temp_loading_file_" + str(counter)
+            with open(path + ".bin", "wb") as file:
+                file.write(bin_data)
+
+            with open(path + ".off", "wb") as file:
+                file.write(off_data)
+
+            decoded_string = meta_data.decode("utf-8")
+            data = json.loads(decoded_string)
+            with open(path + ".json", "w") as file:
+                json.dump(
+                    data, file, indent=4
+                )  # Use indent parameter for pretty formatting (optional)
+            with open("datafile.txt", "a") as f:
+                f.write(path + "\n")
+            data = load_file(path)
+            print("[loaded files] buffer size:", loopbuf.position_count)
+            loopbuf.append(log, data)
+            log.finished_data()
+            try:
+                log.save("log.npz")
+            except Exception:
+                print("[Warning] failed to save log.npz")
+            counter += 1
             if loopbuf.position_count >= BUFFER_SIZE:
                 train_sampler = loopbuf.sampler(
                     batch_size=BATCH_SIZE,
