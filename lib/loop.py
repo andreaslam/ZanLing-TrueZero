@@ -103,28 +103,38 @@ class LoopSettings:
 
     def __post_init__(self):
         self.muzero = self.sample_muzero_steps is not None
-        assert self.muzero == self.fixed_settings.muzero, f"Muzero state mismatch, got steps {self.sample_muzero_steps} but fixed settings {self.fixed_settings.muzero}"
+        assert (
+            self.muzero == self.fixed_settings.muzero
+        ), f"Muzero state mismatch, got steps {self.sample_muzero_steps} but fixed settings {self.fixed_settings.muzero}"
 
         self.log_path = os.path.join(self.root_path, "log.npz")
         self.selfplay_path = os.path.join(self.root_path, "selfplay")
         self.training_path = os.path.join(self.root_path, "training")
         self.tmp_path = os.path.join(self.root_path, "tmp")
 
-    def calc_batch_count_per_gen(self, estimate_moves_per_simulation: float, do_print: bool) -> float:
+    def calc_batch_count_per_gen(
+        self, estimate_moves_per_simulation: float, do_print: bool
+    ) -> float:
         positions_in_buffer = self.max_buffer_size
         samples_per_position = float(self.samples_per_position)
 
         # this does not depend on gens_in_buffer since that divides itself away
-        positions_per_gen = estimate_moves_per_simulation * self.fixed_settings.simulations_per_gen
+        positions_per_gen = (
+            estimate_moves_per_simulation * self.fixed_settings.simulations_per_gen
+        )
 
-        samples_per_batch = self.train_batch_size * (1 + (self.sample_muzero_steps or 0))
+        samples_per_batch = self.train_batch_size * (
+            1 + (self.sample_muzero_steps or 0)
+        )
         batch_count = samples_per_position * positions_per_gen / samples_per_batch
 
         # extra calculations for prints
         gens_in_buffer = positions_in_buffer / positions_per_gen
         simulations_in_buffer = gens_in_buffer * self.fixed_settings.simulations_per_gen
         samples_per_simulation = samples_per_position * estimate_moves_per_simulation
-        samples_per_gen = samples_per_simulation * self.fixed_settings.simulations_per_gen
+        samples_per_gen = (
+            samples_per_simulation * self.fixed_settings.simulations_per_gen
+        )
 
         if do_print:
             print("Buffer and batch behaviour:")
@@ -148,8 +158,9 @@ class LoopSettings:
 
     def run_loop(self):
         print(f"Starting loop with cwd {os.getcwd()}")
-        assert os.path.exists("./rust") and os.path.exists("./python"), \
-            f"Should be run in root kZero folder, got {os.getcwd()}"
+        assert os.path.exists("./rust") and os.path.exists(
+            "./python"
+        ), f"Should be run in root kZero folder, got {os.getcwd()}"
 
         os.makedirs(self.selfplay_path, exist_ok=True)
         os.makedirs(self.training_path, exist_ok=True)
@@ -170,10 +181,12 @@ class LoopSettings:
             target(None)
 
     def run_loop_inner(
-            self,
-            start_gen: 'Generation', buffer: 'LoopBuffer',
-            logger: Logger, plotter: Optional[LogPlotter],
-            network: nn.Module,
+        self,
+        start_gen: "Generation",
+        buffer: "LoopBuffer",
+        logger: Logger,
+        plotter: Optional[LogPlotter],
+        network: nn.Module,
     ):
         print("Saving current settings")
         os.makedirs(start_gen.train_path, exist_ok=True)
@@ -199,9 +212,13 @@ class LoopSettings:
                 print("Dummy network parameters:")
                 print_param_count(dummy_network)
 
-                initial_onnx_path = self.save_tmp_onnx_network(dummy_network, "network_dummy")
+                initial_onnx_path = self.save_tmp_onnx_network(
+                    dummy_network, "network_dummy"
+                )
         else:
-            initial_onnx_path = self.save_tmp_onnx_network(network, f"network_{start_gen.gi}")
+            initial_onnx_path = self.save_tmp_onnx_network(
+                network, f"network_{start_gen.gi}"
+            )
 
         client = SelfplayClient(self.port)
         client.send_startup_settings(startup_settings)
@@ -223,7 +240,9 @@ class LoopSettings:
             gen_start = time.perf_counter()
             actual_gi = client.wait_for_file()
             logger.log("time", "selfplay", time.perf_counter() - gen_start)
-            assert gi == actual_gi, f"Unexpected finished generation, expected {gi} got {actual_gi}"
+            assert (
+                gi == actual_gi
+            ), f"Unexpected finished generation, expected {gi} got {actual_gi}"
 
             if self.only_generate:
                 print("Not training new network, we're only generating data")
@@ -235,7 +254,9 @@ class LoopSettings:
             buffer.append(logger, DataFile.open(game, gen.simulations_path))
 
             if buffer.position_count < self.min_buffer_size:
-                print(f"Not training new network yet, only {buffer.position_count}/{self.min_buffer_size} positions")
+                print(
+                    f"Not training new network yet, only {buffer.position_count}/{self.min_buffer_size} positions"
+                )
             else:
                 if self.wait_for_new_network:
                     client.send_wait_for_new_network()
@@ -243,8 +264,12 @@ class LoopSettings:
 
                 train_sampler = self.sampler(buffer, only_last_gen=False, test=False)
 
-                positions_per_simulation = buffer.position_count / buffer.simulation_count
-                batch_count_float = self.calc_batch_count_per_gen(positions_per_simulation, False)
+                positions_per_simulation = (
+                    buffer.position_count / buffer.simulation_count
+                )
+                batch_count_float = self.calc_batch_count_per_gen(
+                    positions_per_simulation, False
+                )
                 batch_count = stochastic_round(batch_count_float)
                 logger.log("buffer", "batch_count_float", batch_count_float)
                 logger.log("buffer", "batch_count", batch_count)
@@ -260,27 +285,32 @@ class LoopSettings:
                         logger.start_batch()
 
                     train_batch = train_sampler.next_batch_either()
-                    self.train_settings.train_step(train_batch, network, optimizer, logger)
+                    self.train_settings.train_step(
+                        train_batch, network, optimizer, logger
+                    )
                 train_sampler.close()
 
                 logger.log("time", "train", time.perf_counter() - train_start)
 
                 torch.jit.save(network, gen.network_path_pt)
 
-                curr_onnx_path = self.save_tmp_onnx_network(network, f"network_{gen.gi}")
+                curr_onnx_path = self.save_tmp_onnx_network(
+                    network, f"network_{gen.gi}"
+                )
                 client.send_new_network(curr_onnx_path)
 
             logger.save(self.log_path)
             Path(gen.finished_path).touch()
 
-    def load_start_state(self) -> Tuple['Generation', 'LoopBuffer', Logger, nn.Module]:
+    def load_start_state(self) -> Tuple["Generation", "LoopBuffer", Logger, nn.Module]:
         game = self.fixed_settings.game
         buffer = LoopBuffer(game, self.max_buffer_size, self.test_fraction)
 
         for file in self.initial_data_files:
             buffer.append(None, file)
         print(
-            f"Initial buffer: {len(buffer.files)} files, {buffer.simulation_count} simulations, {buffer.position_count}")
+            f"Initial buffer: {len(buffer.files)} files, {buffer.simulation_count} simulations, {buffer.position_count}"
+        )
 
         for gi in itertools.count():
             gen = Generation.from_gi(self, gi)
@@ -304,7 +334,7 @@ class LoopSettings:
                 network.to(DEVICE)
                 return gen, buffer, logger, network
 
-    def evaluate_network(self, buffer: 'LoopBuffer', logger: Logger, network):
+    def evaluate_network(self, buffer: "LoopBuffer", logger: Logger, network):
         setups = [
             ("test-buffer", self.sampler(buffer, only_last_gen=False, test=True)),
             ("test-last", self.sampler(buffer, only_last_gen=True, test=True)),
@@ -329,20 +359,22 @@ class LoopSettings:
 
         return path
 
-    def sampler(self, buffer: 'LoopBuffer', only_last_gen: bool, test: bool) -> PositionSampler:
+    def sampler(
+        self, buffer: "LoopBuffer", only_last_gen: bool, test: bool
+    ) -> PositionSampler:
         return buffer.sampler(
             batch_size=self.train_batch_size,
             unroll_steps=self.sample_muzero_steps,
             include_final=self.sample_include_final,
             random_symmetries=self.sample_random_symmetries,
             only_last_gen=only_last_gen,
-            test=test
+            test=test,
         )
 
 
 @dataclass
 class Generation:
-    settings: 'LoopSettings'
+    settings: "LoopSettings"
     gi: int
     simulations_path: str
     train_path: str
@@ -351,7 +383,7 @@ class Generation:
     settings_path: str
 
     @classmethod
-    def from_gi(cls, settings: 'LoopSettings', gi: int):
+    def from_gi(cls, settings: "LoopSettings", gi: int):
         simulations_path = os.path.join(settings.selfplay_path, f"games_{gi}")
         train_path = os.path.join(settings.training_path, f"gen_{gi}")
 
@@ -381,15 +413,20 @@ class LoopBuffer:
         self.position_count = 0
         self.simulation_count = 0
         self.files: List[DataFile] = []
+        self.position_total = 0
 
     def append(self, logger: Optional[Logger], file: DataFile):
-        assert file.info.game == self.game, f"Expected game {self.game.name}, got game {file.info.game.name}"
+        assert (
+            file.info.game == self.game
+        ), f"Expected game {self.game.name}, got game {file.info.game.name}"
 
         self.files.append(file)
         self.position_count += len(file.positions)
+        self.position_total += len(file.positions)
         self.simulation_count += file.info.simulation_count
-
-        while self.position_count - len(self.files[0].positions) > self.target_positions:
+        while (
+            self.position_count - len(self.files[0].positions) > self.target_positions
+        ):
             old_file = self.files[0]
             del self.files[0]
 
@@ -401,7 +438,7 @@ class LoopBuffer:
             logger.log("buffer", "gens", len(self.files))
             logger.log("buffer", "simulations", self.simulation_count)
             logger.log("buffer", "positions", self.position_count)
-
+            logger.log("buffer", "positions-total", self.position_total)
             info = file.info
 
             logger.log("gen-size", "games", info.simulation_count)
@@ -416,9 +453,13 @@ class LoopBuffer:
                 logger.log("gen-root-wdl", "l", info.root_wdl[2])
 
     def sampler(
-            self,
-            batch_size: int, unroll_steps: Optional[int], include_final: bool, random_symmetries: bool,
-            only_last_gen: bool, test: bool
+        self,
+        batch_size: int,
+        unroll_steps: Optional[int],
+        include_final: bool,
+        random_symmetries: bool,
+        only_last_gen: bool,
+        test: bool,
     ):
         files = [self.files[-1]] if only_last_gen else self.files
 
