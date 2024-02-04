@@ -11,7 +11,7 @@ use rand::prelude::*;
 use rand_distr::WeightedIndex;
 use std::time::Instant;
 // selfplay code
-
+#[derive(Clone, Debug)]
 pub enum CollectorMessage {
     FinishedGame(Simulation),
     GeneratorStatistics(f32),
@@ -27,23 +27,24 @@ pub struct DataGen {
 }
 
 impl DataGen {
-    pub fn play_game(
+    pub async fn play_game(
         &self,
         tensor_exe_send: Sender<Packet>,
         nps_sender: Sender<CollectorMessage>,
         settings: SearchSettings,
+        id: usize,
     ) -> Simulation {
         let mut bs = BoardStack::new(Board::default());
         // let mut value: Vec<f32> = Vec::new();
         let mut positions: Vec<Position> = Vec::new();
-        let thread_name = std::thread::current()
-            .name()
-            .unwrap_or("unnamed")
-            .to_owned();
+        // let thread_name = std::thread::current()
+        //     .name()
+        //     .unwrap_or("unnamed")
+        //     .to_owned();
         while bs.status() == GameStatus::Ongoing {
             let sw = Instant::now();
             let (mv, v_p, move_idx_piece, search_data, visits) =
-                get_move(bs.clone(), tensor_exe_send.clone(), settings.clone());
+                get_move(bs.clone(), tensor_exe_send.clone(), settings.clone(), id).await;
             let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
             let final_mv = if positions.len() > 30 {
                 // when tau is "infinitesimally small", pick the best move
@@ -72,11 +73,13 @@ impl DataGen {
             };
             let nps = settings.max_nodes as f32 / elapsed;
 
-            println!("thread {}, {:#}, {}nps", thread_name, final_mv, nps);
-            // println!("{:#}", final_mv);
-            let _ = nps_sender.send(CollectorMessage::GeneratorStatistics(
-                settings.max_nodes as f32,
-            ));
+            // println!("thread {}, {:#}, {}nps", thread_name, final_mv, nps);
+            println!("{:#}", final_mv);
+            nps_sender
+                .send(CollectorMessage::GeneratorStatistics(
+                    settings.max_nodes as f32,
+                ))
+                .unwrap();
             bs.play(final_mv);
             positions.push(pos);
         }
@@ -86,81 +89,81 @@ impl DataGen {
             final_board: bs,
         };
 
-        println!("one done!");
+        // println!("one done!");
         tz
     }
 }
 
-pub fn synthetic_expansion(
-    simulation: Simulation,
-    position: usize,
-    sender: Sender<Packet>,
-    settings: SearchSettings,
-) -> Simulation {
-    let mut synthetic_game_vec: Vec<Position> = simulation.positions[0..position].to_vec();
-    let mut move_list = Vec::new();
-    simulation.positions[position]
-        .board
-        .board()
-        .generate_moves(|moves| {
-            // Unpack dense move set into move list
-            move_list.extend(moves);
-            false
-        });
-    let mut expansion_bs = BoardStack::new(simulation.positions[position].board.board().clone());
-    match settings.search_type {
-        TypeRequest::TrainerSearch(expansion_type) => {
-            match expansion_type {
-                Some(ExpansionType::PolicyExpansion) => {
-                    while expansion_bs.status() == GameStatus::Ongoing {
-                        let (mv, v_p, move_idx_piece, search_data, visits) =
-                            get_move(expansion_bs.clone(), sender.clone(), settings.clone());
-                        let synthetic_pos = Position {
-                            board: expansion_bs.clone(),
-                            is_full_search: true,
-                            played_mv: mv,
-                            zero_visits: visits as u64,
-                            zero_evaluation: search_data, // q
-                            net_evaluation: v_p,          // v
-                        };
-                        expansion_bs.play(mv);
-                        synthetic_game_vec.push(synthetic_pos);
-                    }
-                }
-                Some(ExpansionType::RandomExpansion) => {
-                    while expansion_bs.status() == GameStatus::Ongoing {
-                        let mut rng = rand::thread_rng();
-                        let mut legal_moves: Vec<Move> = Vec::new();
-                        expansion_bs.board().generate_moves(|moves| {
-                            // Unpack dense move set into move list
-                            legal_moves.extend(moves);
-                            false
-                        });
-                        legal_moves.shuffle(&mut rng);
-                        let (_, v_p, _, search_data, _) =
-                            get_move(expansion_bs.clone(), sender.clone(), settings.clone());
-                        let mv = legal_moves.first().unwrap();
-                        expansion_bs.play(*mv);
-                        let synthetic_pos = Position {
-                            board: expansion_bs.clone(),
-                            is_full_search: true,
-                            played_mv: *mv,
-                            zero_visits: 0,
-                            zero_evaluation: search_data, // q
-                            net_evaluation: v_p,          // v
-                        };
-                        synthetic_game_vec.push(synthetic_pos);
-                    }
-                }
-                None => panic!("unexpected type of expansion found!"),
-            }
-        }
-        _ => panic!("not expecting this type of search"),
-    }
+// pub async fn synthetic_expansion(
+//     simulation: Simulation,
+//     position: usize,
+//     sender: Sender<Packet>,
+//     settings: SearchSettings,
+// ) -> Simulation {
+//     let mut synthetic_game_vec: Vec<Position> = simulation.positions[0..position].to_vec();
+//     let mut move_list = Vec::new();
+//     simulation.positions[position]
+//         .board
+//         .board()
+//         .generate_moves(|moves| {
+//             // Unpack dense move set into move list
+//             move_list.extend(moves);
+//             false
+//         });
+//     let mut expansion_bs = BoardStack::new(simulation.positions[position].board.board().clone());
+//     match settings.search_type {
+//         TypeRequest::TrainerSearch(expansion_type) => {
+//             match expansion_type {
+//                 Some(ExpansionType::PolicyExpansion) => {
+//                     while expansion_bs.status() == GameStatus::Ongoing {
+//                         let (mv, v_p, move_idx_piece, search_data, visits) =
+//                             get_move(expansion_bs.clone(), sender.clone(), settings.clone()).await;
+//                         let synthetic_pos = Position {
+//                             board: expansion_bs.clone(),
+//                             is_full_search: true,
+//                             played_mv: mv,
+//                             zero_visits: visits as u64,
+//                             zero_evaluation: search_data, // q
+//                             net_evaluation: v_p,          // v
+//                         };
+//                         expansion_bs.play(mv);
+//                         synthetic_game_vec.push(synthetic_pos);
+//                     }
+//                 }
+//                 Some(ExpansionType::RandomExpansion) => {
+//                     while expansion_bs.status() == GameStatus::Ongoing {
+//                         let mut rng = rand::thread_rng();
+//                         let mut legal_moves: Vec<Move> = Vec::new();
+//                         expansion_bs.board().generate_moves(|moves| {
+//                             // Unpack dense move set into move list
+//                             legal_moves.extend(moves);
+//                             false
+//                         });
+//                         legal_moves.shuffle(&mut rng);
+//                         let (_, v_p, _, search_data, _) =
+//                             get_move(expansion_bs.clone(), sender.clone(), settings.clone()).await;
+//                         let mv = legal_moves.first().unwrap();
+//                         expansion_bs.play(*mv);
+//                         let synthetic_pos = Position {
+//                             board: expansion_bs.clone(),
+//                             is_full_search: true,
+//                             played_mv: *mv,
+//                             zero_visits: 0,
+//                             zero_evaluation: search_data, // q
+//                             net_evaluation: v_p,          // v
+//                         };
+//                         synthetic_game_vec.push(synthetic_pos);
+//                     }
+//                 }
+//                 None => panic!("unexpected type of expansion found!"),
+//             }
+//         }
+//         _ => panic!("not expecting this type of search"),
+//     }
 
-    let tz_synthetic = Simulation {
-        positions: synthetic_game_vec,
-        final_board: expansion_bs,
-    };
-    tz_synthetic
-}
+//     let tz_synthetic = Simulation {
+//         positions: synthetic_game_vec,
+//         final_board: expansion_bs,
+//     };
+//     tz_synthetic
+// }
