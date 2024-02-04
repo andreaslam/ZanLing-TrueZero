@@ -184,7 +184,7 @@ impl BinaryOutput {
                     } else {
                         -1.0
                     }
-                },
+                }
                 None => 0.0,
             };
             let scalars = Scalars {
@@ -207,15 +207,15 @@ impl BinaryOutput {
             self.append_position(board, &scalars, &policy_indices, stored_policy)?;
         }
         let final_values = match outcome {
-                Some(outcome) => {
-                    if outcome == final_board.board().side_to_move() {
-                        1.0
-                    } else {
-                        -1.0
-                    }
-                },
-                None => 0.0,
-            };
+            Some(outcome) => {
+                if outcome == final_board.board().side_to_move() {
+                    1.0
+                } else {
+                    -1.0
+                }
+            }
+            None => 0.0,
+        };
         let scalars = Scalars {
             game_id,
             pos_index: game_length,
