@@ -113,7 +113,11 @@ fn handle_client(
                     eprintln!("Error sending identification! {}", msg);
                     break;
                 } else {
-                    println!("[Sent Identification] {:?}", message_send);
+                    println!(
+                        "[Sent Identification to {}] {:?}",
+                        cloned_handle.peer_addr().unwrap(),
+                        message_send
+                    );
                 }
                 recv_msg.clear();
                 continue;
@@ -146,7 +150,7 @@ fn handle_client(
                         Some(ref path) => {
                             let extra_request = MessageServer {
                                 // purpose: MessageType::NewNetworkPath(path.clone()),
-                                purpose: MessageType::NewNetworkData(path.clone())
+                                purpose: MessageType::NewNetworkData(path.clone()),
                             };
                             let mut serialised = serde_json::to_string(&extra_request)
                                 .expect("serialisation failed");
@@ -174,8 +178,7 @@ fn handle_client(
             }
             MessageType::JobSendData(_) => {}
             MessageType::NewNetworkData(data) => {
-                println!("NET!!!!!!!!!!!!!!!");
-                *net_data = Some(data); 
+                *net_data = Some(data);
             }
         }
         // println!("[Message] {:?}", message);
@@ -187,7 +190,7 @@ fn handle_client(
             }
             let mut disp_msg = recv_msg.clone();
             disp_msg.retain(|c| c != '\n'); // remove newline
-            // println!("[Sent to {}]: {}", client.peer_addr().unwrap(), disp_msg);
+                                            // println!("[Sent to {}]: {}", client.peer_addr().unwrap(), disp_msg);
         }
         recv_msg.clear();
         continue;
