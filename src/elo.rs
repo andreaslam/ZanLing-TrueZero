@@ -1,4 +1,4 @@
-use std::f64::consts::{SQRT_2, PI};
+use std::f64::consts::{PI, SQRT_2};
 
 fn erf_inv(x: f64) -> f64 {
     let a = 8.0 * (PI - 3.0) / (3.0 * PI * (4.0 - PI));
