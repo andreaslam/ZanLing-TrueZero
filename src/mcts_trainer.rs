@@ -80,7 +80,7 @@ impl Tree {
         }
     }
 
-    pub fn step(&mut self, tensor_exe_send: Sender<Packet>, sw: Instant) {
+    pub async fn step(&mut self, tensor_exe_send: Sender<Packet>, sw: Instant, id: usize) {
         // let sw = Instant::now();
         let display_str = self.display_node(0);
         // // println!("root node: {}", &display_str);
@@ -94,8 +94,9 @@ impl Tree {
 
         // check for terminal state
         if !input_b.is_terminal() {
-            (selected_node, idx_li) =
-                self.eval_and_expand(selected_node, &input_b, tensor_exe_send);
+            (selected_node, idx_li) = self
+                .eval_and_expand(selected_node, &input_b, tensor_exe_send, id)
+                .await;
             // // println!("{}", self);
             self.nodes[selected_node].move_idx = Some(idx_li);
             let mut legal_moves: Vec<Move>;
@@ -112,7 +113,8 @@ impl Tree {
                         // TODO extract below as a function?
                         let mut sum = 0.0;
                         for child in self.nodes[0].children.clone() {
-                            self.nodes[child].policy = self.nodes[child].policy.powf(self.settings.pst);
+                            self.nodes[child].policy =
+                                self.nodes[child].policy.powf(self.settings.pst);
                             sum += self.nodes[child].policy;
                         }
                         for child in self.nodes[0].children.clone() {
@@ -160,40 +162,38 @@ impl Tree {
                 let cp_eval = eval_in_cp(self.nodes[selected_node].eval_score);
                 let elapsed_ms = sw.elapsed().as_nanos() as f32 / 1e6;
                 let nps = self.nodes[0].visits as f32 / (sw.elapsed().as_nanos() as f32 / 1e9);
-                println!(
-                    "info depth {} seldepth {} score cp {} nodes {} nps {} time {} pv {}",
-                    min_depth,
-                    max_depth,
-                    (cp_eval * 100.).round().max(-1000.).min(1000.) as i64,
-                    self.nodes.len(),
-                    nps as usize,
-                    elapsed_ms as usize,
-                    pv,
-                );
+                // println!(
+                //     "info depth {} seldepth {} score cp {} nodes {} nps {} time {} pv {}",
+                //     min_depth,
+                //     max_depth,
+                //     (cp_eval * 100.).round().max(-1000.).min(1000.) as i64,
+                //     self.nodes.len(),
+                //     nps as usize,
+                //     elapsed_ms as usize,
+                //     pv,
+                // );
             }
             _ => {}
         }
     }
     pub fn depth_range(&self, node: usize) -> (usize, usize) {
         match self.settings.search_type {
-            TypeRequest::UCISearch => {
-                match self.nodes[node].children.len() {
-                    0 => (0, 0),
-                    _ => {
-                        let mut total_min = usize::MAX;
-                        let mut total_max = usize::MIN;
+            TypeRequest::UCISearch => match self.nodes[node].children.len() {
+                0 => (0, 0),
+                _ => {
+                    let mut total_min = usize::MAX;
+                    let mut total_max = usize::MIN;
 
-                        for child in self.nodes[node].children.clone() {
-                            let (c_min, c_max) = self.depth_range(child);
-                            total_min = min(total_min, c_min);
-                            total_max = max(total_max, c_max);
-                        }
-
-                        (total_min + 1, total_max + 1)
+                    for child in self.nodes[node].children.clone() {
+                        let (c_min, c_max) = self.depth_range(child);
+                        total_min = min(total_min, c_min);
+                        total_max = max(total_max, c_max);
                     }
+
+                    (total_min + 1, total_max + 1)
                 }
             },
-            _ => (0,0),
+            _ => (0, 0),
         }
     }
     fn select(&mut self) -> (usize, BoardStack, String, (usize, usize)) {
@@ -251,7 +251,7 @@ impl Tree {
             // // println!("{}, {}", total_visits + 1, curr_node.visits);
             assert!(total_visits + 1 == curr_node.visits);
             // let display_str = self.display_node(curr);
-            // println!("        selected: {}", display_str);
+            // // println!("        selected: {}", display_str);
             input_b.play(self.nodes[curr].mv.expect("Error"));
             let fenstr = format!("{}", &input_b.board());
             // // println!("    board FEN: {}", fenstr);
@@ -265,16 +265,17 @@ impl Tree {
         (curr, input_b, pv, (depth, max_depth))
     }
 
-    fn eval_and_expand(
+    async fn eval_and_expand(
         &mut self,
         selected_node_idx: usize,
         bs: &BoardStack,
         tensor_exe_send: Sender<Packet>,
+        id: usize
     ) -> (usize, Vec<usize>) {
         let sw = Instant::now();
         let fenstr = format!("{}", bs.board());
-        // println!("    board FEN: {}", fenstr);
-        // println!("    ran NN:");
+        // // println!("    board FEN: {}", fenstr);
+        // // println!("    ran NN:");
 
         let input_tensor = convert_board(&bs);
 
@@ -290,11 +291,17 @@ impl Tree {
             resender: resender_send,
             id: thread_name.clone(),
         };
-
-        let _ = tensor_exe_send.send(pack).unwrap();
+        // println!("pre-requesting eval {}", id);
+        tensor_exe_send.send_async(pack).await.unwrap();
+        // println!("requested eval {}", id);
         let sw = Instant::now();
-        let output = resender_recv.recv().unwrap();
-        // println!("Elapsed time for inference: {}ms",sw.elapsed().as_nanos() as f32 / 1e6);
+        // println!("pre-received eval {}", id);
+        let output = resender_recv.recv_async().await.unwrap();
+        // println!("received eval {}", id);
+        // // println!(
+        //     "Elapsed time for inference: {}ms",
+        //     sw.elapsed().as_nanos() as f32 / 1e6
+        // );
 
         let output = match output {
             ReturnMessage::ReturnMessage(Ok(output)) => output,
@@ -323,7 +330,7 @@ impl Tree {
             // // println!("    updated total action value: {}", self.nodes[current].total_action_value);
             curr = self.nodes[current].parent;
             // let display_str = self.display_node(current);
-            // println!("        updated node to {}", display_str);
+            // // println!("        updated node to {}", display_str);
         }
     }
 
@@ -497,10 +504,11 @@ impl Node {
     }
 }
 
-pub fn get_move(
+pub async fn get_move(
     bs: BoardStack,
     tensor_exe_send: Sender<Packet>,
     settings: SearchSettings,
+    id: usize,
 ) -> (
     Move,
     ZeroEvaluation,
@@ -529,9 +537,12 @@ pub fn get_move(
             .unwrap_or("unnamed")
             .to_owned();
         // println!("step {}", tree.nodes[0].visits);
-        // // println!("thread {}, step {}", thread_name, tree.nodes[0].visits);
-        tree.step(tensor_exe_send.clone(), sw);
-        // println!("Elapsed time for step: {}ms", sw.elapsed().as_nanos() as f32 / 1e6);
+        // println!("thread {}, step {}", thread_name, tree.nodes[0].visits);
+        tree.step(tensor_exe_send.clone(), sw, id).await;
+        // // println!(
+        //     "Elapsed time for step: {}ms",
+        //     sw.elapsed().as_nanos() as f32 / 1e6
+        // );
     }
 
     let mut child_visits: Vec<u32> = Vec::new();
@@ -570,7 +581,7 @@ pub fn get_move(
     }
 
     // let display_str = tree.display_node(0); // print root node
-                                            // // println!("{}", display_str);
+    // // println!("{}", display_str);
     let total_visits: u32 = total_visits_list.iter().sum();
 
     let mut pi: Vec<f32> = Vec::new();
