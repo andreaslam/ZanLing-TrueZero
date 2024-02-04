@@ -58,7 +58,7 @@ fn handle_client(
                             })
                             .count()
                             - 1;
-                        println!("id {}", id);
+                        // println!("id {}", id);
                         message_send = MessageServer {
                             purpose: MessageType::IdentityConfirmation((entity, id)),
                         };
