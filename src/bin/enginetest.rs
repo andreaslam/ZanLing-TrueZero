@@ -28,9 +28,9 @@ fn main() {
 
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
     let num_games = 10000; // number of games to generate
-    let num_threads = 128;
-    let engine_0: String = "./nets/tz_5780.pt".to_string(); // new engine
-                                                            // let engine_1: String = "./nets/tz_5128.pt".to_string(); // old engine
+    let num_threads = 32;
+    let engine_0: String = "./nets/tz_6574.pt".to_string(); // new engine
+                                                            // let engine_1: String = "./nets/tz_5780.pt".to_string(); // old engine
     let engine_1: String = "./chess_16x128_gen3634.pt".to_string(); // old engine
     let engine_0_clone = engine_0.clone();
     let engine_1_clone = engine_1.clone();
@@ -149,7 +149,7 @@ fn generator_main(
         alpha: 0.0,
         eps: 0.0,
         search_type: NonTrainerSearch,
-        pst: 0.0
+        pst: 0.0,
     };
 
     let openings = read_epd_file("./8moves_v3.epd").unwrap();
@@ -242,7 +242,7 @@ fn collector_main(
                         elo_max - elo_min
                     );
                     println!("===");
-                    let _ = ctrl_sender.send(Message::StopServer());
+                    ctrl_sender.send(Message::StopServer()).unwrap();
                     process::exit(0)
                 } else {
                     // print elo stats
