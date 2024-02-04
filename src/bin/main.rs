@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-#![allow(unused)]
 use crossbeam::thread;
 use flume::{Receiver, Sender};
 use rand::prelude::*;
@@ -49,7 +47,7 @@ async fn main() {
         .expect("Failed to send data");
     println!("Connected to server!");
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
-    let num_executors = 2;
+    let num_executors = 1;
     let batch_size = 512; // executor batch size
     let num_generators = num_executors * batch_size * 2;
     thread::scope(|s| {
