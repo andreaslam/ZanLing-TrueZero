@@ -404,8 +404,8 @@ def main():
             with open("datafile.txt", "a") as f:
                 f.write(path + "\n")
             data = load_file(path)
-            print("[loaded files] buffer size:", loopbuf.position_count)
             loopbuf.append(log, data)
+            print("[loaded files] buffer size:", loopbuf.position_count)
             log.finished_data()
             try:
                 log.save("log.npz")
