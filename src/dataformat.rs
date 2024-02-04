@@ -4,7 +4,7 @@ use cozy_chess::Move;
 
 use crate::boardmanager::BoardStack;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ZeroEvaluation {
     /// The (normalized) values.
     pub values: f32, // stole it from https://github.com/KarelPeeters/kZero/blob/master/rust/kz-core/src/network/mod.rs#L23
@@ -14,7 +14,7 @@ pub struct ZeroEvaluation {
 }
 
 /// A single position in a game.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Position {
     pub board: BoardStack,
     pub is_full_search: bool,
@@ -26,7 +26,7 @@ pub struct Position {
 }
 
 /// A full game.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Simulation {
     pub positions: Vec<Position>,
     // can be non-terminal if the game was stopped by the length limit
