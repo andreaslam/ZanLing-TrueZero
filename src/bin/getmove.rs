@@ -1,5 +1,6 @@
 use cozy_chess::Board;
 use crossbeam::thread;
+use tokio::runtime::Runtime;
 use std::{env, time::Instant};
 use tz_rust::{
     boardmanager::BoardStack,
@@ -15,6 +16,12 @@ use tz_rust::{
 
 fn main() {
     // test MCTS move outputs
+    panic::set_hook(Box::new(|panic_info| {
+        // print panic information
+        eprintln!("Panic occurred: {:?}", panic_info);
+        // exit the program immediately
+        std::process::exit(1);
+    }));
     env::set_var("RUST_BACKTRACE", "1");
     let board = Board::default();
     // let board = Board::from_fen(
@@ -45,7 +52,7 @@ fn main() {
             .name("executor".to_string())
             .spawn(move |_| {
                 executor_static(
-                    r"C:\Users\andre\RemoteFolder\ZanLing-TrueZero\nets\tz_6058.pt".to_string(),
+                    r"C:\Users\andre\RemoteFolder\ZanLing-TrueZero\nets\tz_42.pt".to_string(),
                     // r"C:\Users\andre\RemoteFolder\ZanLing-TrueZero\chess_16x128_gen3634.pt"
                     // .to_string(),
                     tensor_exe_recv,
@@ -69,7 +76,8 @@ fn main() {
             search_type: NonTrainerSearch,
             pst: 0.0,
         };
-        let (best_move, nn_data, _, _, _) = get_move(bs, tensor_exe_send.clone(), settings.clone());
+        let rt = Runtime::new().unwrap();
+        let (best_move, nn_data, _, _, _) = rt.block_on(async {get_move(bs, tensor_exe_send.clone(), settings.clone()).await});
         for (mv, score) in move_list.iter().zip(nn_data.policy.iter()) {
             println!("{:#}, {}", mv, score);
         }
