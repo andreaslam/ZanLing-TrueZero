@@ -1,7 +1,7 @@
 use cozy_chess::Board;
 use crossbeam::thread;
 use tokio::runtime::Runtime;
-use std::{env, time::Instant};
+use std::{env, panic, time::Instant};
 use tz_rust::{
     boardmanager::BoardStack,
     executor::{
