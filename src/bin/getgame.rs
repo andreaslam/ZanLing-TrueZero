@@ -1,6 +1,7 @@
 use cozy_chess::{Board, Color, GameStatus};
 use crossbeam::thread;
 use flume::Sender;
+use tokio::runtime::Runtime;
 use std::{env, panic};
 use tz_rust::{
     boardmanager::BoardStack,
@@ -45,9 +46,9 @@ fn main() {
         alpha: 0.0,
         eps: 0.0,
         search_type: NonTrainerSearch,
-        pst: 0.0
+        pst: 0.0,
     };
-    let _ = thread::scope(|s| {
+    thread::scope(|s| {
         while games_count < target_games {
             let board = Board::default();
             let mut bs = BoardStack::new(board);
@@ -87,8 +88,8 @@ fn main() {
                 } else {
                     tensor_exe_send = tensor_exe_send_1.clone();
                 }
-                let (mv, _, _, _, _) =
-                    get_move(bs.clone(), tensor_exe_send.clone(), settings.clone());
+                let rt = Runtime::new().unwrap();
+                let (mv, _, _, _, _) = rt.block_on(async {get_move(bs.clone(), tensor_exe_send.clone(), settings.clone()).await});
                 bs.play(mv);
                 println!("{:#}", mv);
 
