@@ -162,16 +162,16 @@ impl Tree {
                 let cp_eval = eval_in_cp(self.nodes[selected_node].eval_score);
                 let elapsed_ms = sw.elapsed().as_nanos() as f32 / 1e6;
                 let nps = self.nodes[0].visits as f32 / (sw.elapsed().as_nanos() as f32 / 1e9);
-                // println!(
-                //     "info depth {} seldepth {} score cp {} nodes {} nps {} time {} pv {}",
-                //     min_depth,
-                //     max_depth,
-                //     (cp_eval * 100.).round().max(-1000.).min(1000.) as i64,
-                //     self.nodes.len(),
-                //     nps as usize,
-                //     elapsed_ms as usize,
-                //     pv,
-                // );
+                println!(
+                    "info depth {} seldepth {} score cp {} nodes {} nps {} time {} pv {}",
+                    min_depth,
+                    max_depth,
+                    (cp_eval * 100.).round().max(-1000.).min(1000.) as i64,
+                    self.nodes.len(),
+                    nps as usize,
+                    elapsed_ms as usize,
+                    pv,
+                );
             }
             _ => {}
         }
