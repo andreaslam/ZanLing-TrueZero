@@ -9,7 +9,7 @@ use crate::{
 use cozy_chess::{Board, Color, Move, Piece, Square};
 use crossbeam::thread;
 use std::{cmp::max, io, panic, process, str::FromStr};
-
+use tokio::runtime::Runtime;
 const STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 pub fn eval_in_cp(eval: f32) -> f32 {
@@ -30,6 +30,7 @@ pub fn run_uci(net_path: &str) {
         // exit the program immediately
         std::process::exit(1);
     }));
+
     // initialise engine
     let board = Board::default();
     let mut bs = BoardStack::new(board);
@@ -221,7 +222,7 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
         search_type: UCISearch,
         pst: 0.0,
     };
-
+    let rt = Runtime::new().unwrap();
     let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(1);
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
     thread::scope(|s| {
@@ -230,8 +231,8 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
             .spawn(move |_| executor_static(net_path.to_string(), tensor_exe_recv, ctrl_recv, 1))
             .unwrap();
 
-        let (best_move, _, _, _, _) = get_move(bs.clone(), tensor_exe_send.clone(), settings);
-
+        let (best_move, _, _, _, _) = rt.block_on(async {get_move(bs.clone(), tensor_exe_send.clone(), settings.clone()).await});
+    
         println!("bestmove {:#}", best_move);
         let _ = ctrl_sender.send(Message::StopServer());
     })
