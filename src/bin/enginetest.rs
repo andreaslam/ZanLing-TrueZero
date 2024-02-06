@@ -2,6 +2,7 @@ use cozy_chess::{Board, Color, GameStatus, Move};
 use crossbeam::thread;
 use flume::{Receiver, Sender};
 use rand::seq::SliceRandom;
+use tokio::runtime::Runtime;
 use std::{
     env,
     fs::File,
@@ -164,15 +165,17 @@ fn generator_main(
             let mut bs = BoardStack::new(board);
 
             let mut counter = 0;
+            let rt = Runtime::new().unwrap();
             while bs.status() == GameStatus::Ongoing {
                 let mv: Move;
                 if counter % 2 == 0 {
                     // white
-                    (mv, _, _, _, _) = get_move(bs.clone(), engine.clone(), settings.clone());
+                    (mv, _, _, _, _) = rt.block_on(async {get_move(bs.clone(), engine.clone(), settings.clone()).await});
                 } else {
                     // swap the engine for black
                     let opponent_engine = engines[(engine_idx + 1) % engines.len()].clone();
-                    (mv, _, _, _, _) = get_move(bs.clone(), opponent_engine, settings.clone());
+
+                    (mv, _, _, _, _) = rt.block_on(async {get_move(bs.clone(), opponent_engine, settings.clone()).await});
                 }
                 bs.play(mv);
                 counter += 1;
