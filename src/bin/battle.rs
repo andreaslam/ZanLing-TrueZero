@@ -1,5 +1,6 @@
 use cozy_chess::{Board, GameStatus, Move};
 use crossbeam::thread;
+use tokio::runtime::Runtime;
 use std::{env, io, panic, str::FromStr};
 use tz_rust::{
     boardmanager::BoardStack,
@@ -104,16 +105,16 @@ fn main() {
             while bs.status() == GameStatus::Ongoing {
                 let mv = get_input(&bs);
                 bs.play(mv);
-                let (mv, _, _, _, _) =
-                    get_move(bs.clone(), tensor_exe_send.clone(), settings.clone());
+                let rt = Runtime::new().unwrap();
+                let (mv, _, _, _, _) = rt.block_on(async {get_move(bs.clone(), tensor_exe_send.clone(), settings.clone()).await});
                 println!("{:#}", mv);
                 bs.play(mv);
             }
         } else if input == "b".to_string() {
             // bot plays first
             while bs.status() == GameStatus::Ongoing {
-                let (mv, _, _, _, _) =
-                    get_move(bs.clone(), tensor_exe_send.clone(), settings.clone());
+                let rt = Runtime::new().unwrap();
+                let (mv, _, _, _, _) = rt.block_on(async {get_move(bs.clone(), tensor_exe_send.clone(), settings.clone()).await});
                 bs.play(mv);
                 println!("{:#}", mv);
                 let mv = get_input(&bs);
