@@ -8,7 +8,7 @@ use cozy_chess::Move;
 
 use flume::Sender;
 
-pub fn get_move(
+pub async fn get_move(
     bs: BoardStack,
     tensor_exe_send: Sender<Packet>,
     settings: SearchSettings,
@@ -37,7 +37,7 @@ pub fn get_move(
         // println!("step {}", tree.nodes[0].visits);
         // println!("thread {}, step {}",w thread_name, tree.nodes[0].visits);
         
-        tree.step(tensor_exe_send.clone(), sw, 0); 
+        tree.step(tensor_exe_send.clone(), sw, 0).await; 
         // println!("Elapsed time for step: {}ms", sw.elapsed().as_nanos() as f32 / 1e6);
     }
     // println!("{}", tree.nodes[0].visits);
