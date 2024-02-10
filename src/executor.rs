@@ -124,13 +124,13 @@ pub fn executor_main(
                 output_senders.push_back(job.resender);
                 id_vec.push_back(job.id);
                 // // println!(
-                    //     "    received job, {}, batch_size {}",
-                    //     input_vec.len(),
-                    //     batch_size
-                    // );
-                    // evaluate batches
-                    
-                    if is_contained {
+                //     "    received job, {}, batch_size {}",
+                //     input_vec.len(),
+                //     batch_size
+                // );
+                // evaluate batches
+
+                if is_contained {
                     let sender = output_senders
                         .pop_back()
                         .expect("There should be a sender for each job");
@@ -150,14 +150,20 @@ pub fn executor_main(
                         .expect("Should be able to send the result");
                     input_vec.pop_back();
                     cache_hits += 1;
-                    println!("cache size {} cache hits {}, total requests {}, cache satisfaction {:.3}%", cache.len(), cache_hits, requests, ((cache_hits as f32 )/(requests as f32) * 100.0));
+                    println!(
+                        "cache size {} cache hits {}, total requests {}, cache satisfaction {:.3}%",
+                        cache.len(),
+                        cache_hits,
+                        requests,
+                        ((cache_hits as f32) / (requests as f32) * 100.0)
+                    );
                 } else {
                     while input_vec.len() >= batch_size {
                         let waiting_time = sw.elapsed().as_nanos() as f32 / 1e9; // waiting time in seconds
-                                                                                 // // // println!(
-                                                                                 //     "        thread name {}, waiting time :{}s",
-                                                                                 //     thread_name, waiting_time
-                                                                                 // );
+                        println!(
+                            "        thread name {}, waiting time :{}s",
+                            thread_name, waiting_time
+                        );
                         let batch_size = min(batch_size, input_vec.len());
                         let i_v = input_vec.make_contiguous();
                         let input_tensors = Tensor::cat(&i_v[..batch_size], 0);
@@ -166,25 +172,25 @@ pub fn executor_main(
                         // "            thread {}: eval input tensors: {:?}",
                         // thread_name, input_tensors
                         // );
-                        // println!("        thread {}: NN evaluation:", thread_name);
+                        println!("        thread {}: NN evaluation:", thread_name);
                         let sw_inference = Instant::now();
                         let (board_eval, policy) =
                             eval_state(input_tensors.clone(&input_tensors), network)
                                 .expect("Evaluation failed");
 
                         let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
-                        // println!("        inference time: {}s", elapsed);
+                        println!("        inference time: {}s", elapsed);
                         // let evals_per_sec = batch_size as f32 / elapsed;
                         evals_per_sec_sender
                             .send(CollectorMessage::ExecutorStatistics(batch_size as f32))
                             .unwrap();
                         // println!("sent to server");
                         // // println!(
-                            //     "            thread {}: NN evaluation done! {}s",
-                            //     thread_name, elapsed
-                            // );
-                            // // println!("        thread {}: processing outputs:", thread_name);
-                            // // println!(
+                        //     "            thread {}: NN evaluation done! {}s",
+                        //     thread_name, elapsed
+                        // );
+                        // // println!("        thread {}: processing outputs:", thread_name);
+                        // // println!(
                         //     "            thread {}: output tensors: {:?}, {:?}",
                         //     thread_name, board_eval, policy
                         // );
@@ -193,7 +199,9 @@ pub fn executor_main(
                         //     "        thread {}: sending tensors back to mcts:",
                         //     thread_name
                         // );
-                        let batch_size = min(batch_size, input_vec.len());
+
+                        let sending_outputs_sw = Instant::now();
+
                         for i in 0..batch_size {
                             let sender = output_senders
                                 .pop_front()
@@ -216,13 +224,14 @@ pub fn executor_main(
                             {
                                 // println!("added to cache {:?}", input_tensors.reshape([-1,1344]).get(i as i64));
                                 cache.push(CacheEntry::new(
-                                    input_tensors.reshape([-1,1344]).get(i as i64),
+                                    input_tensors.reshape([-1, 1344]).get(i as i64),
                                     (board_eval.clone(&board_eval), policy.clone(&policy)),
                                 ));
                                 // println!("progress {}, cache len {}", i, cache.len());
                             }
                         }
-                        // println!("    {} sent all evals back!", thread_name);
+                        let elapsed = sending_outputs_sw.elapsed().as_nanos() as f32 / 1e9;
+                        println!("sent all outputs back to mcts {}", elapsed);
                         drop(input_vec.drain(0..batch_size));
                     }
                 }
@@ -235,8 +244,8 @@ pub fn executor_main(
                 }
             }
         }
-        // let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
-        // // println!("thread {}, elapsed time: {}s", thread_name, elapsed);
+        let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
+        println!("thread {}, elapsed time: {}s", thread_name, elapsed);
         debug_counter += 1;
     }
     // Return the senders to avoid them being dropped and disconnected
@@ -285,10 +294,10 @@ pub fn executor_static(
 
                 while input_vec.len() >= max_batch_size {
                     let waiting_time = sw.elapsed().as_nanos() as f32 / 1e9; // waiting time in seconds
-                    // // println!(
-                    //     "thread name {}, waiting time :{}s",
-                    //     thread_name, waiting_time
-                    // );
+                                                                             // // println!(
+                                                                             //     "thread name {}, waiting time :{}s",
+                                                                             //     thread_name, waiting_time
+                                                                             // );
                     let batch_size = min(max_batch_size, input_vec.len());
                     let i_v = input_vec.make_contiguous();
                     let input_tensors = Tensor::cat(&i_v[..batch_size], 0);
