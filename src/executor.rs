@@ -201,22 +201,27 @@ pub fn executor_main(
                         // );
 
                         let sending_outputs_sw = Instant::now();
-
+                        let reshaped_inputs = input_tensors.reshape([-1, 1344]);
                         for i in 0..batch_size {
+                            let append_sw = Instant::now();
                             let sender = output_senders
                                 .pop_front()
                                 .expect("There should be a sender for each job");
                             let id = id_vec
                                 .pop_front()
                                 .expect("There should be an ID for each job");
-                            let result = (board_eval.get(i as i64), policy.get(i as i64));
                             // // println!("            thread {}, SENT! {:?}", i, &result);
-                            let return_pack = ReturnPacket { packet: result, id };
+                            let (board_eval, policy) =
+                                (board_eval.get(i as i64), policy.get(i as i64));
+                            let return_pack = ReturnPacket {
+                                packet: (board_eval.clone(&board_eval), policy.clone(&policy)),
+                                id,
+                            };
                             sender
                                 .send(ReturnMessage::ReturnMessage(Ok(return_pack)))
                                 .expect("Should be able to send the result");
-                            let (board_eval, policy) =
-                                (board_eval.get(i as i64), policy.get(i as i64));
+                            let elapsed = sending_outputs_sw.elapsed().as_nanos() as f32 / 1e9;
+                            println!("sent one {}", elapsed);
                             if (cache.iter().any(|cache_entry| {
                                 cache_entry.output
                                     == (board_eval.clone(&board_eval), policy.clone(&policy))
@@ -224,10 +229,11 @@ pub fn executor_main(
                             {
                                 // println!("added to cache {:?}", input_tensors.reshape([-1,1344]).get(i as i64));
                                 cache.push(CacheEntry::new(
-                                    input_tensors.reshape([-1, 1344]).get(i as i64),
-                                    (board_eval.clone(&board_eval), policy.clone(&policy)),
+                                    reshaped_inputs.get(i as i64),
+                                    (board_eval, policy),
                                 ));
-                                // println!("progress {}, cache len {}", i, cache.len());
+                                let elapsed = append_sw.elapsed().as_nanos() as f32 / 1e9;
+                                println!("time elapsed, {}", elapsed);
                             }
                         }
                         let elapsed = sending_outputs_sw.elapsed().as_nanos() as f32 / 1e9;
