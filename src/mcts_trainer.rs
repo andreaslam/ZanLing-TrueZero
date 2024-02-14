@@ -227,11 +227,13 @@ impl Tree {
                     let b_node = &self.nodes[*b];
                     let a_puct = a_node.puct_formula(
                         curr_node.visits,
+                        curr_node.moves_left,
                         input_b.board().side_to_move(),
                         self.settings,
                     );
                     let b_puct = b_node.puct_formula(
                         curr_node.visits,
+                        curr_node.moves_left,
                         input_b.board().side_to_move(),
                         self.settings,
                     );
@@ -270,7 +272,7 @@ impl Tree {
         selected_node_idx: usize,
         bs: &BoardStack,
         tensor_exe_send: Sender<Packet>,
-        id: usize
+        id: usize,
     ) -> (usize, Vec<usize>) {
         let sw = Instant::now();
         let fenstr = format!("{}", bs.board());
@@ -319,7 +321,11 @@ impl Tree {
     fn backpropagate(&mut self, node: usize) {
         // println!("    backup:");
         let n: f32 = match self.settings.wdl {
-            Some(_) => 1.0 * self.nodes[node].wdl.w + (-1.0 * self.nodes[node].wdl.l),
+            Some(_) => {
+                1.0 * self.nodes[node].wdl.w
+                    + (-1.0 * self.nodes[node].wdl.l)
+                    + (self.nodes[node].wdl.d)
+            }
             None => self.nodes[node].eval_score,
         };
         let mut curr: Option<usize> = Some(node); // used to index parent
@@ -347,6 +353,7 @@ impl Tree {
                     u = self.nodes[id].get_u_val(self.nodes[*parent].visits, self.settings);
                     puct = self.nodes[id].puct_formula(
                         self.nodes[*parent].visits,
+                        self.nodes[*parent].moves_left,
                         self.board.board().side_to_move(),
                         self.settings,
                     );
@@ -446,12 +453,40 @@ impl Node {
         c_puct * self.policy * ((parent_visits - 1) as f32).sqrt() / (1.0 + self.visits as f32)
     }
 
-    pub fn puct_formula(&self, parent_visits: u32, player: Color, settings: SearchSettings) -> f32 {
+    pub fn puct_formula(
+        &self,
+        parent_visits: u32,
+        parent_moves_left: f32,
+        player: Color,
+        settings: SearchSettings,
+    ) -> f32 {
         let u = self.get_u_val(parent_visits, settings);
         let q = self.get_q_val(settings);
+        let puct_logit = match settings.moves_left {
+            Some(weights) => {
+                let m = if self.visits == 0 {
+                    // don't even bother with moves_left if we don't have any information
+                    0.0
+                } else {
+                    // this node has been visited, so we know parent_moves_left is also a useful value
+                    self.moves_left - (parent_moves_left - 1.0)
+                };
+                let m_unit = if weights.moves_left_weight == 0.0 {
+                    0.0
+                } else {
+                    let m_clipped = self
+                        .moves_left
+                        .clamp(-weights.moves_left_clip, weights.moves_left_clip);
+                    (weights.moves_left_sharpness * m_clipped * -q).clamp(-1.0, 1.0)
+                };
+
+                q + settings.c_puct * u + weights.moves_left_weight * m_unit
+            }
+            None => q + u,
+        };
         match player {
-            Color::Black => -q + u,
-            Color::White => q + u,
+            Color::Black => -puct_logit,
+            Color::White => puct_logit,
         }
     }
 
@@ -615,9 +650,15 @@ pub async fn get_move(
         policy: all_pol,
     };
 
+    let search_value = if tree.settings.max_nodes == 1 {
+        tree.nodes[0].eval_score
+    } else {
+        tree.nodes[0].get_q_val(tree.settings)
+    };
+
     let search_data = ZeroEvaluation {
         // search data
-        values: tree.nodes[0].get_q_val(tree.settings),
+        values: search_value,
         policy: pi,
     };
 
