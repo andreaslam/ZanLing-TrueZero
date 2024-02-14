@@ -48,7 +48,7 @@ impl DataGen {
             let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
             let final_mv = if positions.len() > 30 || settings.max_nodes == 1 {
                 // when tau is "infinitesimally small", pick the best move
-                // or if search nodes = 1
+                // or if search nodes = 1, since search_data.policy would return a vec of NANs
                 mv
             } else {
                 
