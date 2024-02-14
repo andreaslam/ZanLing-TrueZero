@@ -453,7 +453,7 @@ def main():
                     len(data.positions) / BATCH_SIZE
                 ) * SAMPLING_RATIO  # calculate number of training steps to take
                 min_sampling = 15
-                if num_steps_training < 1:
+                if num_steps_training < min_sampling:
                     print("[Warning] minimum training step is 1, current training step is:", num_steps_training)
                     num_steps_training = min_sampling
                     print("[Warning] set training step to 1")
