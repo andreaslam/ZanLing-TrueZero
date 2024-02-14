@@ -9,9 +9,11 @@ from lib.loop import LoopBuffer
 from lib.logger import Logger
 import os
 import torch.optim as optim
+import datetime
 import network
 import json
 import io
+import time
 
 def make_msg_send(
     purpose,
@@ -56,11 +58,11 @@ class Server:
 HOST = "127.0.0.1"
 PORT = 38475
 BUFFER_SIZE = 500000
-BATCH_SIZE = 1024  # (power of 2, const)
+BATCH_SIZE = 2048  # (power of 2, const)
 
 assert BATCH_SIZE > 0 and (BATCH_SIZE & (BATCH_SIZE - 1)) == 0
 
-SAMPLING_RATIO = 2.0  # how often to train on each pos
+SAMPLING_RATIO = 3  # how often to train on each pos
 
 
 def serialise_net(model) -> list[int]:
@@ -239,7 +241,9 @@ def main():
             try:
                 data = load_file(file)
                 loopbuf.append(None, data)
-                print("[loaded files] buffer size:", loopbuf.position_count)
+                now = datetime.now()
+                current_time = now.strftime("%H:%M:%S")
+                print("[loaded files] buffer size:", loopbuf.position_count, current_time)
             except Exception:
                 continue
     if os.path.exists("log.npz"):
@@ -368,6 +372,11 @@ def main():
                     {"NewNetworkPath": model_path},
                 )
                 server.send(msg)
+                net_send = serialise_net(model)
+                msg = make_msg_send(
+                    {"NewNetworkData": net_send},
+                )
+                server.send(msg)
 
         if "StopServer" in received_data:
             server.close()
@@ -388,7 +397,8 @@ def main():
                 os.makedirs("./python_client_games")
             else:
                 pass
-            path = "./python_client_games/temp_loading_file_" + str(counter)
+            
+            path = "./python_client_games/temp_games_" + str(counter) + "_" + str(int(time.time()))
             with open(path + ".bin", "wb") as file:
                 file.write(bin_data)
 
@@ -442,9 +452,10 @@ def main():
                 num_steps_training = (
                     len(data.positions) / BATCH_SIZE
                 ) * SAMPLING_RATIO  # calculate number of training steps to take
+                min_sampling = 15
                 if num_steps_training < 1:
-                    print("[Warning] minimum training step is", num_steps_training)
-                    num_steps_training = 1
+                    print("[Warning] minimum training step is 1, current training step is:", num_steps_training)
+                    num_steps_training = min_sampling
                     print("[Warning] set training step to 1")
                 num_steps_training = int(num_steps_training)
                 model.train()
