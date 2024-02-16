@@ -54,14 +54,13 @@ class ChessVisualizer:
 
     def generate_gif(self):
         board = chess.Board()
-
+        bigl = torch.tensor([])
         with torch.no_grad():
             while not board.is_game_over():
-                bigl = []
-                input_data = (
-                    decoder.convert_board(board, bigl).unsqueeze(0).to(self.device)
+                input_data, bigl = (
+                    decoder.convert_board(board, bigl)
                 )
-
+                input_data = input_data.unsqueeze(0).to(self.device)
                 self.activations_startblock = []
                 self.activations_backbone = []
                 self.activations_value = []
