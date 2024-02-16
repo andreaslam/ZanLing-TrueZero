@@ -39,7 +39,6 @@ def convert_board(board, bigl):
     # sq3, sq4 - castling pos l + r (us)
     # sq5, sq6 - castling pos l + r (opponent)
 
-
     us = board.turn
     opp = not us
 
@@ -96,9 +95,17 @@ def convert_board(board, bigl):
         board.mirror()
     # Stack the tensors
     all_data = torch.stack(all_data)
-    bigl.append(all_data)
-    return all_data
 
+    bigl = torch.cat((bigl, all_data.unsqueeze(0)), dim=0)
+    
+    b, c, h, w = bigl.shape
+    all_grid = torchvision.utils.make_grid(
+        bigl.view(b * c, 1, h, w), nrow=c, padding=1, pad_value=0.3
+    )
+    torchvision.utils.save_image(all_grid, "BIGL.png")
+
+    
+    return all_data, bigl
 
 
 with open("list.txt", "r") as f:
@@ -134,7 +141,7 @@ def eval_board(board, bigl):
         #     l[1].item(),
         #     l[2].item(),
         # )
-    
+
     mirrored = False
     if board.turn == chess.BLACK:
         # board = board.mirror()
@@ -202,11 +209,11 @@ def decode_nn_output(board_eval, policy, board):
         # )
         # value = torch.tanh(logit_value).item()
         board_eval = board_eval.squeeze(0)
-        
+
         board_eval = board_eval.tolist()
-        
+
         value = torch.tanh(torch.tensor(board_eval[0]))
-        
+
         legal_moves = list(board.legal_moves)
         fm = []
         if board.turn == chess.BLACK:
@@ -215,12 +222,12 @@ def decode_nn_output(board_eval, policy, board):
             legal_moves = list(board.legal_moves)
             for mv in legal_moves:
                 mv = str(mv)
-                m1, m3 = str(9 - int(mv[1])), str(9 -int(mv[3]))
+                m1, m3 = str(9 - int(mv[1])), str(9 - int(mv[3]))
                 mv = mv[0] + m1 + mv[2] + m3
                 fm.append(mv)
         else:
             fm = legal_moves
-        
+
         legal_moves = fm
 
         # print((value)
@@ -228,39 +235,43 @@ def decode_nn_output(board_eval, policy, board):
 
         for mov in legal_moves:
             idx_li.append(contents.index(str(mov)))
-        
+
         # print((idx_li)
-        
-        
+
         # step 2 - index all policy from legal moves
-        
-        pol_list = [];
+
+        pol_list = []
         for idx in idx_li:
             pol_list.append(policy.squeeze(0).tolist()[idx])
-        
-        
+
         sm = torch.tensor(pol_list)
-        
-        
+
         sm = F.softmax(sm, dim=0)
 
         sm = sm.tolist()
 
         # # # # print((move_counter)
 
-        legal_moves = list(board.legal_moves) # reverted back to normal
-        
+        legal_moves = list(board.legal_moves)  # reverted back to normal
+
         legal_lookup = {}
-        for (mv, pol) in zip(legal_moves, sm):
+        for mv, pol in zip(legal_moves, sm):
             legal_lookup[str(mv)] = pol
-        
+
         # print((legal_lookup)
         best_move = sorted([(v, k) for k, v in legal_lookup.items()])[-1][1]
-        
 
         # # print((idx_li)
 
         # re-flip legal moves again (before playing)
-        
+
         logit_win_pc, logit_draw_pc, logit_loss_pc = 0, 0, 0
-    return value, logit_win_pc, logit_draw_pc, logit_loss_pc, legal_lookup, idx_li, best_move
+    return (
+        value,
+        logit_win_pc,
+        logit_draw_pc,
+        logit_loss_pc,
+        legal_lookup,
+        idx_li,
+        best_move,
+    )
