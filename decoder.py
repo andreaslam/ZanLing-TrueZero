@@ -14,7 +14,7 @@ if torch.cuda.is_available():
 else:
     d = torch.device("cpu")
 
-print("Using: " + str(d))
+# # # print(("Using: " + str(d))
 
 
 def convert_board(board, bigl):
@@ -29,6 +29,7 @@ def convert_board(board, bigl):
 
     # sq1 - white's turn
     # sq2 - black's turn
+    is_mirrored = True
     if board.turn == chess.BLACK:
         sq1, sq2 = torch.zeros((8, 8)), torch.ones((8, 8))
         board = board.mirror()
@@ -91,11 +92,13 @@ def convert_board(board, bigl):
         *piece_sqs,
         sq21,
     ]
-
+    if is_mirrored:
+        board.mirror()
     # Stack the tensors
     all_data = torch.stack(all_data)
     bigl.append(all_data)
     return all_data
+
 
 
 with open("list.txt", "r") as f:
@@ -111,10 +114,11 @@ def eval_board(board, bigl):
     model.eval()
     with torch.no_grad():
         b = b.to(d)  # bring tensor to device
-        # print(b.shape)
+        # # # # print((b.shape)
         policy, board_eval = model(b.unsqueeze(0))
-        # print(policy)
-        # print(board_eval)
+        # # # print((board_eval)
+        # # # # print((policy)
+        # # # # print((board_eval)
         # logit_value, logit_win_pc, logit_draw_pc, logit_loss_pc, moves_left = (
         #     board_eval[0][0],
         #     board_eval[0][1],
@@ -123,16 +127,17 @@ def eval_board(board, bigl):
         #     board_eval[0][4],
         # )
         # value = torch.tanh(logit_value).item()
-        value = torch.tanh(board_eval).item()
+        value = torch.tanh(torch.tensor(board_eval[0][0]))
         # l = F.softmax(board_eval[0][1:-1], dim=0)  # ignore board_eval and moves_left
         # logit_win_pc, logit_draw_pc, logit_loss_pc = (
         #     l[0].item(),
         #     l[1].item(),
         #     l[2].item(),
         # )
+    
     mirrored = False
     if board.turn == chess.BLACK:
-        board = board.mirror()
+        # board = board.mirror()
         mirrored = True
     policy = policy.tolist()
     # policy = policy[0]
@@ -142,7 +147,6 @@ def eval_board(board, bigl):
 
     legal_lookup = {}
     legal_moves = list(board.legal_moves)
-
     for m in legal_moves:
         legal_lookup[str(m)] = lookup[str(m)]
     # softmax on policy
@@ -159,9 +163,9 @@ def eval_board(board, bigl):
     for l, v in zip(legal_lookup, sm):
         legal_lookup[l] = v
 
-    # print(move_counter)
+    # # # # print((move_counter)
     if (
-        mirrored
+        board.turn == chess.BLACK
     ):  # board.turn == chess.BLACK doesn't work since all the moves are in white's POV
         n = {}
         s = 0
@@ -178,7 +182,85 @@ def eval_board(board, bigl):
     for move in legal_lookup:
         idx_li.append(contents.index(move))
 
-    # print(idx_li)
-
+    # # # # print((legal_lookup)
+    # board = board.mirror()
     logit_win_pc, logit_draw_pc, logit_loss_pc = 0, 0, 0
     return value, logit_win_pc, logit_draw_pc, logit_loss_pc, legal_lookup, idx_li
+
+
+def decode_nn_output(board_eval, policy, board):
+    # # print((list(board.legal_moves))
+    with torch.no_grad():
+        # # # print((policy)
+        # # # print((board_eval)
+        # logit_value, logit_win_pc, logit_draw_pc, logit_loss_pc, moves_left = (
+        #     board_eval[0][0],
+        #     board_eval[0][1],
+        #     board_eval[0][2],
+        #     board_eval[0][3],
+        #     board_eval[0][4],
+        # )
+        # value = torch.tanh(logit_value).item()
+        board_eval = board_eval.squeeze(0)
+        
+        board_eval = board_eval.tolist()
+        
+        value = torch.tanh(torch.tensor(board_eval[0]))
+        
+        legal_moves = list(board.legal_moves)
+        fm = []
+        if board.turn == chess.BLACK:
+            # # print(("HI")
+            value = -value
+            legal_moves = list(board.legal_moves)
+            for mv in legal_moves:
+                mv = str(mv)
+                m1, m3 = str(9 - int(mv[1])), str(9 -int(mv[3]))
+                mv = mv[0] + m1 + mv[2] + m3
+                fm.append(mv)
+        else:
+            fm = legal_moves
+        
+        legal_moves = fm
+
+        # print((value)
+        idx_li = []
+
+        for mov in legal_moves:
+            idx_li.append(contents.index(str(mov)))
+        
+        # print((idx_li)
+        
+        
+        # step 2 - index all policy from legal moves
+        
+        pol_list = [];
+        for idx in idx_li:
+            pol_list.append(policy.squeeze(0).tolist()[idx])
+        
+        
+        sm = torch.tensor(pol_list)
+        
+        
+        sm = F.softmax(sm, dim=0)
+
+        sm = sm.tolist()
+
+        # # # # print((move_counter)
+
+        legal_moves = list(board.legal_moves) # reverted back to normal
+        
+        legal_lookup = {}
+        for (mv, pol) in zip(legal_moves, sm):
+            legal_lookup[str(mv)] = pol
+        
+        # print((legal_lookup)
+        best_move = sorted([(v, k) for k, v in legal_lookup.items()])[-1][1]
+        
+
+        # # print((idx_li)
+
+        # re-flip legal moves again (before playing)
+        
+        logit_win_pc, logit_draw_pc, logit_loss_pc = 0, 0, 0
+    return value, logit_win_pc, logit_draw_pc, logit_loss_pc, legal_lookup, idx_li, best_move
