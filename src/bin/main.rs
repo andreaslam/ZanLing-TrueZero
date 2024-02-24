@@ -8,7 +8,9 @@ use std::{
     net::TcpStream,
     panic,
     time::{Duration, Instant},
+    path::Path,
 };
+
 use tokio::task::spawn;
 use tz_rust::{
     executor::{executor_main, Packet},
@@ -21,6 +23,7 @@ use tz_rust::{
 #[tokio::main]
 async fn main() {
     env::set_var("RUST_BACKTRACE", "1");
+
     panic::set_hook(Box::new(|panic_info| {
         // print panic information
         eprintln!("Panic occurred: {:?}", panic_info);
@@ -49,7 +52,7 @@ async fn main() {
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
     let num_executors = 1;
     let batch_size = 512; // executor batch size
-    let num_generators = num_executors * batch_size * 2;
+    let num_generators = num_executors * batch_size * 8;
     thread::scope(|s| {
         let mut selfplay_masters: Vec<DataGen> = Vec::new();
         // commander
@@ -235,7 +238,7 @@ fn collector_main(
         match e.kind() {
             std::io::ErrorKind::AlreadyExists => {}
             _ => {
-                eprintln!("Error creating folder: {}", e);
+                println!("Error creating folder: {}", e);
             }
         }
     } else {
@@ -244,8 +247,7 @@ fn collector_main(
     let mut counter = 0;
     let id = id_recv.recv().unwrap();
 
-    let mut path = format!("games/generator_{}_games_{}", id, counter);
-    println!("collector path: {}", path);
+    let mut path = format!("games/gen_{}_games_{}", id, counter);
     let mut bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
     let mut nps_start_time = Instant::now();
     let mut nps_vec: Vec<f32> = Vec::new();
@@ -288,13 +290,18 @@ fn collector_main(
                     serialised += "\n";
                     server_handle.write_all(serialised.as_bytes()).unwrap();
                     for file_path in files {
-                        // delete sent files
-                        // Attempt to delete the file
-                        match fs::remove_file(format!("{}{}", path, file_path)) {
-                            Ok(_) => {
-                                println!("Deleted file {}", format!("{}{}", path, file_path));
+                        let exists_file = Path::new(file_path).is_file();
+                        if exists_file {
+                            
+                            // delete sent files
+                            // Attempt to delete the file
+                            match fs::remove_file(format!("{}{}", path, file_path)) {
+                                Ok(_) => {
+                                    println!("Deleted file {}", format!("{}{}", path, file_path));
+                                }
+                                Err(e) => println!("Error deleting the file: {}", e),
                             }
-                            Err(e) => eprintln!("Error deleting the file: {}", e),
+                        } else {
                         }
                     }
                     println!("{}, {}", thread_name, counter);
@@ -383,7 +390,7 @@ fn commander_main(
                 MessageType::JobSendPath(_) => {}
                 MessageType::StatisticsSend(_) => {}
                 MessageType::RequestingNet => {}
-                MessageType::NewNetworkPath(path) => net_path = path,
+                MessageType::NewNetworkPath(path) => {},
                 MessageType::IdentityConfirmation(_) => {}
                 MessageType::JobSendData(_) => {}
                 MessageType::NewNetworkData(data) => {
@@ -425,11 +432,15 @@ fn commander_main(
         if curr_net != net_path {
             if !net_path.is_empty() {
                 println!("updating net to: {}", net_path.clone());
-                match fs::remove_file(curr_net.clone()) {
-                    Ok(_) => {
-                        println!("Deleted net {}", curr_net);
+                let exists_file = Path::new(&curr_net).is_file();
+                if exists_file {
+
+                    match fs::remove_file(curr_net.clone()) {
+                        Ok(_) => {
+                            println!("Deleted net {}", curr_net);
+                        }
+                        Err(e) => eprintln!("Error deleting the file: {}", e),
                     }
-                    Err(e) => eprintln!("Error deleting the file: {}", e),
                 }
                 for exe_sender in &vec_exe_sender {
                     exe_sender.send(net_path.clone()).unwrap();
