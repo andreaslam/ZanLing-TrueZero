@@ -46,12 +46,11 @@ impl DataGen {
             let (mv, v_p, move_idx_piece, search_data, visits) =
                 get_move(bs.clone(), tensor_exe_send.clone(), settings.clone(), id).await;
             let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
-            let final_mv = if positions.len() > 30 || settings.max_nodes == 1 {
+            let final_mv = if positions.len() > 30 {
                 // when tau is "infinitesimally small", pick the best move
                 // or if search nodes = 1, since search_data.policy would return a vec of NANs
                 mv
             } else {
-                
                 let weighted_index = WeightedIndex::new(&search_data.policy).unwrap();
 
                 let mut rng = rand::thread_rng();
@@ -76,11 +75,12 @@ impl DataGen {
             let nps = settings.max_nodes as f32 / elapsed;
 
             // println!("thread {}, {:#}, {}nps", thread_name, final_mv, nps);
-            println!("{:#}", final_mv);
+            // println!("{:#}", final_mv);
             nps_sender
-                .send(CollectorMessage::GeneratorStatistics(
+                .send_async(CollectorMessage::GeneratorStatistics(
                     settings.max_nodes as f32,
                 ))
+                .await
                 .unwrap();
             bs.play(final_mv);
             positions.push(pos);
