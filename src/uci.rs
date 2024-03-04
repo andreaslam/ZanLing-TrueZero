@@ -210,17 +210,17 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
     if let Some(t) = time.as_mut() {
         *t = t.saturating_sub(5);
     }
-    // println!("{}", nodes);
     let settings: SearchSettings = SearchSettings {
-        fpu: 2.0,
+        fpu: 0.0,
         wdl: None,
         moves_left: None,
-        c_puct: 2.0,
+        c_puct: 0.0,
         max_nodes: nodes,
         alpha: 0.0,
         eps: 0.0,
         search_type: UCISearch,
         pst: 0.0,
+        // cap_randomisation: None,
     };
     let rt = Runtime::new().unwrap();
     let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(1);
@@ -231,8 +231,10 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
             .spawn(move |_| executor_static(net_path.to_string(), tensor_exe_recv, ctrl_recv, 1))
             .unwrap();
 
-        let (best_move, _, _, _, _) = rt.block_on(async {get_move(bs.clone(), tensor_exe_send.clone(), settings.clone()).await});
-    
+        let (best_move, _, _, _, _) = rt.block_on(async {
+            get_move(bs.clone(), tensor_exe_send.clone(), settings.clone()).await
+        });
+
         println!("bestmove {:#}", best_move);
         let _ = ctrl_sender.send(Message::StopServer());
     })
