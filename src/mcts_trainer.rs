@@ -309,10 +309,10 @@ impl Tree {
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards");
         let epoch_seconds_end = since_epoch.as_nanos();
-        println!(
-            "{} {} {} eval_and_exp",
-            epoch_seconds_start, epoch_seconds_end, id
-        );
+        // println!(
+        //     "{} {} {} eval_and_exp",
+        //     epoch_seconds_start, epoch_seconds_end, id
+        // );
         let output = match output {
             ReturnMessage::ReturnMessage(Ok(output)) => output,
             ReturnMessage::ReturnMessage(Err(_)) => panic!("error in returning!"),
