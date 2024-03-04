@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::{
     boardmanager::BoardStack,
     mcts_trainer::{Net, Node, Tree, Wdl},
@@ -8,13 +10,19 @@ use tch::{IValue, Kind, Tensor};
 
 pub fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> {
     // reshape the model (originally from 1D)
+    let sw = Instant::now();
     let b = board;
     // let b = b.unsqueeze(0);
     let b = b.reshape([-1, 21, 8, 8]);
     // println!("{:?}", b.size());
     let b: Tensor = b.to(net.device);
     let board = IValue::Tensor(b);
+    // let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
+    // println!("            preprocessing data {}s", elapsed);
+    let sw = Instant::now();
     let output = net.net.forward_is(&[board])?;
+    // let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
+    // println!("            elapsed NN forward pass {}s", elapsed);
     let output_tensor = match output {
         IValue::Tuple(b) => b,
         a => panic!("the output is not a IValue {:?}", a),
@@ -171,6 +179,11 @@ pub fn process_board_output(
     let wdl = Tensor::softmax(&wdl_logits, 0, Kind::Float);
 
     let wdl: Vec<f32> = Vec::try_from(wdl).expect("Error");
+
+    let moves_left = board_evals[4];
+
+    tree.nodes[*selected_node_idx].moves_left = moves_left;
+
     let policy = policy.squeeze();
     let policy: Vec<f32> = Vec::try_from(policy).expect("Error");
     let value = f32::try_from(value).expect("Error");
@@ -245,6 +258,7 @@ pub fn process_board_output(
         d: wdl[1],
         l: wdl[2],
     };
+
     // tree.nodes[*selected_node_idx].eval_score = 0.0;
     let ct = tree.nodes.len();
     for (mv, pol) in legal_moves.iter().zip(pol_list.iter()) {
