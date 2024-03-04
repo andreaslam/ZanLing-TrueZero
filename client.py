@@ -15,6 +15,7 @@ import json
 import io
 import time
 
+
 def make_msg_send(
     purpose,
 ):
@@ -100,28 +101,27 @@ def main():
     # initialise a fresh batch of NN, if not already
 
     # load the latest generation net
-    
+
     pattern = r"tz_(\d+)\.pt"
     training_nets = []
     net_id = {}
     for net in os.listdir("nets"):
         # Use re.match to apply the regex pattern
         match = re.match(pattern, net)
-        
+
         # Check if there's a match
         if match:
             # Extract groups from the match object
-            group = int(match.groups()[0]) # only 1 match
-            net_id["./nets/"+net] = group
+            group = int(match.groups()[0])  # only 1 match
+            net_id["./nets/" + net] = group
             training_nets.append(net)
-    
+
     net_id = dict(
         sorted(net_id.items(), key=lambda x: x[1])
     )  # sort the entries of the nets and get the latest one
 
     training_nets = list(net_id.keys())
-    
-    
+
     if (
         len(os.listdir("nets")) == 0 or len(training_nets) == 0
     ):  # no net folder or no net
@@ -243,7 +243,9 @@ def main():
                 loopbuf.append(None, data)
                 now = datetime.now()
                 current_time = now.strftime("%H:%M:%S")
-                print("[loaded files] buffer size:", loopbuf.position_count, current_time)
+                print(
+                    "[loaded files] buffer size:", loopbuf.position_count, current_time
+                )
             except Exception:
                 continue
     if os.path.exists("log.npz"):
@@ -392,13 +394,18 @@ def main():
                 bytes(dict(off_data)["OffFile"]),
                 bytes(dict(meta_data)["MetaDataFile"]),
             )
-            
+
             if not os.path.exists("./python_client_games"):
                 os.makedirs("./python_client_games")
             else:
                 pass
-            
-            path = "./python_client_games/temp_games_" + str(counter) + "_" + str(int(time.time()))
+
+            path = (
+                "./python_client_games/temp_games_"
+                + str(counter)
+                + "_"
+                + str(int(time.time()))
+            )
             with open(path + ".bin", "wb") as file:
                 file.write(bin_data)
 
@@ -454,7 +461,10 @@ def main():
                 ) * SAMPLING_RATIO  # calculate number of training steps to take
                 min_sampling = 15
                 if num_steps_training < min_sampling:
-                    print("[Warning] minimum training step is 1, current training step is:", num_steps_training)
+                    print(
+                        "[Warning] minimum training step is 1, current training step is:",
+                        num_steps_training,
+                    )
                     num_steps_training = min_sampling
                     print("[Warning] set training step to 1")
                 num_steps_training = int(num_steps_training)
@@ -514,8 +524,6 @@ def main():
             server.close()
             print("Connection closed.")
             break
-
-                
 
 
 if __name__ == "__main__":
