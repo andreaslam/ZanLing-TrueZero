@@ -36,8 +36,8 @@ pub async fn get_move(
             .to_owned();
         // println!("step {}", tree.nodes[0].visits);
         // println!("thread {}, step {}",w thread_name, tree.nodes[0].visits);
-        
-        tree.step(tensor_exe_send.clone(), sw, 0).await; 
+
+        tree.step(tensor_exe_send.clone(), sw, 0).await;
         // println!("Elapsed time for step: {}ms", sw.elapsed().as_nanos() as f32 / 1e6);
     }
     // println!("{}", tree.nodes[0].visits);
