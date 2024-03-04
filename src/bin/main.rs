@@ -7,10 +7,9 @@ use std::{
     io::{self, BufRead, BufReader, Read, Write},
     net::TcpStream,
     panic,
-    time::{Duration, Instant},
     path::Path,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-
 use tokio::task::spawn;
 use tz_rust::{
     executor::{executor_main, Packet},
@@ -51,8 +50,8 @@ async fn main() {
     println!("Connected to server!");
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
     let num_executors = 1;
-    let batch_size = 512; // executor batch size
-    let num_generators = num_executors * batch_size * 8;
+    let batch_size = 2; // executor batch size
+    let num_generators = num_executors * batch_size * 2;
     thread::scope(|s| {
         let mut selfplay_masters: Vec<DataGen> = Vec::new();
         // commander
@@ -124,7 +123,8 @@ async fn main() {
             // send/recv pair between executor and commander
             let eval_per_sec_sender = game_sender.clone();
             let tensor_exe_recv_clone = tensor_exe_recv.clone();
-            let _ = s.builder()
+            let _ = s
+                .builder()
                 .name(format!("executor_{}", n.to_string()))
                 .spawn(move |_| {
                     executor_main(
@@ -292,7 +292,6 @@ fn collector_main(
                     for file_path in files {
                         let exists_file = Path::new(file_path).is_file();
                         if exists_file {
-                            
                             // delete sent files
                             // Attempt to delete the file
                             match fs::remove_file(format!("{}{}", path, file_path)) {
@@ -390,7 +389,7 @@ fn commander_main(
                 MessageType::JobSendPath(_) => {}
                 MessageType::StatisticsSend(_) => {}
                 MessageType::RequestingNet => {}
-                MessageType::NewNetworkPath(path) => {},
+                MessageType::NewNetworkPath(path) => {}
                 MessageType::IdentityConfirmation(_) => {}
                 MessageType::JobSendData(_) => {}
                 MessageType::NewNetworkData(data) => {
@@ -434,7 +433,6 @@ fn commander_main(
                 println!("updating net to: {}", net_path.clone());
                 let exists_file = Path::new(&curr_net).is_file();
                 if exists_file {
-
                     match fs::remove_file(curr_net.clone()) {
                         Ok(_) => {
                             println!("Deleted net {}", curr_net);
