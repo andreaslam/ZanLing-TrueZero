@@ -196,8 +196,11 @@ fn handle_client(
         continue;
     }
 
+    let mut all_clients = clients.lock().unwrap();
+    all_clients
+        .retain(|c| c.peer_addr().is_ok() && c.peer_addr().unwrap() != stream.peer_addr().unwrap());
     println!(
-        "[Server] Client disconnected: {:?}",
+        "[Server] Client disconnected: {}",
         stream.peer_addr().unwrap()
     );
 }
