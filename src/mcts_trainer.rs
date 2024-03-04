@@ -14,7 +14,7 @@ use std::{
     cmp::{max, min},
     fmt,
     ops::Range,
-    time::Instant,
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 use tch::{CModule, Device};
 
@@ -97,7 +97,7 @@ impl Tree {
             (selected_node, idx_li) = self
                 .eval_and_expand(selected_node, &input_b, tensor_exe_send, id)
                 .await;
-            // // println!("{}", self);
+
             self.nodes[selected_node].move_idx = Some(idx_li);
             let mut legal_moves: Vec<Move>;
             if selected_node == 0 {
@@ -294,17 +294,25 @@ impl Tree {
             id: thread_name.clone(),
         };
         // println!("pre-requesting eval {}", id);
-        tensor_exe_send.send_async(pack).await.unwrap();
-        // println!("requested eval {}", id);
         let sw = Instant::now();
-        // println!("pre-received eval {}", id);
-        let output = resender_recv.recv_async().await.unwrap();
-        // println!("received eval {}", id);
-        // // println!(
-        //     "Elapsed time for inference: {}ms",
-        //     sw.elapsed().as_nanos() as f32 / 1e6
-        // );
+        let now_start = SystemTime::now();
+        let since_epoch = now_start
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+        let epoch_seconds_start = since_epoch.as_nanos();
 
+        tensor_exe_send.send_async(pack).await.unwrap();
+        let output = resender_recv.recv_async().await.unwrap();
+        // println!("total_mcts {}s", sw.elapsed().as_nanos() as f32 / 1e9);
+        let now_end = SystemTime::now();
+        let since_epoch = now_end
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+        let epoch_seconds_end = since_epoch.as_nanos();
+        println!(
+            "{} {} {} eval_and_exp",
+            epoch_seconds_start, epoch_seconds_end, id
+        );
         let output = match output {
             ReturnMessage::ReturnMessage(Ok(output)) => output,
             ReturnMessage::ReturnMessage(Err(_)) => panic!("error in returning!"),
@@ -650,15 +658,9 @@ pub async fn get_move(
         policy: all_pol,
     };
 
-    let search_value = if tree.settings.max_nodes == 1 {
-        tree.nodes[0].eval_score
-    } else {
-        tree.nodes[0].get_q_val(tree.settings)
-    };
-
     let search_data = ZeroEvaluation {
         // search data
-        values: search_value,
+        values: tree.nodes[0].get_q_val(tree.settings),
         policy: pi,
     };
 
