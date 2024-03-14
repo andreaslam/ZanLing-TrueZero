@@ -256,7 +256,7 @@ def main():
             print("[Error]", e)
             os.remove("log.npz")  # reset
     counter = 0
-    print("buffer size:",loopbuf.position_count)
+    print("[loaded files] buffer size:", loopbuf.position_count)
     while True:
         log.start_batch()
         received_data = server.receive()
