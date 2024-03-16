@@ -81,7 +81,7 @@ async fn main() {
             })
             .unwrap();
         // selfplay threads
-        let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(num_executors * batch_size); // mcts to executor
+        let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(batch_size); // mcts to executor
         for n in 0..num_generators {
             // // executor
             // sender-receiver pair to communicate for each thread instance to the executor
