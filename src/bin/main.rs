@@ -48,10 +48,10 @@ async fn main() {
         .write_all(serialised.as_bytes())
         .expect("Failed to send data");
     println!("Connected to server!");
-    let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
     let num_executors = 2;
-    let batch_size = 512; // executor batch size
+    let batch_size = 1024; // executor batch size
     let num_generators = num_executors * batch_size * 2;
+    let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(4 * num_generators);
     thread::scope(|s| {
         let mut selfplay_masters: Vec<DataGen> = Vec::new();
         // commander
@@ -60,7 +60,7 @@ async fn main() {
         let mut vec_communicate_exe_recv: Vec<Receiver<String>> = Vec::new();
 
         for _ in 0..num_executors {
-            let (communicate_exe_send, communicate_exe_recv) = flume::bounded::<String>(1);
+            let (communicate_exe_send, communicate_exe_recv) = flume::bounded::<String>(4 * num_generators);
             vec_communicate_exe_send.push(communicate_exe_send);
             vec_communicate_exe_recv.push(communicate_exe_recv);
         }
@@ -81,7 +81,7 @@ async fn main() {
             })
             .unwrap();
         // selfplay threads
-        let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(1); // mcts to executor
+        let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(num_executors * batch_size); // mcts to executor
         for n in 0..num_generators {
             // // executor
             // sender-receiver pair to communicate for each thread instance to the executor
@@ -303,9 +303,9 @@ fn collector_main(
                         } else {
                         }
                     }
-                    println!("{}, {}", thread_name, counter);
+                    // println!("{}, {}", thread_name, counter);
                     counter += 1;
-                    path = format!("games/generator_{}_games_{}", id, counter);
+                    path = format!("games/gen_{}_games_{}", id, counter);
                     bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
                 }
             }
