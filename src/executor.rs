@@ -46,7 +46,7 @@ pub fn executor_main(
     num_threads: usize,
     evals_per_sec_sender: Sender<CollectorMessage>,
 ) {
-    let max_batch_size = min(256, num_threads);
+    let max_batch_size = min(1024, num_threads);
     let mut graph_disconnected = false;
     let mut network: Option<Net> = None;
     let thread_name = std::thread::current()
@@ -220,7 +220,7 @@ pub fn executor_static(
     ctrl_receiver: Receiver<Message>,  // receive control messages
     num_threads: usize,
 ) {
-    let max_batch_size = min(256, num_threads);
+    let max_batch_size = min(1024, num_threads);
     let mut network: Option<Net> = None;
     let thread_name = std::thread::current()
         .name()
