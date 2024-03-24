@@ -42,7 +42,13 @@ fn handle_client(
         let mut all_messages = messages.lock().unwrap();
         let mut net_path = net_path.lock().unwrap();
         let mut net_data = net_data.lock().unwrap();
-        all_messages.push(message.clone());
+
+        // TODO: find more msg types to NOT save to all_messages
+
+        match message.purpose {
+            MessageType::StatisticsSend(_) => {},
+            _ => all_messages.push(message.clone()),
+        }
         let purpose = message.purpose;
         match purpose {
             MessageType::Initialise(entity) => {
