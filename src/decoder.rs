@@ -167,7 +167,7 @@ pub fn process_board_output(
 ) -> Vec<usize> {
     let (wdl, moves_left, value, legal_moves, idx_li, pol_list) = extract_from_tensor(output, bs);
     let mut counter = 0;
-    
+
     tree.nodes[*selected_node_idx].moves_left = moves_left;
     tree.nodes[*selected_node_idx].eval_score = value;
     tree.nodes[*selected_node_idx].wdl = Wdl {
@@ -203,44 +203,46 @@ pub fn process_board_output(
     idx_li
 }
 
-fn extract_from_tensor(output: (Tensor, Tensor), bs: &BoardStack) -> (Vec<f32>, f32, f32, Vec<Move>, Vec<usize>, Vec<f32>) {
+pub fn extract_from_tensor(
+    output: (Tensor, Tensor),
+    bs: &BoardStack,
+) -> (Vec<f32>, f32, f32, Vec<Move>, Vec<usize>, Vec<f32>) {
     let (board_eval, policy) = output;
     // check policy, eval ordering!
-    
+
     let board_eval = board_eval.squeeze();
     let contents = get_contents();
-    
+
     let board_evals: Vec<f32> = Vec::try_from(board_eval).expect("Error");
-    
+
     let value: f32 = board_evals[0].tanh();
-    
+
     let wdl_logits: Tensor = Tensor::from_slice(&board_evals[1..4]);
-    
+
     let wdl = Tensor::softmax(&wdl_logits, 0, Kind::Float);
-    
+
     let wdl: Vec<f32> = Vec::try_from(wdl).expect("Error");
-    
+
     let moves_left = board_evals[4];
-    
-    
+
     let policy = policy.squeeze();
     let policy: Vec<f32> = Vec::try_from(policy).expect("Error");
     let value = f32::try_from(value).expect("Error");
-    
+
     let value = match bs.board().side_to_move() {
         Color::Black => -value,
         Color::White => value,
     };
-    
+
     // step 1 - get the corresponding idx for legal moves
-    
+
     let mut legal_moves: Vec<Move> = Vec::new();
     bs.board().generate_moves(|moves| {
         // Unpack dense move set into move list
         legal_moves.extend(moves);
         false
     });
-    
+
     let mut fm: Vec<Move> = Vec::new();
     if bs.board().side_to_move() == Color::Black {
         // flip move
@@ -254,40 +256,40 @@ fn extract_from_tensor(output: (Tensor, Tensor), bs: &BoardStack) -> (Vec<f32>, 
     } else {
         fm = legal_moves.clone();
     }
-    
+
     legal_moves = fm;
-    
+
     let mut idx_li: Vec<usize> = Vec::new();
-    
+
     for mov in &legal_moves {
         // let mov = format!("{}", mov);
         if let Some(idx) = contents.iter().position(|x| mov == x) {
             idx_li.push(idx as usize);
         }
     }
-    
+
     // step 2 - using the idx in step 1, index all the policies involved
     let mut pol_list: Vec<f32> = Vec::new();
     for id in &idx_li {
         pol_list.push(policy[*id]);
     }
-    
+
     // // println!("{:?}", pol_list);
-    
+
     // step 3 - softmax
-    
+
     let sm = Tensor::from_slice(&pol_list);
-    
+
     let sm = Tensor::softmax(&sm, 0, Kind::Float);
-    
+
     let pol_list: Vec<f32> = Vec::try_from(sm).expect("Error");
-    
+
     // // println!("{:?}", pol_list);
-    
+
     // // println!("        V={}", &value);
-    
+
     // println!("        Value={}", &value);
-    
+
     // step 4 - iteratively append nodes into class
     (wdl, moves_left, value, legal_moves, idx_li, pol_list)
-    }
+}
