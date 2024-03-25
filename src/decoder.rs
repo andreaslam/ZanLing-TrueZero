@@ -165,21 +165,10 @@ pub fn process_board_output(
     tree: &mut Tree,
     bs: &BoardStack,
 ) -> Vec<usize> {
-    let (board_eval, policy) = output;
-    let b = board_eval.clone(&board_eval);
-    let (wdl, value, legal_moves, idx_li, pol_list) = extract_from_tensor(b, policy, bs);
-
-    let board_eval = board_eval.squeeze();
-    
-    let board_evals: Vec<f32> = Vec::try_from(board_eval).expect("Error");
-
-    let moves_left = board_evals[4];
+    let (wdl, moves_left, value, legal_moves, idx_li, pol_list) = extract_from_tensor(output, bs);
+    let mut counter = 0;
     
     tree.nodes[*selected_node_idx].moves_left = moves_left;
-
-    // step 4 - iteratively append nodes into class
-    let mut counter = 0;
-
     tree.nodes[*selected_node_idx].eval_score = value;
     tree.nodes[*selected_node_idx].wdl = Wdl {
         w: wdl[0],
@@ -210,15 +199,16 @@ pub fn process_board_output(
         counter += 1
     }
     tree.nodes[*selected_node_idx].children = ct..ct + counter; // push numbers
-                                                            // // println!("{:?}", tree.nodes.len());
-idx_li
+                                                                // // println!("{:?}", tree.nodes.len());
+    idx_li
 }
 
-pub fn extract_from_tensor(board_eval: Tensor, policy: Tensor, bs: &BoardStack) -> (Vec<f32>, f32, Vec<Move>, Vec<usize>, Vec<f32>) {
-    let contents = get_contents();
+fn extract_from_tensor(output: (Tensor, Tensor), bs: &BoardStack) -> (Vec<f32>, f32, f32, Vec<Move>, Vec<usize>, Vec<f32>) {
+    let (board_eval, policy) = output;
     // check policy, eval ordering!
     
     let board_eval = board_eval.squeeze();
+    let contents = get_contents();
     
     let board_evals: Vec<f32> = Vec::try_from(board_eval).expect("Error");
     
@@ -229,6 +219,9 @@ pub fn extract_from_tensor(board_eval: Tensor, policy: Tensor, bs: &BoardStack) 
     let wdl = Tensor::softmax(&wdl_logits, 0, Kind::Float);
     
     let wdl: Vec<f32> = Vec::try_from(wdl).expect("Error");
+    
+    let moves_left = board_evals[4];
+    
     
     let policy = policy.squeeze();
     let policy: Vec<f32> = Vec::try_from(policy).expect("Error");
@@ -294,5 +287,7 @@ pub fn extract_from_tensor(board_eval: Tensor, policy: Tensor, bs: &BoardStack) 
     // // println!("        V={}", &value);
     
     // println!("        Value={}", &value);
-    (wdl, value, legal_moves, idx_li, pol_list)
+    
+    // step 4 - iteratively append nodes into class
+    (wdl, moves_left, value, legal_moves, idx_li, pol_list)
     }
