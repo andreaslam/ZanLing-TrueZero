@@ -13,6 +13,7 @@ pub mod mvs;
 pub mod selfplay;
 pub mod settings;
 pub mod uci;
+pub mod superluminal;
 #[cfg(test)]
 
 mod tests {
