@@ -80,12 +80,29 @@ impl Tree {
         }
     }
 
-    pub async fn step(&mut self, tensor_exe_send: Sender<Packet>, sw: Instant, id: usize) {
+    pub async fn step(&mut self, tensor_exe_send: &Sender<Packet>, sw: Instant, id: usize) {
         // let sw = Instant::now();
         let display_str = self.display_node(0);
         // // println!("root node: {}", &display_str);
         // const EPS: f32 = 0.3; // 0.3 for chess
+        let now_start_proc = SystemTime::now();
+        let since_epoch_proc = now_start_proc
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+
+        let epoch_seconds_start_proc = since_epoch_proc.as_nanos();
         let (selected_node, input_b, pv, (min_depth, max_depth)) = self.select();
+        let now_end_proc = SystemTime::now();
+        let since_epoch_proc = now_end_proc
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+        let epoch_seconds_end_proc = since_epoch_proc.as_nanos();
+        //     if id % 512 == 0 {
+        //     println!(
+        //         "{} {} {} select",
+        //         epoch_seconds_start_proc, epoch_seconds_end_proc, id
+        //     );
+        // }
 
         // self.nodes[0].display_full_tree(self);
 
@@ -95,7 +112,7 @@ impl Tree {
         // check for terminal state
         if !input_b.is_terminal() {
             (selected_node, idx_li) = self
-                .eval_and_expand(selected_node, &input_b, tensor_exe_send, id)
+                .eval_and_expand(selected_node, &input_b, &tensor_exe_send, id)
                 .await;
 
             self.nodes[selected_node].move_idx = Some(idx_li);
@@ -151,7 +168,24 @@ impl Tree {
                 }
             }
         }
+        let now_start_proc = SystemTime::now();
+        let since_epoch_proc = now_start_proc
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+
+        let epoch_seconds_start_proc = since_epoch_proc.as_nanos();
         self.backpropagate(selected_node);
+        let now_end_proc = SystemTime::now();
+        let since_epoch_proc = now_end_proc
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+        let epoch_seconds_end_proc = since_epoch_proc.as_nanos();
+        if id % 512 == 0 {
+            println!(
+                "{} {} {} backprop_tree",
+                epoch_seconds_start_proc, epoch_seconds_end_proc, id
+            );
+        }
         // for child in &self.nodes[0].children {
         //     let display_str = self.display_node(*child);
         //     // // println!("children: {}", &display_str);
@@ -271,12 +305,12 @@ impl Tree {
         &mut self,
         selected_node_idx: usize,
         bs: &BoardStack,
-        tensor_exe_send: Sender<Packet>,
+        tensor_exe_send: &Sender<Packet>,
         id: usize,
     ) -> (usize, Vec<usize>) {
         let sw = Instant::now();
         let fenstr = format!("{}", bs.board());
-        // // println!("    board FEN: {}", fenstr);
+        // // println!("    board FEN: {}", fenstr);P
         // // println!("    ran NN:");
 
         let input_tensor = convert_board(&bs);
@@ -295,33 +329,72 @@ impl Tree {
         };
         // println!("pre-requesting eval {}", id);
         let sw = Instant::now();
-        let now_start = SystemTime::now();
-        let since_epoch = now_start
+        let now_start_send = SystemTime::now();
+        let since_epoch_send = now_start_send
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards");
-        let epoch_seconds_start = since_epoch.as_nanos();
 
+        let epoch_seconds_start_send = since_epoch_send.as_nanos();
         tensor_exe_send.send_async(pack).await.unwrap();
-        let output = resender_recv.recv_async().await.unwrap();
-        // println!("total_mcts {}s", sw.elapsed().as_nanos() as f32 / 1e9);
-        let now_end = SystemTime::now();
-        let since_epoch = now_end
+        let now_end_send = SystemTime::now();
+        let since_epoch_send = now_end_send
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards");
-        let epoch_seconds_end = since_epoch.as_nanos();
-        // println!(
-        //     "{} {} {} eval_and_exp",
-        //     epoch_seconds_start, epoch_seconds_end, id
-        // );
+        let epoch_seconds_end_send = since_epoch_send.as_nanos();
+
+        if id % 512 == 0 {
+            println!(
+                "{} {} {} send_request",
+                epoch_seconds_start_send, epoch_seconds_end_send, id
+            );
+        }
+
+        let now_start_recv = SystemTime::now();
+        let since_epoch_recv = now_start_recv
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+
+        let epoch_seconds_start_recv = since_epoch_recv.as_nanos();
+
+        let output = resender_recv.recv_async().await.unwrap();
+        // println!("total_waiting_for_gpu_eval {}s", sw.elapsed().as_nanos() as f32 / 1e9);
+        let now_end_recv = SystemTime::now();
+        let since_epoch_recv = now_end_recv
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+        let epoch_seconds_end_recv = since_epoch_recv.as_nanos();
+        if id % 512 == 0 {
+            println!(
+                "{} {} {} recv_request",
+                epoch_seconds_start_recv, epoch_seconds_end_recv, id
+            );
+
+            // println!("THREAD ID {} CHANNEL_LEN {}", id, tensor_exe_send.len());
+        }
         let output = match output {
             ReturnMessage::ReturnMessage(Ok(output)) => output,
             ReturnMessage::ReturnMessage(Err(_)) => panic!("error in returning!"),
         };
         // // println!("{},{}", thread_name,output.id);
         assert!(thread_name == output.id);
+        let now_start_proc = SystemTime::now();
+        let since_epoch_proc = now_start_proc
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
 
+        let epoch_seconds_start_proc = since_epoch_proc.as_nanos();
         let idx_li = process_board_output(output.packet, &selected_node_idx, self, &bs);
-
+        let now_end_proc = SystemTime::now();
+        let since_epoch_proc = now_end_proc
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+        let epoch_seconds_end_proc = since_epoch_proc.as_nanos();
+        if id % 512 == 0 {
+            println!(
+                "{} {} {} proc",
+                epoch_seconds_start_proc, epoch_seconds_end_proc, id
+            );
+        }
         // let idx_li = eval_board(&bs, &net, self, &selected_node_idx);
         (selected_node_idx, idx_li)
     }
@@ -549,7 +622,7 @@ impl Node {
 
 pub async fn get_move(
     bs: BoardStack,
-    tensor_exe_send: Sender<Packet>,
+    tensor_exe_send: &Sender<Packet>,
     settings: SearchSettings,
     id: usize,
 ) -> (
@@ -581,11 +654,24 @@ pub async fn get_move(
             .to_owned();
         // println!("step {}", tree.nodes[0].visits);
         // println!("thread {}, step {}", thread_name, tree.nodes[0].visits);
-        tree.step(tensor_exe_send.clone(), sw, id).await;
-        // // println!(
-        //     "Elapsed time for step: {}ms",
-        //     sw.elapsed().as_nanos() as f32 / 1e6
-        // );
+        let now_start_proc = SystemTime::now();
+        let since_epoch_proc = now_start_proc
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+
+        let epoch_seconds_start_proc = since_epoch_proc.as_nanos();
+        tree.step(&tensor_exe_send, sw, id).await;
+        let now_end_proc = SystemTime::now();
+        let since_epoch_proc = now_end_proc
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+        let epoch_seconds_end_proc = since_epoch_proc.as_nanos();
+        //     if id % 512 == 0 {
+        //     println!(
+        //         "{} {} {} step",
+        //         epoch_seconds_start_proc, epoch_seconds_end_proc, id
+        //     );
+        // }
     }
 
     let mut child_visits: Vec<u32> = Vec::new();
