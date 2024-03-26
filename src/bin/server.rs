@@ -21,10 +21,11 @@ fn handle_client(
     let mut reader = BufReader::new(&stream);
     let mut has_net = false;
     loop {
+        
         let mut recv_msg = String::new();
         if let Err(_) = reader.read_line(&mut recv_msg) {
             recv_msg.clear();
-            continue;
+            break;
         }
 
         if !recv_msg.is_empty() {
@@ -200,8 +201,13 @@ fn handle_client(
             }
             recv_msg.clear();
             continue;
+        } else {
+            break
         }
     }
+    println!("[Server] client disconnected {:#}", stream.peer_addr().unwrap());
+    drop(cloned_handle);
+    drop(reader);
 }
 
 fn main() {
