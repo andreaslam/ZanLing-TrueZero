@@ -2,6 +2,7 @@ pub mod boardmanager;
 pub mod dataformat;
 pub mod decoder;
 pub mod dirichlet;
+pub mod dummyreq;
 pub mod elo;
 pub mod executor;
 pub mod fileformat;
@@ -12,7 +13,6 @@ pub mod mvs;
 pub mod selfplay;
 pub mod settings;
 pub mod uci;
-
 #[cfg(test)]
 
 mod tests {
