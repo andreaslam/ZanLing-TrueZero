@@ -12,6 +12,7 @@ use std::{
 };
 use tokio::task::spawn;
 use tz_rust::{
+    dummyreq::{send_request, send_request_async},
     executor::{executor_main, Packet},
     fileformat::BinaryOutput,
     mcts_trainer::TypeRequest::TrainerSearch,
@@ -37,7 +38,7 @@ async fn main() {
         };
     };
     // identification - this is rust data generation
-
+    
     let message = MessageServer {
         purpose: MessageType::Initialise(Entity::RustDataGen),
     };
@@ -48,22 +49,24 @@ async fn main() {
         .write_all(serialised.as_bytes())
         .expect("Failed to send data");
     println!("Connected to server!");
-    let num_executors = 2;
+    let num_executors = 1;
     let batch_size = 1024; // executor batch size
-    let num_generators = num_executors * batch_size * 2;
-    let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(4 * num_generators);
+    let num_generators = num_executors * batch_size * 4;
+    let (game_sender, game_receiver) =
+        flume::bounded::<CollectorMessage>(num_executors * batch_size);
     thread::scope(|s| {
-        let mut selfplay_masters: Vec<DataGen> = Vec::new();
         // commander
-
-        let mut vec_communicate_exe_send: Vec<Sender<String>> = Vec::new();
-        let mut vec_communicate_exe_recv: Vec<Receiver<String>> = Vec::new();
+        
+        let mut vec_communicate_exe_send: Vec<Sender<String>> = Vec::new(); // commander to executor, send net
+        let mut vec_communicate_exe_recv: Vec<Receiver<String>> = Vec::new(); // commander to executor, send net
 
         for _ in 0..num_executors {
             let (communicate_exe_send, communicate_exe_recv) = flume::bounded::<String>(4 * num_generators);
             vec_communicate_exe_send.push(communicate_exe_send);
             vec_communicate_exe_recv.push(communicate_exe_recv);
         }
+
+
 
         // send-recv pair between commander and collector
 
@@ -80,45 +83,14 @@ async fn main() {
                 )
             })
             .unwrap();
+        
+        
         // selfplay threads
-        let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(batch_size); // mcts to executor
-        for n in 0..num_generators {
-            // // executor
-            // sender-receiver pair to communicate for each thread instance to the executor
-            let sender_clone = game_sender.clone();
-            let mut selfplay_master = DataGen { iterations: 1 };
-            let tensor_exe_send_clone = tensor_exe_send.clone();
-            let nps_sender = game_sender.clone();
-
-            let handle = spawn(async move {
-                generator_main(
-                    sender_clone,
-                    selfplay_master,
-                    tensor_exe_send_clone,
-                    nps_sender,
-                    n,
-                )
-                .await
-            });
-            handles_vec.push(handle);
-
-            selfplay_masters.push(selfplay_master.clone());
-        }
-        // collector
-
-        let _ = s
-            .builder()
-            .name("collector".to_string())
-            .spawn(|_| {
-                collector_main(
-                    &game_receiver,
-                    &mut stream.try_clone().expect("clone failed"),
-                    id_recv,
-                )
-            })
-            .unwrap();
-        // executor
-        let mut n = 0;
+        let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(num_executors * num_generators); // mcts to executor
+        let spam = tensor_exe_send.clone();
+        
+         // executor
+        let mut n  =0;
         for communicate_exe_recv in vec_communicate_exe_recv {
             // send/recv pair between executor and commander
             let eval_per_sec_sender = game_sender.clone();
@@ -137,6 +109,49 @@ async fn main() {
                 .unwrap();
             n += 1;
         }
+
+        // for n in 0..num_generators {
+        //     // sender-receiver pair to communicate for each thread instance to the executor
+        //     let sender_clone = game_sender.clone();
+        //     let mut selfplay_master = DataGen { iterations: 1 };
+        //     let tensor_exe_send_clone = tensor_exe_send.clone();
+        //     let nps_sender = game_sender.clone();
+
+        //     let handle = spawn(async move {
+        //         generator_main(
+        //             sender_clone,
+        //             selfplay_master,
+        //             tensor_exe_send_clone,
+        //             nps_sender,
+        //             n,
+        //         )
+        //         .await
+        //     });
+        //     handles_vec.push(handle);
+        // }
+        // dummy thread
+        for n in 0..num_generators {
+            let tensor_exe_send_clone = tensor_exe_send.clone();
+            let spam_handle = spam.clone();
+            let h1 = spawn(async move { send_request_async(spam_handle, n).await });
+
+            handles_vec.push(h1);
+            // std::thread::spawn(|| {send_request(tensor_exe_send_clone)});
+        }
+
+        // collector
+
+        let _ = s
+            .builder()
+            .name("collector".to_string())
+            .spawn(|_| {
+                collector_main(
+                    &game_receiver,
+                    &mut stream.try_clone().expect("clone failed"),
+                    id_recv,
+                )
+            })
+            .unwrap();
     })
     .unwrap();
     for handle in handles_vec {
@@ -158,7 +173,8 @@ async fn generator_main(
         wdl: None,
         moves_left: None,
         c_puct: 2.0,
-        max_nodes: 400,
+        // max_nodes: 400,
+        max_nodes: 2,
         alpha: 0.3,
         eps: 0.3,
         search_type: TrainerSearch(None),
@@ -166,12 +182,8 @@ async fn generator_main(
     };
     loop {
         let sim = datagen
-            .play_game(
-                tensor_exe_send.clone(),
-                nps_sender.clone(),
-                settings.clone(),
-                id,
-            )
+            // .fast_data(&tensor_exe_send, &nps_sender, &settings, id)
+            .play_game(&tensor_exe_send, &nps_sender, &settings, id)
             .await;
 
         // match settings.search_type {
@@ -440,9 +452,9 @@ fn commander_main(
                         Err(e) => eprintln!("Error deleting the file: {}", e),
                     }
                 }
-                for exe_sender in &vec_exe_sender {
-                    exe_sender.send(net_path.clone()).unwrap();
-                    // println!("SENT!");
+for exe_sender in &vec_exe_sender {
+                exe_sender.send(net_path.clone()).unwrap();
+// println!("SENT!");
                 }
 
                 curr_net = net_path.clone();
