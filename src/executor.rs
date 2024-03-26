@@ -1,5 +1,6 @@
-use crate::{decoder::eval_state, mcts_trainer::Net, selfplay::CollectorMessage};
+use crate::{decoder::eval_state, mcts_trainer::Net, selfplay::CollectorMessage, superluminal::{CL_RED, CL_BLUE, CL_ORANGE}};
 use flume::{Receiver, RecvError, Selector, Sender};
+use superluminal_perf::{begin_event_with_color, end_event};
 use std::{
     cmp::min,
     collections::VecDeque,
@@ -66,6 +67,7 @@ pub fn executor_main(
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards");
     let mut epoch_seconds_start = since_epoch.as_nanos(); // batch
+    begin_event_with_color("waiting_for_batch", CL_ORANGE);
     loop {
         let sw = Instant::now();
         // // println!("thread {} loop {}:", thread_name, debug_counter);
@@ -123,6 +125,7 @@ pub fn executor_main(
                         .duration_since(UNIX_EPOCH)
                         .expect("Time went backwards");
                     let epoch_seconds_end = since_epoch.as_nanos();
+                    end_event();
                     println!(
                         "{} {} {} waiting_for_batch",
                         epoch_seconds_start, epoch_seconds_end, thread_name
@@ -146,8 +149,10 @@ pub fn executor_main(
                         .duration_since(UNIX_EPOCH)
                         .expect("Time went backwards");
                     let epoch_seconds_start_evals = since_epoch_evals.as_nanos();
+                    begin_event_with_color("eval", CL_BLUE);
                     let (board_eval, policy) =
                         eval_state(input_tensors, network).expect("Evaluation failed");
+                    end_event();
                     let now_end_evals = SystemTime::now();
                     let since_epoch_evals = now_end_evals
                         .duration_since(UNIX_EPOCH)
@@ -173,6 +178,7 @@ pub fn executor_main(
                         .duration_since(UNIX_EPOCH)
                         .expect("Time went backwards");
                     let epoch_seconds_start_packing = since_epoch_packing.as_nanos();
+                    begin_event_with_color("packing", CL_RED);
                     for i in 0..batch_size {
                         let sender = output_senders
                             .pop_front()
@@ -188,7 +194,7 @@ pub fn executor_main(
                             .expect("Should be able to send the result");
                         // let _ = sender.send(ReturnMessage::ReturnMessage(Ok(return_pack)));
                     }
-
+                    end_event();
                     let now_end_packing = SystemTime::now();
                     let since_epoch_packing = now_end_packing
                         .duration_since(UNIX_EPOCH)
@@ -209,6 +215,7 @@ pub fn executor_main(
                         .duration_since(UNIX_EPOCH)
                         .expect("Time went backwards");
                     epoch_seconds_start = since_epoch.as_nanos();
+                    begin_event_with_color("waiting_for_batch", CL_ORANGE);
                 }
             }
             Message::NewNetwork(Err(RecvError::Disconnected)) => {
