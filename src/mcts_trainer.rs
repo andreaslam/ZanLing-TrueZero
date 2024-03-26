@@ -1,12 +1,7 @@
 use crate::{
-    boardmanager::BoardStack,
-    dataformat::ZeroEvaluation,
-    decoder::{convert_board, process_board_output},
-    dirichlet::StableDirichlet,
-    executor::{Packet, ReturnMessage},
-    settings::SearchSettings,
-    uci::eval_in_cp,
+    boardmanager::BoardStack, dataformat::ZeroEvaluation, decoder::{convert_board, process_board_output}, dirichlet::StableDirichlet, executor::{Packet, ReturnMessage}, settings::SearchSettings, superluminal::{CL_GREEN, CL_PINK}, uci::eval_in_cp
 };
+use superluminal_perf::{begin_event_with_color, end_event};
 use cozy_chess::{Color, GameStatus, Move};
 use flume::Sender;
 use rand::{rngs::StdRng, Rng, SeedableRng};
@@ -335,7 +330,9 @@ impl Tree {
             .expect("Time went backwards");
 
         let epoch_seconds_start_send = since_epoch_send.as_nanos();
+        begin_event_with_color("send_req", CL_GREEN);
         tensor_exe_send.send_async(pack).await.unwrap();
+        end_event();
         let now_end_send = SystemTime::now();
         let since_epoch_send = now_end_send
             .duration_since(UNIX_EPOCH)
@@ -355,8 +352,9 @@ impl Tree {
             .expect("Time went backwards");
 
         let epoch_seconds_start_recv = since_epoch_recv.as_nanos();
-
+        begin_event_with_color("recv_request", CL_PINK);
         let output = resender_recv.recv_async().await.unwrap();
+        end_event();
         // println!("total_waiting_for_gpu_eval {}s", sw.elapsed().as_nanos() as f32 / 1e9);
         let now_end_recv = SystemTime::now();
         let since_epoch_recv = now_end_recv
