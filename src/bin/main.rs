@@ -20,7 +20,7 @@ use tz_rust::{
     selfplay::{CollectorMessage, DataGen},
     settings::SearchSettings,
 };
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread", worker_threads = 3)]
 async fn main() {
     env::set_var("RUST_BACKTRACE", "1");
 
@@ -110,34 +110,34 @@ async fn main() {
             n += 1;
         }
 
-        // for n in 0..num_generators {
-        //     // sender-receiver pair to communicate for each thread instance to the executor
-        //     let sender_clone = game_sender.clone();
-        //     let mut selfplay_master = DataGen { iterations: 1 };
-        //     let tensor_exe_send_clone = tensor_exe_send.clone();
-        //     let nps_sender = game_sender.clone();
-
-        //     let handle = spawn(async move {
-        //         generator_main(
-        //             sender_clone,
-        //             selfplay_master,
-        //             tensor_exe_send_clone,
-        //             nps_sender,
-        //             n,
-        //         )
-        //         .await
-        //     });
-        //     handles_vec.push(handle);
-        // }
-        // dummy thread
         for n in 0..num_generators {
+            // sender-receiver pair to communicate for each thread instance to the executor
+            let sender_clone = game_sender.clone();
+            let mut selfplay_master = DataGen { iterations: 1 };
             let tensor_exe_send_clone = tensor_exe_send.clone();
-            let spam_handle = spam.clone();
-            let h1 = spawn(async move { send_request_async(spam_handle, n).await });
+            let nps_sender = game_sender.clone();
 
-            handles_vec.push(h1);
-            // std::thread::spawn(|| {send_request(tensor_exe_send_clone)});
+            let handle = spawn(async move {
+                generator_main(
+                    sender_clone,
+                    selfplay_master,
+                    tensor_exe_send_clone,
+                    nps_sender,
+                    n,
+                )
+                .await
+            });
+            handles_vec.push(handle);
         }
+        // dummy thread
+        // for n in 0..num_generators {
+        //     let tensor_exe_send_clone = tensor_exe_send.clone();
+        //     let spam_handle = spam.clone();
+        //     let h1 = spawn(async move { send_request_async(spam_handle, n).await });
+
+        //     handles_vec.push(h1);
+        //     // std::thread::spawn(|| {send_request(tensor_exe_send_clone)});
+        // }
 
         // collector
 
@@ -174,7 +174,7 @@ async fn generator_main(
         moves_left: None,
         c_puct: 2.0,
         // max_nodes: 400,
-        max_nodes: 2,
+        max_nodes: 400,
         alpha: 0.3,
         eps: 0.3,
         search_type: TrainerSearch(None),

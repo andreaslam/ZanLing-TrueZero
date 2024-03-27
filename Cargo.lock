@@ -934,6 +934,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81cdd64d312baedb58e21336b31bc043b77e01cc99033ce76ef539f78e965ebc"
 
 [[package]]
+name = "superluminal-perf"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aece3c26c5c4de8c11b8bdfeacd0cf8da28fdd3004dc5cce82e46c724bc4b8c4"
+dependencies = [
+ "superluminal-perf-sys",
+]
+
+[[package]]
+name = "superluminal-perf-sys"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2eb52c360c1d83ab4d4ccfb0728f4648122e5548396e576e3d096659366776c"
+
+[[package]]
 name = "syn"
 version = "2.0.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -946,9 +961,9 @@ dependencies = [
 
 [[package]]
 name = "tch"
-version = "0.14.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ed5dddab3812892bf5fb567136e372ea49f31672931e21cec967ca68aec03da"
+checksum = "7c7cb00bc2770454b515388d45be7097a3ded2eca172f3dcdb7ca4cc06c40bf1"
 dependencies = [
  "half",
  "lazy_static",
@@ -1030,9 +1045,9 @@ dependencies = [
 
 [[package]]
 name = "torch-sys"
-version = "0.14.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "803446f89fb877a117503dbfb8375b6a29fa8b0e0f44810fac3863c798ecef22"
+checksum = "29e0244e5b148a31dd7fe961165037d1927754d024095c1013937532d7e73a22"
 dependencies = [
  "anyhow",
  "cc",
@@ -1063,6 +1078,7 @@ dependencies = [
  "rand_distr",
  "serde",
  "serde_json",
+ "superluminal-perf",
  "tch",
  "tokio",
 ]

@@ -176,10 +176,10 @@ impl Tree {
             .expect("Time went backwards");
         let epoch_seconds_end_proc = since_epoch_proc.as_nanos();
         if id % 512 == 0 {
-            println!(
-                "{} {} {} backprop_tree",
-                epoch_seconds_start_proc, epoch_seconds_end_proc, id
-            );
+            // println!(
+            //     "{} {} {} backprop_tree",
+            //     epoch_seconds_start_proc, epoch_seconds_end_proc, id
+            // );
         }
         // for child in &self.nodes[0].children {
         //     let display_str = self.display_node(*child);
@@ -340,10 +340,10 @@ impl Tree {
         let epoch_seconds_end_send = since_epoch_send.as_nanos();
 
         if id % 512 == 0 {
-            println!(
-                "{} {} {} send_request",
-                epoch_seconds_start_send, epoch_seconds_end_send, id
-            );
+            // println!(
+            //     "{} {} {} send_request",
+            //     epoch_seconds_start_send, epoch_seconds_end_send, id
+            // );
         }
 
         let now_start_recv = SystemTime::now();

@@ -44,10 +44,9 @@ fn handle_new_graph(network: &mut Option<Net>, graph: Option<String>, thread_nam
 pub fn executor_main(
     net_receiver: Receiver<String>,
     tensor_receiver: Receiver<Packet>, // receive tensors from mcts
-    num_threads: usize,
+    max_batch_size: usize,
     evals_per_sec_sender: Sender<CollectorMessage>,
 ) {
-    let max_batch_size = min(1024, num_threads);
     let mut graph_disconnected = false;
     let mut network: Option<Net> = None;
     let thread_name = std::thread::current()
@@ -67,8 +66,8 @@ pub fn executor_main(
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards");
     let mut epoch_seconds_start = since_epoch.as_nanos(); // batch
-    begin_event_with_color("waiting_for_batch", CL_ORANGE);
     loop {
+        begin_event_with_color("waiting_for_job", CL_ORANGE);
         let sw = Instant::now();
         // // println!("thread {} loop {}:", thread_name, debug_counter);
         // // println!("    thread {} number of requests made from mcts: {}, {}", thread_name, output_senders.len(), num_threads);
@@ -95,6 +94,8 @@ pub fn executor_main(
         .expect("Time went backwards");
     let epoch_seconds_start_job = since_epoch.as_nanos();
     let message = selector.wait();
+
+    end_event();
     
     // println!("RECV SIZE {} NUM SENDERS {} RECV {}", tensor_receiver.len(), tensor_receiver.sender_count(), tensor_receiver.receiver_count());
         match message {
@@ -120,18 +121,21 @@ pub fn executor_main(
                 // evaluate batches
                 waiting_job = Instant::now();
                 while input_vec.len() >= max_batch_size {
+                    
+
                     let now_end = SystemTime::now();
                     let since_epoch = now_end
                         .duration_since(UNIX_EPOCH)
                         .expect("Time went backwards");
                     let epoch_seconds_end = since_epoch.as_nanos();
-                    end_event();
-                    println!(
-                        "{} {} {} waiting_for_batch",
-                        epoch_seconds_start, epoch_seconds_end, thread_name
-                    );
+                    // println!(
+                    //     "{} {} {} waiting_for_batch",
+                    //     epoch_seconds_start, epoch_seconds_end, thread_name
+                    // );
                     let network = network.as_mut().expect("Network should be available");
                     let elapsed = waiting_batch.elapsed().as_nanos() as f32 / 1e6;
+
+
                     // println!("loop {} time taken for buffer to fill: {}ms", debug_counter, elapsed);
                     let sw_tensor_prep = Instant::now();
                     let batch_size = min(max_batch_size, input_vec.len());
@@ -149,22 +153,27 @@ pub fn executor_main(
                         .duration_since(UNIX_EPOCH)
                         .expect("Time went backwards");
                     let epoch_seconds_start_evals = since_epoch_evals.as_nanos();
+                    
                     begin_event_with_color("eval", CL_BLUE);
+                    let start = Instant::now();
                     let (board_eval, policy) =
                         eval_state(input_tensors, network).expect("Evaluation failed");
+                    let delta = start.elapsed().as_secs_f32();
+                    println!("Eval took {}, tp {}, batch_size {}, max_batch_size {}",delta, batch_size as f32 / delta, batch_size, max_batch_size);
                     end_event();
                     let now_end_evals = SystemTime::now();
                     let since_epoch_evals = now_end_evals
                         .duration_since(UNIX_EPOCH)
                         .expect("Time went backwards");
                     let epoch_seconds_end_evals = since_epoch_evals.as_nanos();
-                    println!(
-                        "{} {} {} evaluation_time_taken",
-                        epoch_seconds_start_evals, epoch_seconds_end_evals, thread_name
-                    );
+                    // println!(
+                    //     "{} {} {} evaluation_time_taken",
+                    //     epoch_seconds_start_evals, epoch_seconds_end_evals, thread_name
+                    // );
                     let sw_inference = Instant::now();
                     let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
                     // let evals_per_sec = batch_size as f32 / elapsed;
+
                     let _ = evals_per_sec_sender
                         .send(CollectorMessage::ExecutorStatistics(batch_size as f32));
                     // println!("inference_time {}s", elapsed);
@@ -201,10 +210,10 @@ pub fn executor_main(
                         .expect("Time went backwards");
                     let epoch_seconds_end_packing = since_epoch_packing.as_nanos();
 
-                    println!(
-                        "{} {} {} packing_time",
-                        epoch_seconds_start_packing, epoch_seconds_end_packing, thread_name
-                    );
+                    // println!(
+                    //     "{} {} {} packing_time",
+                    //     epoch_seconds_start_packing, epoch_seconds_end_packing, thread_name
+                    // );
 
                     let packing_elapsed = packing_time.elapsed().as_nanos() as f32 / 1e6;
                     // println!("loop {} packing time {}ms", debug_counter, packing_elapsed);
@@ -215,7 +224,7 @@ pub fn executor_main(
                         .duration_since(UNIX_EPOCH)
                         .expect("Time went backwards");
                     epoch_seconds_start = since_epoch.as_nanos();
-                    begin_event_with_color("waiting_for_batch", CL_ORANGE);
+                    // begin_event_with_color("waiting_for_batch", CL_ORANGE);
                 }
             }
             Message::NewNetwork(Err(RecvError::Disconnected)) => {
