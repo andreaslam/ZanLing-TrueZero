@@ -61,8 +61,7 @@ fn handle_client(
                                         purpose: MessageType::Initialise(Entity::RustDataGen),
                                     }
                                 })
-                                .count()
-                                - 1;
+                                .count();
                             // println!("id {}", id);
                             message_send = MessageServer {
                                 purpose: MessageType::IdentityConfirmation((entity, id)),
@@ -77,8 +76,7 @@ fn handle_client(
                                         purpose: MessageType::Initialise(Entity::PythonTraining),
                                     }
                                 })
-                                .count()
-                                - 1;
+                                .count();
                             message_send = MessageServer {
                                 purpose: MessageType::IdentityConfirmation((entity, id)),
                             };
@@ -106,8 +104,7 @@ fn handle_client(
                                         purpose: MessageType::Initialise(Entity::GUIMonitor),
                                     }
                                 })
-                                .count()
-                                - 1;
+                                .count();
                             message_send = MessageServer {
                                 purpose: MessageType::IdentityConfirmation((entity, id)),
                             };
@@ -121,8 +118,7 @@ fn handle_client(
                                         purpose: MessageType::Initialise(Entity::GUIMonitor),
                                     }
                                 })
-                                .count()
-                                - 1;
+                                .count();
                             message_send = MessageServer {
                                 purpose: MessageType::IdentityConfirmation((entity, id)),
                             };
