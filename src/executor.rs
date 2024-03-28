@@ -159,7 +159,7 @@ pub fn executor_main(
                     let (board_eval, policy) =
                         eval_state(input_tensors, network).expect("Evaluation failed");
                     let delta = start.elapsed().as_secs_f32();
-                    println!("Eval took {}, tp {}, batch_size {}, max_batch_size {}",delta, batch_size as f32 / delta, batch_size, max_batch_size);
+                    // println!("Eval took {}, tp {}, batch_size {}, max_batch_size {}",delta, batch_size as f32 / delta, batch_size, max_batch_size);
                     end_event();
                     let now_end_evals = SystemTime::now();
                     let since_epoch_evals = now_end_evals
