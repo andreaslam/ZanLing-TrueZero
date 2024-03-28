@@ -434,6 +434,9 @@ fn commander_main(
                     Entity::GUIMonitor => {
                         println!("[Warning] Wrong entity, got {:?}", entity)
                     }
+                    Entity::TBHost => {
+                        println!("[Warning] Wrong entity, got {:?}", entity)
+                    }
                 },
                 MessageType::JobSendData(_) => {}
                 MessageType::NewNetworkData(_) => {}
