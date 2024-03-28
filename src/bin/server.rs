@@ -112,6 +112,21 @@ fn handle_client(
                                 purpose: MessageType::IdentityConfirmation((entity, id)),
                             };
                         }
+                        Entity::TBHost => {
+                            all_messages.push(saved_msg.clone());
+                            let id = all_messages
+                                .iter()
+                                .filter(|&n| {
+                                    *n == MessageServer {
+                                        purpose: MessageType::Initialise(Entity::GUIMonitor),
+                                    }
+                                })
+                                .count()
+                                - 1;
+                            message_send = MessageServer {
+                                purpose: MessageType::IdentityConfirmation((entity, id)),
+                            };
+                        },
                     }
                     let mut serialised =
                         serde_json::to_string(&message_send).expect("serialization failed");
