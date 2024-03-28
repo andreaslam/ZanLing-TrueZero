@@ -72,6 +72,13 @@ PYTORCH_PATH=$(python3 -c "import torch; print(torch.__path__[0])")
 export LD_LIBRARY_PATH="$PYTORCH_PATH/lib:$LD_LIBRARY_PATH"
 ```
 
+On Windows, it's
+```
+$env:LIBTORCH_USE_PYTORCH=1
+$PYTORCH_PATH = python -c "import torch; print(torch.__path__[0])"
+$env:LD_LIBRARY_PATH = "$PYTORCH_PATH\lib;$env:LD_LIBRARY_PATH"
+```
+
 ## Running Data Generation and Training
 
 Before data generation, ensure that the loaded copy of the Repository is up-to-date.
