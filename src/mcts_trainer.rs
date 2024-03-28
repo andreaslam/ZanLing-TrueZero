@@ -361,14 +361,14 @@ impl Tree {
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards");
         let epoch_seconds_end_recv = since_epoch_recv.as_nanos();
-        if id % 512 == 0 {
-            println!(
-                "{} {} {} recv_request",
-                epoch_seconds_start_recv, epoch_seconds_end_recv, id
-            );
+        // if id % 512 == 0 {
+        //     println!(
+        //         "{} {} {} recv_request",
+        //         epoch_seconds_start_recv, epoch_seconds_end_recv, id
+        //     );
 
-            // println!("THREAD ID {} CHANNEL_LEN {}", id, tensor_exe_send.len());
-        }
+        //     // println!("THREAD ID {} CHANNEL_LEN {}", id, tensor_exe_send.len());
+        // }
         let output = match output {
             ReturnMessage::ReturnMessage(Ok(output)) => output,
             ReturnMessage::ReturnMessage(Err(_)) => panic!("error in returning!"),
@@ -387,12 +387,12 @@ impl Tree {
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards");
         let epoch_seconds_end_proc = since_epoch_proc.as_nanos();
-        if id % 512 == 0 {
-            println!(
-                "{} {} {} proc",
-                epoch_seconds_start_proc, epoch_seconds_end_proc, id
-            );
-        }
+        // if id % 512 == 0 {
+        //     println!(
+        //         "{} {} {} proc",
+        //         epoch_seconds_start_proc, epoch_seconds_end_proc, id
+        //     );
+        // }
         // let idx_li = eval_board(&bs, &net, self, &selected_node_idx);
         (selected_node_idx, idx_li)
     }
