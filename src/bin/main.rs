@@ -38,7 +38,7 @@ async fn main() {
         };
     };
     // identification - this is rust data generation
-    
+
     let message = MessageServer {
         purpose: MessageType::Initialise(Entity::RustDataGen),
     };
@@ -56,17 +56,16 @@ async fn main() {
         flume::bounded::<CollectorMessage>(num_executors * batch_size);
     thread::scope(|s| {
         // commander
-        
+
         let mut vec_communicate_exe_send: Vec<Sender<String>> = Vec::new(); // commander to executor, send net
         let mut vec_communicate_exe_recv: Vec<Receiver<String>> = Vec::new(); // commander to executor, send net
 
         for _ in 0..num_executors {
-            let (communicate_exe_send, communicate_exe_recv) = flume::bounded::<String>(4 * num_generators);
+            let (communicate_exe_send, communicate_exe_recv) =
+                flume::bounded::<String>(4 * num_generators);
             vec_communicate_exe_send.push(communicate_exe_send);
             vec_communicate_exe_recv.push(communicate_exe_recv);
         }
-
-
 
         // send-recv pair between commander and collector
 
@@ -83,14 +82,14 @@ async fn main() {
                 )
             })
             .unwrap();
-        
-        
+
         // selfplay threads
-        let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(num_executors * num_generators); // mcts to executor
+        let (tensor_exe_send, tensor_exe_recv) =
+            flume::bounded::<Packet>(num_executors * num_generators); // mcts to executor
         let spam = tensor_exe_send.clone();
-        
-         // executor
-        let mut n  =0;
+
+        // executor
+        let mut n = 0;
         for communicate_exe_recv in vec_communicate_exe_recv {
             // send/recv pair between executor and commander
             let eval_per_sec_sender = game_sender.clone();
@@ -407,13 +406,16 @@ fn commander_main(
                 MessageType::NewNetworkData(data) => {
                     println!("new net path");
                     net_path = format!(
-                        "./nets/tz_temp_net_{}_{}.pt",
+                        "nets/tz_temp_net_{}_{}.pt",
                         generator_id, net_path_counter
                     );
                     let mut file = File::create(net_path.clone()).expect("Unable to create file");
                     file.write_all(&data).expect("Unable to write data");
                     net_path_counter += 1;
                 }
+                MessageType::TBLink(_) => {}
+                MessageType::CreateTB => {}
+                MessageType::RequestingTBLink => {}
             }
         } else {
             match message.purpose {
@@ -440,6 +442,9 @@ fn commander_main(
                 },
                 MessageType::JobSendData(_) => {}
                 MessageType::NewNetworkData(_) => {}
+                MessageType::TBLink(_) => {}
+                MessageType::CreateTB => {}
+                MessageType::RequestingTBLink => {}
             }
         }
 
@@ -455,9 +460,9 @@ fn commander_main(
                         Err(e) => eprintln!("Error deleting the file: {}", e),
                     }
                 }
-for exe_sender in &vec_exe_sender {
-                exe_sender.send(net_path.clone()).unwrap();
-// println!("SENT!");
+                for exe_sender in &vec_exe_sender {
+                    exe_sender.send(net_path.clone()).unwrap();
+                    // println!("SENT!");
                 }
 
                 curr_net = net_path.clone();
