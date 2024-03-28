@@ -37,6 +37,8 @@ pub enum Entity {
     RustDataGen,
     PythonTraining,
 
+    TBHost,
+
     GUIMonitor,
 }
 
