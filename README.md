@@ -118,7 +118,7 @@ cargo run --bin ucimain
 - `getinferencetime.rs` - used for benchmarking inference times and batching effectiveness through calculating the nodes/s.
 
 ### External testing (UCI compliant)
-- `uci.rs` - contains code for UCI implementation. Code currently work in progress.
+- `uci.rs` - contains code for UCI implementation.
 - `ucimain.rs` - used for running games using UCI.
 
 ### Source code for the Engine
@@ -139,8 +139,14 @@ cargo run --bin ucimain
 - `server.rs` - a TCP server that co-ordinates Rust data generation and Python training. It sends each connected instance a unique identifier, broadcasts key information to different processes, which include statistics, Neural Network information and training settings.
 
 #### Python code
+
 - `client.py` - runs training and manages neural network training. Connects to `server.rs` via TCP to receive file paths for neural network training.
-- `visualiser.py` - visualises training data and progress.
+
+### Utility and visualisation code
+
+- `visualiser.py` - visualises training data and monitoring key performance indicators.
+- `scheduler.py` - an experiment scheduler for scheduling experiments and monitoring server controls. This GUI also supports remote SSH logins to schedule experiments on external devices. 
+- `gui.py` - GUI code for `scheduler.py`. Code is currently work in progress. Running this file directly launches a demo version without server backend. 
 
 ## Libraries/technologies used 
 
