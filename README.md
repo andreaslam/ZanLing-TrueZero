@@ -1,8 +1,6 @@
 
 <div align="center">
 
-# TrueZero
-
 <img src="https://github.com/andreaslam/ZanLing-TrueZero/blob/main/TrueZero.png" alt="TrueZero logo">
 
 ### A Python and Rust chess engine that starts from Zero.
