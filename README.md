@@ -145,7 +145,7 @@ cargo run --bin ucimain
 ### Utility and visualisation code
 
 - `visualiser.py` - visualises training data and monitoring key performance indicators.
-- `scheduler.py` - an experiment scheduler for scheduling experiments and monitoring server controls. This GUI also supports remote SSH logins to schedule experiments on external devices. 
+- `scheduler.py` - code for TrueScheduler, an experiment scheduler for scheduling experiments and monitoring server controls. This GUI also supports remote SSH logins to schedule experiments on external devices. 
 - `gui.py` - GUI code for `scheduler.py`. Code is currently work in progress. Running this file directly launches a demo version without server backend. 
 
 ## Libraries/technologies used 
