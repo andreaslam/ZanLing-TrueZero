@@ -111,13 +111,13 @@ cargo run --bin ucimain
 
 ## What each file does
 
-### Internal testing (non-UCI compliant)
+### Internal Engine testing (non-UCI compliant)
 - `getdecode.rs` - used for obtaining the encoded NN inputs.
 - `getmove.rs` - used for obtaining a single tree search.
 - `getgame.rs` - used for obtaining a game.
 - `getinferencetime.rs` - used for benchmarking inference times and batching effectiveness through calculating the nodes/s.
 
-### External testing (UCI compliant)
+### External Engine testing (UCI compliant)
 - `uci.rs` - contains code for UCI implementation.
 - `ucimain.rs` - used for running games using UCI.
 
@@ -148,7 +148,8 @@ cargo run --bin ucimain
 - `visualisenet.py` - code that allows visualisation of neural network activations. Generates a `.gif` file for an animation of a policy-only game.
 - `scheduler.py` - code for TrueScheduler, an experiment scheduler for scheduling experiments and monitoring server controls. This GUI also supports remote SSH logins to schedule experiments on external devices. 
 - `gui.py` - GUI code for `scheduler.py`. Code is currently work in progress. Running this file directly launches a demo version without server backend.
-- `experiment.py` - code that can convert data generated from `client.py` into TensorBoard-readable format. This is an alternative experiment visualiser. Additionally, the code supports remote visualisation if SSH port forwarding is enabled on your device. 
+- `experiment.py` - code that can convert data generated from `client.py` into TensorBoard-readable format. This is an alternative experiment visualiser. Additionally, the code supports remote visualisation if SSH port forwarding is enabled on your device.
+- `exec_plotter.py` - debugging code that shows the thread schedule. Useful for debugging async tasks (such as data generation code for the Engine)
 
 
 ## Libraries/technologies used 
