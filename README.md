@@ -144,16 +144,19 @@ cargo run --bin ucimain
 
 ### Utility and visualisation code
 
-- `visualiser.py` - visualises training data and monitoring key performance indicators.
+- `visualiser.py` - visualises training data and monitoring key performance indicators logged in `client.py`, where code from `lib/plotter.py`. For more details on the `lib` folder see [here](https://github.com/andreaslam/ZanLing-TrueZero?tab=readme-ov-file#credits-and-acknowledgements).
+- `visualisenet.py` - code that allows visualisation of neural network activations. Generates a `.gif` file for an animation of a policy-only game.
 - `scheduler.py` - code for TrueScheduler, an experiment scheduler for scheduling experiments and monitoring server controls. This GUI also supports remote SSH logins to schedule experiments on external devices. 
-- `gui.py` - GUI code for `scheduler.py`. Code is currently work in progress. Running this file directly launches a demo version without server backend. 
+- `gui.py` - GUI code for `scheduler.py`. Code is currently work in progress. Running this file directly launches a demo version without server backend.
+- `experiment.py` - code that can convert data generated from `client.py` into TensorBoard-readable format. This is an alternative experiment visualiser. Additionally, the code supports remote visualisation if SSH port forwarding is enabled on your device. 
+
 
 ## Libraries/technologies used 
 
 ### Python 
 
 This Python and Rust Engine uses the following:
-- **Pytorch** - used for creating and training the Neural Network 
+- **Pytorch** - used for creating and training the Neural Network. Also used tensor
 - **Numpy** - used for processing data (chess board representation after one-hot encoding, handling final outcome and final game result
 
 
