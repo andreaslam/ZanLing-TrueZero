@@ -14,13 +14,15 @@ pub enum MessageType {
     JobSendPath(String),
 
     StatisticsSend(Statistics),
-
     RequestingNet,
 
     NewNetworkPath(String),
     IdentityConfirmation((Entity, usize)),
     JobSendData(Vec<DataFileType>),
     NewNetworkData(Vec<u8>),
+    TBLink((String, String)),
+    CreateTB,
+    RequestingTBLink,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
