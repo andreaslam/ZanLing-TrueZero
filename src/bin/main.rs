@@ -464,7 +464,7 @@ fn commander_main(
                     exe_sender.send(net_path.clone()).unwrap();
                     // println!("SENT!");
                 }
-
+                println!("net updated");
                 curr_net = net_path.clone();
             }
         }
