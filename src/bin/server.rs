@@ -279,12 +279,6 @@ fn handle_client(
             break;
         }
     }
-    println!(
-        "[Server] client disconnected {:#}",
-        stream.peer_addr().unwrap()
-    );
-    drop(cloned_handle);
-    drop(reader);
 }
 
 fn main() {
