@@ -1,7 +1,13 @@
 use crate::{
-    boardmanager::BoardStack, dataformat::ZeroEvaluation, decoder::{convert_board, process_board_output}, dirichlet::StableDirichlet, executor::{Packet, ReturnMessage}, settings::SearchSettings, superluminal::{CL_GREEN, CL_PINK}, uci::eval_in_cp
+    boardmanager::BoardStack,
+    dataformat::ZeroEvaluation,
+    decoder::{convert_board, process_board_output},
+    dirichlet::StableDirichlet,
+    executor::{Packet, ReturnMessage},
+    settings::SearchSettings,
+    superluminal::{CL_GREEN, CL_PINK},
+    uci::eval_in_cp,
 };
-use superluminal_perf::{begin_event_with_color, end_event};
 use cozy_chess::{Color, GameStatus, Move};
 use flume::Sender;
 use rand::{rngs::StdRng, Rng, SeedableRng};
@@ -11,7 +17,11 @@ use std::{
     ops::Range,
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
-use tch::{utils::{has_cuda, has_mps}, CModule, Device};
+use superluminal_perf::{begin_event_with_color, end_event};
+use tch::{
+    utils::{has_cuda, has_mps},
+    CModule, Device,
+};
 
 pub struct Net {
     pub net: CModule,
@@ -183,12 +193,12 @@ impl Tree {
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards");
         let epoch_seconds_end_proc = since_epoch_proc.as_nanos();
-        if id % 512 == 0 {
-            println!(
-                "{} {} {} backprop_tree",
-                epoch_seconds_start_proc, epoch_seconds_end_proc, id
-            );
-        }
+        // if id % 512 == 0 {
+        //     println!(
+        //         "{} {} {} backprop_tree",
+        //         epoch_seconds_start_proc, epoch_seconds_end_proc, id
+        //     );
+        // }
         // for child in &self.nodes[0].children {
         //     let display_str = self.display_node(*child);
         //     // // println!("children: {}", &display_str);
@@ -347,12 +357,12 @@ impl Tree {
             .expect("Time went backwards");
         let epoch_seconds_end_send = since_epoch_send.as_nanos();
 
-        if id % 512 == 0 {
-            println!(
-                "{} {} {} send_request",
-                epoch_seconds_start_send, epoch_seconds_end_send, id
-            );
-        }
+        // if id % 512 == 0 {
+        //     println!(
+        //         "{} {} {} send_request",
+        //         epoch_seconds_start_send, epoch_seconds_end_send, id
+        //     );
+        // }
 
         let now_start_recv = SystemTime::now();
         let since_epoch_recv = now_start_recv
@@ -369,14 +379,14 @@ impl Tree {
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards");
         let epoch_seconds_end_recv = since_epoch_recv.as_nanos();
-        if id % 512 == 0 {
-            println!(
-                "{} {} {} recv_request",
-                epoch_seconds_start_recv, epoch_seconds_end_recv, id
-            );
+        // if id % 512 == 0 {
+        //     println!(
+        //         "{} {} {} recv_request",
+        //         epoch_seconds_start_recv, epoch_seconds_end_recv, id
+        //     );
 
-            // println!("THREAD ID {} CHANNEL_LEN {}", id, tensor_exe_send.len());
-        }
+        //     // println!("THREAD ID {} CHANNEL_LEN {}", id, tensor_exe_send.len());
+        // }
         let output = match output {
             ReturnMessage::ReturnMessage(Ok(output)) => output,
             ReturnMessage::ReturnMessage(Err(_)) => panic!("error in returning!"),
@@ -395,12 +405,12 @@ impl Tree {
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards");
         let epoch_seconds_end_proc = since_epoch_proc.as_nanos();
-        if id % 512 == 0 {
-            println!(
-                "{} {} {} proc",
-                epoch_seconds_start_proc, epoch_seconds_end_proc, id
-            );
-        }
+        // if id % 512 == 0 {
+        //     println!(
+        //         "{} {} {} proc",
+        //         epoch_seconds_start_proc, epoch_seconds_end_proc, id
+        //     );
+        // }
         // let idx_li = eval_board(&bs, &net, self, &selected_node_idx);
         (selected_node_idx, idx_li)
     }
