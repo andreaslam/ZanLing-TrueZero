@@ -1,11 +1,16 @@
-use crate::{decoder::eval_state, mcts_trainer::Net, selfplay::CollectorMessage, superluminal::{CL_RED, CL_BLUE, CL_ORANGE}};
+use crate::{
+    decoder::eval_state,
+    mcts_trainer::Net,
+    selfplay::CollectorMessage,
+    superluminal::{CL_BLUE, CL_ORANGE, CL_RED},
+};
 use flume::{Receiver, RecvError, Selector, Sender};
-use superluminal_perf::{begin_event_with_color, end_event};
 use std::{
     cmp::min,
     collections::VecDeque,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+use superluminal_perf::{begin_event_with_color, end_event};
 use tch::Tensor;
 
 pub struct Packet {
@@ -87,17 +92,17 @@ pub fn executor_main(
             }
             None => (),
         }
-        
+
         let now_end = SystemTime::now();
         let since_epoch = now_end
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards");
-    let epoch_seconds_start_job = since_epoch.as_nanos();
-    let message = selector.wait();
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+        let epoch_seconds_start_job = since_epoch.as_nanos();
+        let message = selector.wait();
 
-    end_event();
-    
-    // println!("RECV SIZE {} NUM SENDERS {} RECV {}", tensor_receiver.len(), tensor_receiver.sender_count(), tensor_receiver.receiver_count());
+        end_event();
+
+        // println!("RECV SIZE {} NUM SENDERS {} RECV {}", tensor_receiver.len(), tensor_receiver.sender_count(), tensor_receiver.receiver_count());
         match message {
             Message::StopServer() => break,
             Message::NewNetwork(Ok(graph)) => {
@@ -121,8 +126,6 @@ pub fn executor_main(
                 // evaluate batches
                 waiting_job = Instant::now();
                 while input_vec.len() >= max_batch_size {
-                    
-
                     let now_end = SystemTime::now();
                     let since_epoch = now_end
                         .duration_since(UNIX_EPOCH)
@@ -134,7 +137,6 @@ pub fn executor_main(
                     // );
                     let network = network.as_mut().expect("Network should be available");
                     let elapsed = waiting_batch.elapsed().as_nanos() as f32 / 1e6;
-
 
                     // println!("loop {} time taken for buffer to fill: {}ms", debug_counter, elapsed);
                     let sw_tensor_prep = Instant::now();
@@ -153,7 +155,7 @@ pub fn executor_main(
                         .duration_since(UNIX_EPOCH)
                         .expect("Time went backwards");
                     let epoch_seconds_start_evals = since_epoch_evals.as_nanos();
-                    
+
                     begin_event_with_color("eval", CL_BLUE);
                     let start = Instant::now();
                     let (board_eval, policy) =
