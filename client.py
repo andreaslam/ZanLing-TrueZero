@@ -435,7 +435,7 @@ def main():
                 train_sampler = loopbuf.sampler(
                     batch_size=BATCH_SIZE,
                     unroll_steps=None,
-                    include_final=False,
+
                     random_symmetries=False,
                     only_last_gen=False,
                     test=False,
@@ -464,11 +464,11 @@ def main():
                 min_sampling = 15
                 if num_steps_training < min_sampling:
                     print(
-                        "[Warning] minimum training step is 1, current training step is:",
+                        f"[Warning] minimum training step is {min_sampling}, current training step is:",
                         num_steps_training,
                     )
                     num_steps_training = min_sampling
-                    print("[Warning] set training step to 1")
+                    print(f"[Warning] set training step to {min_sampling}")
                 num_steps_training = int(num_steps_training)
                 model.train()
                 print("training model!")
@@ -519,9 +519,10 @@ def main():
                     {"NewNetworkPath": model_path},
                 )
                 server.send(msg)
+                net_send = serialise_net(model)
                 msg = make_msg_send(
-                {"NewNetworkData": net_send},
-            )
+                    {"NewNetworkData": net_send},
+                )
                 server.send(msg)
 
         if "StopServer" in received_data:
