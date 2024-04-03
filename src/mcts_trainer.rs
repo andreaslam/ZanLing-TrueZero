@@ -79,6 +79,7 @@ pub struct Tree {
     pub board: BoardStack,
     pub nodes: Vec<Node>,
     pub settings: SearchSettings,
+    pub pv: String, // Some() when it is UCI code only
 }
 
 impl Tree {
@@ -86,10 +87,12 @@ impl Tree {
         let root_node = Node::new(0.0, None, None);
         let mut container: Vec<Node> = Vec::new();
         container.push(root_node);
+        let pv = String::new();
         Tree {
             board,
             nodes: container,
             settings,
+            pv,
         }
     }
 
@@ -104,7 +107,7 @@ impl Tree {
             .expect("Time went backwards");
 
         let epoch_seconds_start_proc = since_epoch_proc.as_nanos();
-        let (selected_node, input_b, pv, (min_depth, max_depth)) = self.select();
+        let (selected_node, input_b, (min_depth, max_depth)) = self.select();
         let now_end_proc = SystemTime::now();
         let since_epoch_proc = now_end_proc
             .duration_since(UNIX_EPOCH)
@@ -209,20 +212,53 @@ impl Tree {
                 let cp_eval = eval_in_cp(self.nodes[selected_node].eval_score);
                 let elapsed_ms = sw.elapsed().as_nanos() as f32 / 1e6;
                 let nps = self.nodes[0].visits as f32 / (sw.elapsed().as_nanos() as f32 / 1e9);
-                println!(
-                    "info depth {} seldepth {} score cp {} nodes {} nps {} time {} pv {}",
-                    min_depth,
-                    max_depth,
-                    (cp_eval * 100.).round().max(-1000.).min(1000.) as i64,
-                    self.nodes.len(),
-                    nps as usize,
-                    elapsed_ms as usize,
-                    pv,
-                );
+                let pv = self.get_pv();
+                if self.pv != pv {
+
+                    println!(
+                        "info depth {} seldepth {} score cp {} nodes {} nps {} time {} pv {}",
+                        min_depth,
+                        max_depth,
+                        (cp_eval * 100.).round().max(-1000.).min(1000.) as i64,
+                        self.nodes.len(),
+                        nps as usize,
+                        elapsed_ms as usize,
+                        pv,
+                    );
+                    self.pv = pv;
+                } else {
+
+                }
             }
             _ => {}
         }
     }
+
+    fn get_pv(&self) -> String {
+        let mut pv_nodes: Vec<usize> = vec![];
+        let mut curr_node = 0;
+        loop {
+            if self.nodes[curr_node].children.is_empty() || self.board.is_terminal() {
+                break;
+            }
+            curr_node = self.nodes[curr_node]
+                .children
+                .clone()
+                .max_by_key(|&n| self.nodes[n].visits)
+                .expect("Error");
+            pv_nodes.push(curr_node);
+        }
+        let mut pv_string: String = String::new();
+        if pv_nodes.is_empty() {
+            pv_string
+        } else {
+            for item in pv_nodes {
+                pv_string.push_str(&format!("{} ", self.nodes[item].mv.unwrap()));
+            }
+            pv_string
+        }
+    }
+
     pub fn depth_range(&self, node: usize) -> (usize, usize) {
         match self.settings.search_type {
             TypeRequest::UCISearch => match self.nodes[node].children.len() {
@@ -243,14 +279,13 @@ impl Tree {
             _ => (0, 0),
         }
     }
-    fn select(&mut self) -> (usize, BoardStack, String, (usize, usize)) {
+    fn select(&mut self) -> (usize, BoardStack, (usize, usize)) {
         let mut curr: usize = 0;
         // println!("    selection:");
         let mut input_b: BoardStack;
         input_b = self.board.clone();
         let fenstr = format!("{}", &input_b.board());
         // // println!("    board FEN: {}", fenstr);
-        let mut pv = String::new();
         let mut depth = 1;
         let mut max_depth: usize = 1;
         loop {
@@ -302,16 +337,13 @@ impl Tree {
             // let display_str = self.display_node(curr);
             // // println!("        selected: {}", display_str);
             input_b.play(self.nodes[curr].mv.expect("Error"));
-            let fenstr = format!("{}", &input_b.board());
-            // // println!("    board FEN: {}", fenstr);
-            pv.push_str(&format!("{:#} ", self.nodes[curr].mv.unwrap()));
             depth += 1;
         }
         // let display_str = self.display_node(curr);
         // // println!("    {}", display_str);
         // // println!("        children:");
 
-        (curr, input_b, pv, (depth, max_depth))
+        (curr, input_b, (depth, max_depth))
     }
 
     async fn eval_and_expand(
