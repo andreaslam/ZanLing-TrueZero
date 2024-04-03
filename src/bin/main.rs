@@ -20,7 +20,7 @@ use tz_rust::{
     selfplay::{CollectorMessage, DataGen},
     settings::SearchSettings,
 };
-#[tokio::main(flavor = "multi_thread", worker_threads = 3)]
+#[tokio::main(flavor = "multi_thread", worker_threads = 6)]
 async fn main() {
     env::set_var("RUST_BACKTRACE", "1");
 
@@ -49,9 +49,9 @@ async fn main() {
         .write_all(serialised.as_bytes())
         .expect("Failed to send data");
     println!("Connected to server!");
-    let num_executors = 1;
+    let num_executors = 2;
     let batch_size = 1024; // executor batch size
-    let num_generators = num_executors * batch_size * 4;
+    let num_generators = num_executors * batch_size * 2;
     let (game_sender, game_receiver) =
         flume::bounded::<CollectorMessage>(num_executors * batch_size);
     thread::scope(|s| {
@@ -171,13 +171,13 @@ async fn generator_main(
         fpu: 0.0,
         wdl: None,
         moves_left: None,
-        c_puct: 2.0,
+        c_puct: 3.0,
         // max_nodes: 400,
         max_nodes: 400,
         alpha: 0.3,
         eps: 0.3,
         search_type: TrainerSearch(None),
-        pst: 1.2,
+        pst: 1.25,
     };
     loop {
         let sim = datagen
@@ -265,7 +265,6 @@ fn collector_main(
     let mut evals_start_time = Instant::now();
     let mut evals_vec: Vec<f32> = Vec::new();
     let files = [".bin", ".off", ".json"];
-    let mut file_data: Vec<Vec<u8>> = Vec::new();
     loop {
         let msg = receiver.recv().unwrap();
         match msg {
@@ -273,7 +272,7 @@ fn collector_main(
                 bin_output.append(&sim).unwrap();
                 if bin_output.game_count() >= 100 {
                     bin_output.finish().unwrap();
-
+                    let mut file_data: Vec<Vec<u8>> = Vec::new(); // Clear file_data vector
                     for file in files {
                         let file_path = format!("{}{}", path, file);
                         let data = serialise_file_to_bytes(&file_path.to_owned())
@@ -300,20 +299,20 @@ fn collector_main(
                         serde_json::to_string(&message).expect("serialisation failed");
                     serialised += "\n";
                     server_handle.write_all(serialised.as_bytes()).unwrap();
-                    for file_path in files {
-                        let exists_file = Path::new(file_path).is_file();
-                        if exists_file {
-                            // delete sent files
-                            // Attempt to delete the file
-                            match fs::remove_file(format!("{}{}", path, file_path)) {
-                                Ok(_) => {
-                                    println!("Deleted file {}", format!("{}{}", path, file_path));
-                                }
-                                Err(e) => println!("Error deleting the file: {}", e),
-                            }
-                        } else {
-                        }
-                    }
+                    // for file_path in files {
+                    //     let exists_file = Path::new(file_path).is_file();
+                    //     if exists_file {
+                    //         // delete sent files
+                    //         // Attempt to delete the file
+                    //         match fs::remove_file(format!("{}{}", path, file_path)) {
+                    //             Ok(_) => {
+                    //                 println!("Deleted file {}", format!("{}{}", path, file_path));
+                    //             }
+                    //             Err(e) => println!("Error deleting the file: {}", e),
+                    //         }
+                    //     } else {
+                    //     }
+                    // }
                     // println!("{}, {}", thread_name, counter);
                     counter += 1;
                     path = format!("games/gen_{}_games_{}", id, counter);
@@ -405,10 +404,7 @@ fn commander_main(
                 MessageType::JobSendData(_) => {}
                 MessageType::NewNetworkData(data) => {
                     println!("new net path");
-                    net_path = format!(
-                        "nets/tz_temp_net_{}_{}.pt",
-                        generator_id, net_path_counter
-                    );
+                    net_path = format!("nets/tz_temp_net_{}_{}.pt", generator_id, net_path_counter);
                     let mut file = File::create(net_path.clone()).expect("Unable to create file");
                     file.write_all(&data).expect("Unable to write data");
                     net_path_counter += 1;
