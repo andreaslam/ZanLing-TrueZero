@@ -519,6 +519,10 @@ def main():
                     {"NewNetworkPath": model_path},
                 )
                 server.send(msg)
+                msg = make_msg_send(
+                {"NewNetworkData": net_send},
+            )
+                server.send(msg)
 
         if "StopServer" in received_data:
             server.close()
