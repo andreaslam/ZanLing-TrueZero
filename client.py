@@ -319,10 +319,11 @@ def main():
                 num_steps_training = (
                     len(data.positions) / BATCH_SIZE
                 ) * SAMPLING_RATIO  # calculate number of training steps to take
+                min_sampling = 15
                 if num_steps_training < 1:
-                    print("[Warning] minimum training step is", num_steps_training)
-                    num_steps_training = 1
-                    print("[Warning] set training step to 1")
+                    print("[Warning] minimum training step is", min_sampling)
+                    num_steps_training = min_sampling
+                    print("[Warning] set training step to", min_sampling)
                 num_steps_training = int(num_steps_training)
                 model.train()
                 print("training model!")
@@ -512,8 +513,6 @@ def main():
                     torch.jit.save(model, model_path)
                 with open("traininglog.txt", "a") as f:
                     f.write(model_path + "\n")
-                with open("datafile.txt", "w") as f:
-                    f.write("")
 
                 # send to rust server
                 msg = make_msg_send(
