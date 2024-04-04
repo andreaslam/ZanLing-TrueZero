@@ -140,19 +140,18 @@ impl Tree {
                     legal_moves.extend(moves);
                     false
                 });
+                let mut sum = 0.0;
+                for child in self.nodes[0].children.clone() {
+                    self.nodes[child].policy = self.nodes[child].policy.powf(self.settings.pst);
+                    sum += self.nodes[child].policy;
+                }
+                for child in self.nodes[0].children.clone() {
+                    self.nodes[child].policy /= sum;
+                }
                 match self.settings.search_type {
                     TypeRequest::TrainerSearch(_) => {
                         // add policy softmax temperature and Dirichlet noise
                         // TODO extract below as a function?
-                        let mut sum = 0.0;
-                        for child in self.nodes[0].children.clone() {
-                            self.nodes[child].policy =
-                                self.nodes[child].policy.powf(self.settings.pst);
-                            sum += self.nodes[child].policy;
-                        }
-                        for child in self.nodes[0].children.clone() {
-                            self.nodes[child].policy /= sum;
-                        }
 
                         // add Dirichlet noise
                         let mut std_rng = StdRng::from_entropy();
@@ -214,7 +213,6 @@ impl Tree {
                 let nps = self.nodes[0].visits as f32 / (sw.elapsed().as_nanos() as f32 / 1e9);
                 let pv = self.get_pv();
                 if self.pv != pv {
-
                     println!(
                         "info depth {} seldepth {} score cp {} nodes {} nps {} time {} pv {}",
                         min_depth,
@@ -227,7 +225,6 @@ impl Tree {
                     );
                     self.pv = pv;
                 } else {
-
                 }
             }
             _ => {}
