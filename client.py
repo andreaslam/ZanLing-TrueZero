@@ -36,6 +36,7 @@ class Server:
                 continue
 
     def send(self, message):
+        message = {"purpose" : message}
         obj = json.dumps(message) + "\n"
         self.socket.sendall(obj.encode("utf-8"))
 
@@ -58,15 +59,16 @@ def load_file(games_path):
     return DataFile.open(game, games_path)
 
 
-def main():
-    HOST = "127.0.0.1"
-    PORT = 38475
-    BUFFER_SIZE = 500000
-    BATCH_SIZE = 2048
-    MIN_SAMPLING = 15
-    SAMPLING_RATIO = 3
+HOST = "127.0.0.1"
+PORT = 38475
+BUFFER_SIZE = 500000
+BATCH_SIZE = 2048
+MIN_SAMPLING = 15
+SAMPLING_RATIO = 3
 
-    assert BATCH_SIZE > 0 and (BATCH_SIZE & (BATCH_SIZE - 1)) == 0
+assert BATCH_SIZE > 0 and (BATCH_SIZE & (BATCH_SIZE - 1)) == 0
+
+def main():
 
     game = Game.find("chess")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -324,7 +326,7 @@ def get_verification(server, identity):
         purpose = str(received_data)
         if "IdentityConfirmation" in purpose and identity in purpose:
             break
-
+    print("identity verified")
 
 def get_previous_data_paths():
     data_paths = None
