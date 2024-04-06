@@ -1,18 +1,20 @@
+import io
+import json
 import os
 import re
 import socket
-import json
-import io
 import time
+from datetime import datetime
+
 import torch
 import torch.optim as optim
-from datetime import datetime
-from lib.data.file import DataFile
-from lib.train import ScalarTarget, TrainSettings
-from lib.games import Game
-from lib.loop import LoopBuffer
-from lib.logger import Logger
+
 import network
+from lib.data.file import DataFile
+from lib.games import Game
+from lib.logger import Logger
+from lib.loop import LoopBuffer
+from lib.train import ScalarTarget, TrainSettings
 
 
 class Server:
