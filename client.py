@@ -103,71 +103,10 @@ def main():
     # load the latest generation net
 
     pattern = r"tz_(\d+)\.pt"
-    training_nets = []
-    net_id = {}
-    for net in os.listdir("nets"):
-        # Use re.match to apply the regex pattern
-        match = re.match(pattern, net)
-
-        # Check if there's a match
-        if match:
-            # Extract groups from the match object
-            group = int(match.groups()[0])  # only 1 match
-            net_id["./nets/" + net] = group
-            training_nets.append(net)
-
-    net_id = dict(
-        sorted(net_id.items(), key=lambda x: x[1])
-    )  # sort the entries of the nets and get the latest one
-
-    training_nets = list(net_id.keys())
-
-    if (
-        len(os.listdir("nets")) == 0 or len(training_nets) == 0
-    ):  # no net folder or no net
-        with torch.no_grad():
-            net = torch.jit.script(
-                network.TrueNet(
-                    num_resBlocks=8,
-                    num_hidden=64,
-                    head_channel_policy=8,
-                    head_channel_values=4,
-                ).to(d)
-            )
-            net.eval()
-            torch.jit.save(
-                net, "nets/tz_0.pt"
-            )  # if it doesn't exist, create one and save into folder
-
-        with open(
-            "traininglog.txt", "w+"
-        ) as f:  # overwrite all content and start new training session
-            f.write("nets/tz_0.pt\n")
-
-        training_nets.append("nets/tz_0.pt")
+    training_nets = check_net_exists(d, pattern)
 
     # load the latest generation net
-    if os.path.isfile("traininglog.txt"):  # yes log, yes net
-        with open("traininglog.txt", "r") as f:  # resume previous training session
-            recorded_sessions = f.readlines()
-            recorded_sessions = [
-                item.strip() for item in recorded_sessions if item != ""
-            ]
-        if recorded_sessions != training_nets:
-            with open(
-                "traininglog.txt", "w"
-            ) as f:  # reset the entries in the document and reset according to available files
-                for net in training_nets:
-                    f.write(net + "\n")
-            with open("traininglog.txt", "r") as f:  # reread the file with updated net
-                recorded_sessions = f.readlines()
-    else:  # no log, yes net
-        with open("traininglog.txt", "r") as f:  # start a new session
-            f.write(training_nets[-1] + "\n")
-        with open("traininglog.txt", "r") as f:  # reread the file with updated net
-            recorded_sessions = f.readlines()
-
-    model_path = recorded_sessions[-1].strip()  # take latest entry as starting
+    model_path = get_model_path(training_nets)  # take latest entry as starting
 
     print(model_path)
     model = torch.jit.load(model_path, map_location=d)
@@ -182,38 +121,10 @@ def main():
     server = Server(HOST, PORT)
     server.connect()
 
-    # login loop
-    data_paths = None
-    if os.path.isfile(
-        "datafile.txt"
-    ):  # create the file if it doesn't exist, this file stores the path of training data and reset every time after a net has been saved
-        with open("datafile.txt", "r") as f:
-            data_paths = f.readlines()
-            data_paths = [item.strip() for item in data_paths if item != ""]
-            data_paths = [
-                x
-                for x in data_paths
-                if os.path.isfile(x.strip() + ".bin")
-                and os.path.isfile(x.strip() + ".json")
-                and os.path.isfile(x.strip() + ".off")
-            ]
+    data_paths = get_previous_data_paths()
 
-    else:  # no file, datafile start from scratch
-        with open("datafile.txt", "w+") as f:
-            pass
-
-    while True:
-        server.send(
-            make_msg_send(
-                {"Initialise": "PythonTraining"},
-            )
-        )
-        received_data = server.receive()
-        received_data = json.loads(received_data)
-        purpose = str(received_data)
-        if "IdentityConfirmation" in purpose:
-            if "PythonTraining" in purpose:
-                break
+    # verification loop
+    get_verification(server, "PythonTraining")
 
     loopbuf = LoopBuffer(
         Game.find("chess"), target_positions=BUFFER_SIZE, test_fraction=0.2
@@ -235,28 +146,7 @@ def main():
 
     op = optim.AdamW(params=model.parameters(), lr=2e-3)
     log = Logger()
-    if data_paths:
-        data_paths = list(dict.fromkeys(data_paths))  # remove duplicates
-        for file in data_paths:
-            try:
-                data = load_file(file)
-                loopbuf.append(None, data)
-                now = datetime.now()
-                current_time = now.strftime("%H:%M:%S")
-                print(
-                    "[loaded files] buffer size:", loopbuf.position_count, current_time
-                )
-            except Exception:
-                continue
-    if os.path.exists("log.npz"):
-        try:
-            log = log.load("log.npz")
-            print("loaded log")
-        except Exception as e:
-            print("[Error]", e)
-            os.remove("log.npz")  # reset
-    counter = 0
-    print("[loaded files] buffer size:", loopbuf.position_count)
+    log, counter = load_previous_data(data_paths, loopbuf, log)
     while True:
         log.start_batch()
         received_data = server.receive()
@@ -320,7 +210,7 @@ def main():
                     len(data.positions) / BATCH_SIZE
                 ) * SAMPLING_RATIO  # calculate number of training steps to take
                 min_sampling = 15
-                if num_steps_training < 1:
+                if num_steps_training < min_sampling:
                     print("[Warning] minimum training step is", min_sampling)
                     num_steps_training = min_sampling
                     print("[Warning] set training step to", min_sampling)
@@ -435,7 +325,7 @@ def main():
                 train_sampler = loopbuf.sampler(
                     batch_size=BATCH_SIZE,
                     unroll_steps=None,
-
+                    include_final=False,
                     random_symmetries=False,
                     only_last_gen=False,
                     test=False,
@@ -529,6 +419,137 @@ def main():
             server.close()
             print("Connection closed.")
             break
+
+def load_previous_data(data_paths, loopbuf, log):
+    if data_paths:
+        data_paths = list(dict.fromkeys(data_paths))  # remove duplicates
+        for file in data_paths:
+            try:
+                data = load_file(file)
+                loopbuf.append(None, data)
+                now = datetime.now()
+                current_time = now.strftime("%H:%M:%S")
+                print(
+                    "[loaded files] buffer size:", loopbuf.position_count, current_time
+                )
+            except Exception:
+                continue
+    if os.path.exists("log.npz"):
+        try:
+            log = log.load("log.npz")
+            print("loaded log")
+        except Exception as e:
+            print("[Error]", e)
+            os.remove("log.npz")  # reset
+    counter = 0
+    print("[loaded files] buffer size:", loopbuf.position_count)
+    return log,counter
+
+def get_verification(server, identity):
+    while True:
+        server.send(
+            make_msg_send(
+                {"Initialise": identity},
+            )
+        )
+        received_data = server.receive()
+        received_data = json.loads(received_data)
+        purpose = str(received_data)
+        if "IdentityConfirmation" in purpose:
+            if identity in purpose:
+                break
+
+def get_previous_data_paths():
+    data_paths = None
+    if os.path.isfile(
+        "datafile.txt"
+    ):  # create the file if it doesn't exist, this file stores the path of training data and reset every time after a net has been saved
+        with open("datafile.txt", "r") as f:
+            data_paths = f.readlines()
+            data_paths = [item.strip() for item in data_paths if item != ""]
+            data_paths = [
+                x
+                for x in data_paths
+                if os.path.isfile(x.strip() + ".bin")
+                and os.path.isfile(x.strip() + ".json")
+                and os.path.isfile(x.strip() + ".off")
+            ]
+
+    else:  # no file, datafile start from scratch
+        with open("datafile.txt", "w+") as f:
+            pass
+    return data_paths
+
+def get_model_path(training_nets):
+    if os.path.isfile("traininglog.txt"):  # yes log, yes net
+        with open("traininglog.txt", "r") as f:  # resume previous training session
+            recorded_sessions = f.readlines()
+            recorded_sessions = [
+                item.strip() for item in recorded_sessions if item != ""
+            ]
+        if recorded_sessions != training_nets:
+            with open(
+                "traininglog.txt", "w"
+            )
+            as f:  # reset the entries in the document and reset according to available files
+                for net in training_nets:
+                    f.write(net + "\n")
+            with open("traininglog.txt", "r") as f:  # reread the file with updated net
+                recorded_sessions = f.readlines()
+    else:  # no log, yes net
+        with open("traininglog.txt", "r") as f:  # start a new session
+            f.write(training_nets[-1] + "\n")
+        with open("traininglog.txt", "r") as f:  # reread the file with updated net
+            recorded_sessions = f.readlines()
+
+    model_path = recorded_sessions[-1].strip()
+    return model_path
+
+def check_net_exists(d, pattern):
+    training_nets = []
+    net_id = {}
+    for net in os.listdir("nets"):
+        # Use re.match to apply the regex pattern
+        match = re.match(pattern, net)
+
+        # Check if there's a match
+        if match:
+            # Extract groups from the match object
+            group = int(match.groups()[0])  # only 1 match
+            net_id["./nets/" + net] = group
+            training_nets.append(net)
+
+    net_id = dict(
+        sorted(net_id.items(), key=lambda x: x[1])
+    )  # sort the entries of the nets and get the latest one
+
+    training_nets = list(net_id.keys())
+
+    if (
+        len(os.listdir("nets")) == 0 or len(training_nets) == 0
+    ):  # no net folder or no net
+        with torch.no_grad():
+            net = torch.jit.script(
+                network.TrueNet(
+                    num_resBlocks=8,
+                    num_hidden=64,
+                    head_channel_policy=8,
+                    head_channel_values=4,
+                ).to(d)
+            )
+            net.eval()
+            torch.jit.save(
+                net, "nets/tz_0.pt"
+            )  # if it doesn't exist, create one and save into folder
+
+        with open(
+            "traininglog.txt", "w+"
+        )
+        as f:  # overwrite all content and start new training session
+            f.write("nets/tz_0.pt\n")
+
+        training_nets.append("nets/tz_0.pt")
+    return training_nets
 
 
 if __name__ == "__main__":
