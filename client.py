@@ -97,8 +97,7 @@ def main():
         mask_policy=True,
     )
     op = optim.AdamW(params=model.parameters(), lr=2e-3)
-    log = Logger()
-    log, _ = load_previous_data(data_paths, loopbuf, log)
+    log = load_previous_data(data_paths, loopbuf)
 
     while True:
         log.start_batch()
@@ -291,8 +290,8 @@ def send_net_in_bytes(model, server):
     server.send(msg)
 
 
-def load_previous_data(data_paths, loopbuf, log):
-    counter = 0
+def load_previous_data(data_paths, loopbuf):
+    log = Logger()
     if data_paths:
         data_paths = list(dict.fromkeys(data_paths))
         for file in data_paths:
@@ -314,7 +313,7 @@ def load_previous_data(data_paths, loopbuf, log):
             print("[Error]", e)
             os.remove("log.npz")
     print("[loaded files] buffer size:", loopbuf.position_count)
-    return log, counter
+    return log
 
 
 def get_verification(server, identity):
