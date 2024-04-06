@@ -60,6 +60,7 @@ HOST = "127.0.0.1"
 PORT = 38475
 BUFFER_SIZE = 500000
 BATCH_SIZE = 2048  # (power of 2, const)
+MIN_SAMPLING = 15
 
 assert BATCH_SIZE > 0 and (BATCH_SIZE & (BATCH_SIZE - 1)) == 0
 
@@ -159,170 +160,157 @@ def main():
             or "RustDataGen" in received_data
             or "RequestingNet" in received_data
         ):
-            net_send = serialise_net(model)
-            msg = make_msg_send(
-                {"NewNetworkData": net_send},
-            )
-            server.send(msg)
+            send_net_in_bytes(model, server) # TODO: make a send_net_path as well
 
         if "JobSendPath" in received_data:
-            file_path = raw_data["purpose"]["JobSendPath"]
-            print(file_path)
-            with open("datafile.txt", "a") as f:
-                f.write(file_path + "\n")
-            data = load_file(file_path)
-            loopbuf.append(log, data)
-            log.finished_data()
-            try:
-                log.save("log.npz")
-            except Exception:
-                print("[Warning] failed to save log.npz")
+            data = extract_incoming_data_given_path(loopbuf, log, raw_data)
 
-            print("[loaded files] buffer size:", loopbuf.position_count)
-            if loopbuf.position_count >= BUFFER_SIZE:
-                train_sampler = loopbuf.sampler(
-                    batch_size=BATCH_SIZE,
-                    unroll_steps=None,
-                    include_final=False,
-                    random_symmetries=False,
-                    only_last_gen=False,
-                    test=False,
-                )
+            full_train_and_send(model, starting_gen, server, loopbuf, train_settings, op, log, data)
 
-                test_sampler = loopbuf.sampler(
-                    batch_size=BATCH_SIZE,
-                    unroll_steps=None,
-                    include_final=False,
-                    random_symmetries=False,
-                    only_last_gen=False,
-                    test=True,
-                )
-                last_gen_test_sampler = loopbuf.sampler(
-                    batch_size=BATCH_SIZE,
-                    unroll_steps=None,
-                    include_final=False,
-                    random_symmetries=False,
-                    only_last_gen=True,
-                    test=True,
-                )
-
-                num_steps_training = (
-                    len(data.positions) / BATCH_SIZE
-                ) * SAMPLING_RATIO  # calculate number of training steps to take
-                min_sampling = 15
-                if num_steps_training < min_sampling:
-                    print("[Warning] minimum training step is", min_sampling)
-                    num_steps_training = min_sampling
-                    print("[Warning] set training step to", min_sampling)
-                num_steps_training = int(num_steps_training)
-                model.train()
-                print("training model!")
-                print("num_steps_training:", num_steps_training)
-
-                for gen in range(num_steps_training):
-                    if gen != 0:
-                        log.start_batch()
-                    batch = train_sampler.next_batch()
-                    train_settings.train_step(
-                        batch, network=model, optimizer=op, logger=log
-                    )
-
-                with torch.no_grad():
-                    model.eval()
-                    test_batch = test_sampler.next_batch()
-                    train_settings.evaluate_batch(
-                        network=model, batch=test_batch, log_prefix="test", logger=log
-                    )
-                    last_gen_test_batch = last_gen_test_sampler.next_batch()
-                    train_settings.evaluate_batch(
-                        network=model,
-                        batch=last_gen_test_batch,
-                        log_prefix="last gen test",
-                        logger=log,
-                    )
-
-                log.finished_data()
-                try:
-                    log.save("log.npz")
-                except Exception:
-                    print("[Warning] failed to save log.npz")
-
-                train_sampler.close()
-                test_sampler.close()
-                last_gen_test_sampler.close()
-                starting_gen += 1
-                model_path = "nets/tz_" + str(starting_gen) + ".pt"
-                print(model_path)
-                model.eval()
-                with torch.no_grad():
-                    torch.jit.save(model, model_path)
-                with open("traininglog.txt", "a") as f:
-                    f.write(model_path + "\n")
-                with open("datafile.txt", "w") as f:
-                    f.write("")
-
-                # send to rust server
-                msg = make_msg_send(
-                    {"NewNetworkPath": model_path},
-                )
-                server.send(msg)
-                net_send = serialise_net(model)
-                msg = make_msg_send(
-                    {"NewNetworkData": net_send},
-                )
-                server.send(msg)
+        if "JobSendData" in received_data:
+            data = extract_incoming_data_given_bytes(loopbuf, log, counter, raw_data)
+            
+            full_train_and_send(model, starting_gen, server, loopbuf, train_settings, op, log, data)
 
         if "StopServer" in received_data:
             server.close()
             print("Connection closed.")
             break
 
-        if "JobSendData" in received_data:
-            bin_data = raw_data["purpose"]["JobSendData"][0]
-            off_data = raw_data["purpose"]["JobSendData"][1]
-            meta_data = raw_data["purpose"]["JobSendData"][2]
-            bin_data, off_data, meta_data = (
+def extract_incoming_data_given_bytes(loopbuf, log, counter, raw_data):
+    bin_data = raw_data["purpose"]["JobSendData"][0]
+    off_data = raw_data["purpose"]["JobSendData"][1]
+    meta_data = raw_data["purpose"]["JobSendData"][2]
+    bin_data, off_data, meta_data = (
                 bytes(dict(bin_data)["BinFile"]),
                 bytes(dict(off_data)["OffFile"]),
                 bytes(dict(meta_data)["MetaDataFile"]),
             )
 
-            if not os.path.exists("./python_client_games"):
-                os.makedirs("./python_client_games")
-            else:
-                pass
+    if not os.path.exists("./python_client_games"):
+        os.makedirs("./python_client_games")
+    else:
+        pass
 
-            path = (
+    path = (
                 "./python_client_games/temp_games_"
                 + str(counter)
                 + "_"
                 + str(int(time.time()))
             )
-            with open(path + ".bin", "wb") as file:
-                file.write(bin_data)
+    with open(path + ".bin", "wb") as file:
+        file.write(bin_data)
 
-            with open(path + ".off", "wb") as file:
-                file.write(off_data)
+    with open(path + ".off", "wb") as file:
+        file.write(off_data)
 
-            decoded_string = meta_data.decode("utf-8")
-            data = json.loads(decoded_string)
-            with open(path + ".json", "w") as file:
-                json.dump(
+    decoded_string = meta_data.decode("utf-8")
+    data = json.loads(decoded_string)
+    with open(path + ".json", "w") as file:
+        json.dump(
                     data, file, indent=4
                 )  # Use indent parameter for pretty formatting (optional)
-            with open("datafile.txt", "a") as f:
-                f.write(path + "\n")
-            data = load_file(path)
-            loopbuf.append(log, data)
-            print("[loaded files] buffer size:", loopbuf.position_count)
-            log.finished_data()
-            try:
-                log.save("log.npz")
-            except Exception:
-                print("[Warning] failed to save log.npz")
-            counter += 1
-            if loopbuf.position_count >= BUFFER_SIZE:
-                train_sampler = loopbuf.sampler(
+    with open("datafile.txt", "a") as f:
+        f.write(path + "\n")
+    data = load_file(path)
+    loopbuf.append(log, data)
+    print("[loaded files] buffer size:", loopbuf.position_count)
+    log.finished_data()
+    try:
+        log.save("log.npz")
+    except Exception:
+        print("[Warning] failed to save log.npz")
+    return data
+
+def full_train_and_send(model, starting_gen, server, loopbuf, train_settings, op, log, data):
+    print("[loaded files] buffer size:", loopbuf.position_count)
+    if loopbuf.position_count >= BUFFER_SIZE:
+        train_sampler, test_sampler, last_gen_test_sampler = initialise_samplers(loopbuf)
+
+        num_steps_training = get_num_steps_training(data, MIN_SAMPLING)
+        model.train()
+        print("training model!")
+        print("num_steps_training:", num_steps_training)
+
+        train_net(model, train_settings, op, log, train_sampler, num_steps_training)
+
+        test_net(model, train_settings, log, test_sampler, last_gen_test_sampler)
+
+        log.finished_data()
+        try:
+            log.save("log.npz")
+        except Exception:
+            print("[Warning] failed to save log.npz")
+
+        starting_gen += 1
+        model_path = save_and_register_net(model, starting_gen)
+
+                # send to rust server
+        send_new_net(model_path, model, server)
+
+def send_new_net(model_path, model, server):
+    msg = make_msg_send(
+                    {"NewNetworkPath": model_path},
+                )
+    server.send(msg)
+    net_send = serialise_net(model)
+    msg = make_msg_send(
+                    {"NewNetworkData": net_send},
+                )
+    server.send(msg)
+
+def save_and_register_net(model, starting_gen):
+    model_path = "nets/tz_" + str(starting_gen) + ".pt"
+    print(model_path)
+    model.eval()
+    with torch.no_grad():
+        torch.jit.save(model, model_path)
+    with open("traininglog.txt", "a") as f:
+        f.write(model_path + "\n")
+    with open("datafile.txt", "w") as f:
+        f.write("")
+    return model_path
+
+def test_net(model, train_settings, log, test_sampler, last_gen_test_sampler):
+    with torch.no_grad():
+        model.eval()
+        test_batch = test_sampler.next_batch()
+        train_settings.evaluate_batch(
+                        network=model, batch=test_batch, log_prefix="test", logger=log
+                    )
+        last_gen_test_batch = last_gen_test_sampler.next_batch()
+        train_settings.evaluate_batch(
+                        network=model,
+                        batch=last_gen_test_batch,
+                        log_prefix="last gen test",
+                        logger=log,
+                    )
+    test_sampler.close()
+    last_gen_test_sampler.close()
+
+def train_net(model, train_settings, op, log, train_sampler, num_steps_training):
+    for gen in range(num_steps_training):
+        if gen != 0:
+            log.start_batch()
+        batch = train_sampler.next_batch()
+        train_settings.train_step(
+                        batch, network=model, optimizer=op, logger=log
+                    )
+    train_sampler.close()
+
+def get_num_steps_training(data, MIN_SAMPLING):
+    num_steps_training = (
+                    len(data.positions) / BATCH_SIZE
+                ) * SAMPLING_RATIO  # calculate number of training steps to take
+    if num_steps_training < MIN_SAMPLING:
+        print("[Warning] minimum training step is", MIN_SAMPLING)
+        num_steps_training = MIN_SAMPLING
+        print("[Warning] set training step to", MIN_SAMPLING)
+    num_steps_training = int(num_steps_training)
+    return num_steps_training
+
+def initialise_samplers(loopbuf):
+    train_sampler = loopbuf.sampler(
                     batch_size=BATCH_SIZE,
                     unroll_steps=None,
                     include_final=False,
@@ -331,7 +319,7 @@ def main():
                     test=False,
                 )
 
-                test_sampler = loopbuf.sampler(
+    test_sampler = loopbuf.sampler(
                     batch_size=BATCH_SIZE,
                     unroll_steps=None,
                     include_final=False,
@@ -339,7 +327,7 @@ def main():
                     only_last_gen=False,
                     test=True,
                 )
-                last_gen_test_sampler = loopbuf.sampler(
+    last_gen_test_sampler = loopbuf.sampler(
                     batch_size=BATCH_SIZE,
                     unroll_steps=None,
                     include_final=False,
@@ -347,78 +335,29 @@ def main():
                     only_last_gen=True,
                     test=True,
                 )
+    
+    return train_sampler,test_sampler,last_gen_test_sampler
 
-                num_steps_training = (
-                    len(data.positions) / BATCH_SIZE
-                ) * SAMPLING_RATIO  # calculate number of training steps to take
-                min_sampling = 15
-                if num_steps_training < min_sampling:
-                    print(
-                        f"[Warning] minimum training step is {min_sampling}, current training step is:",
-                        num_steps_training,
-                    )
-                    num_steps_training = min_sampling
-                    print(f"[Warning] set training step to {min_sampling}")
-                num_steps_training = int(num_steps_training)
-                model.train()
-                print("training model!")
-                print("num_steps_training:", num_steps_training)
+def extract_incoming_data_given_path(loopbuf, log, raw_data):
+    file_path = raw_data["purpose"]["JobSendPath"]
+    print(file_path)
+    with open("datafile.txt", "a") as f:
+        f.write(file_path + "\n")
+    data = load_file(file_path)
+    loopbuf.append(log, data)
+    log.finished_data()
+    try:
+        log.save("log.npz")
+    except Exception:
+        print("[Warning] failed to save log.npz")
+    return data
 
-                for gen in range(num_steps_training):
-                    if gen != 0:
-                        log.start_batch()
-                    batch = train_sampler.next_batch()
-                    train_settings.train_step(
-                        batch, network=model, optimizer=op, logger=log
-                    )
-
-                with torch.no_grad():
-                    model.eval()
-                    test_batch = test_sampler.next_batch()
-                    train_settings.evaluate_batch(
-                        network=model, batch=test_batch, log_prefix="test", logger=log
-                    )
-                    last_gen_test_batch = last_gen_test_sampler.next_batch()
-                    train_settings.evaluate_batch(
-                        network=model,
-                        batch=last_gen_test_batch,
-                        log_prefix="last gen test",
-                        logger=log,
-                    )
-
-                log.finished_data()
-                try:
-                    log.save("log.npz")
-                except Exception:
-                    print("[Warning] failed to save log.npz")
-
-                train_sampler.close()
-                test_sampler.close()
-                last_gen_test_sampler.close()
-                starting_gen += 1
-                model_path = "nets/tz_" + str(starting_gen) + ".pt"
-                print(model_path)
-                model.eval()
-                with torch.no_grad():
-                    torch.jit.save(model, model_path)
-                with open("traininglog.txt", "a") as f:
-                    f.write(model_path + "\n")
-
-                # send to rust server
-                msg = make_msg_send(
-                    {"NewNetworkPath": model_path},
-                )
-                server.send(msg)
-                net_send = serialise_net(model)
-                msg = make_msg_send(
-                    {"NewNetworkData": net_send},
-                )
-                server.send(msg)
-
-        if "StopServer" in received_data:
-            server.close()
-            print("Connection closed.")
-            break
+def send_net_in_bytes(model, server):
+    net_send = serialise_net(model)
+    msg = make_msg_send(
+                {"NewNetworkData": net_send},
+            )
+    server.send(msg)
 
 def load_previous_data(data_paths, loopbuf, log):
     if data_paths:
@@ -488,10 +427,7 @@ def get_model_path(training_nets):
                 item.strip() for item in recorded_sessions if item != ""
             ]
         if recorded_sessions != training_nets:
-            with open(
-                "traininglog.txt", "w"
-            )
-            as f:  # reset the entries in the document and reset according to available files
+            with open("traininglog.txt", "w") as f:  # reset the entries in the document and reset according to available files
                 for net in training_nets:
                     f.write(net + "\n")
             with open("traininglog.txt", "r") as f:  # reread the file with updated net
@@ -542,10 +478,7 @@ def check_net_exists(d, pattern):
                 net, "nets/tz_0.pt"
             )  # if it doesn't exist, create one and save into folder
 
-        with open(
-            "traininglog.txt", "w+"
-        )
-        as f:  # overwrite all content and start new training session
+        with open("traininglog.txt", "w+") as f:  # overwrite all content and start new training session
             f.write("nets/tz_0.pt\n")
 
         training_nets.append("nets/tz_0.pt")
