@@ -300,11 +300,6 @@ def load_previous_data(data_paths, loopbuf):
             try:
                 data = load_file(file)
                 loopbuf.append(None, data)
-                print(
-                    "[loaded files] buffer size:",
-                    loopbuf.position_count,
-                    datetime.now().strftime("%H:%M:%S"),
-                )
             except Exception:
                 continue
     if os.path.exists("log.npz"):
