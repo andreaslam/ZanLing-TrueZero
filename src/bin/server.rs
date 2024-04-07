@@ -156,7 +156,21 @@ fn handle_client(
                     recv_msg.clear();
                     continue;
                 }
-                MessageType::JobSendPath(_) => {}
+                MessageType::JobSendPath(_) => {
+                    let refresh_msg = MessageServer {
+                        // purpose: MessageType::NewNetworkPath(path.clone()),
+                        purpose: MessageType::RequestingTBLink,
+                    };
+                    let mut serialised =
+                        serde_json::to_string(&refresh_msg).expect("serialisation failed");
+                    serialised += "\n";
+                    if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
+                        eprintln!("Error sending identification! {}", msg);
+                        break;
+                    } else {
+                        // println!("[Server] Sending net path {}", path.clone());
+                    }
+                }
                 MessageType::StatisticsSend(statistics) => {
                     let mut stats = stats_counters.lock().unwrap_or_else(|e| e.into_inner());
                     let mut start_time = start_time.lock().unwrap_or_else(|e| e.into_inner());
@@ -210,7 +224,21 @@ fn handle_client(
                 MessageType::IdentityConfirmation(_) => {
                     println!("[Warning] Identity Confirmation Message type is not possible")
                 }
-                MessageType::JobSendData(_) => {}
+                MessageType::JobSendData(_) => {
+                    let refresh_msg = MessageServer {
+                        // purpose: MessageType::NewNetworkPath(path.clone()),
+                        purpose: MessageType::RequestingTBLink,
+                    };
+                    let mut serialised =
+                        serde_json::to_string(&refresh_msg).expect("serialisation failed");
+                    serialised += "\n";
+                    if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
+                        eprintln!("Error sending identification! {}", msg);
+                        break;
+                    } else {
+                        // println!("[Server] Sending net path {}", path.clone());
+                    }
+                }
                 MessageType::NewNetworkData(data) => {
                     *net_data = Some(data);
                 }
