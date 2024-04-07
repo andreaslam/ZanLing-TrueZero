@@ -20,7 +20,7 @@ use tz_rust::{
     selfplay::{CollectorMessage, DataGen},
     settings::SearchSettings,
 };
-#[tokio::main(flavor = "multi_thread", worker_threads = 6)]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() {
     env::set_var("RUST_BACKTRACE", "1");
 
@@ -50,7 +50,7 @@ async fn main() {
         .expect("Failed to send data");
     println!("Connected to server!");
     let num_executors = 2;
-    let batch_size = 1024; // executor batch size
+    let batch_size = 131072; // executor batch size
     let num_generators = num_executors * batch_size * 2;
     let (game_sender, game_receiver) =
         flume::bounded::<CollectorMessage>(num_executors * batch_size);
