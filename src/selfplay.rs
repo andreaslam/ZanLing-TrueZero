@@ -34,14 +34,14 @@ impl DataGen {
         settings: &SearchSettings,
         id: usize,
     ) -> Simulation {
-let sw = Instant::now();
+        let sw = Instant::now();
         let mut bs = BoardStack::new(Board::default());
         // let mut value: Vec<f32> = Vec::new();
         let mut positions: Vec<Position> = Vec::new();
-        // let thread_name = std::thread::current()
-        //     .name()
-        //     .unwrap_or("unnamed")
-        //     .to_owned();
+        let thread_name = std::thread::current()
+            .name()
+            .unwrap_or("unnamed")
+            .to_owned();
         while bs.status() == GameStatus::Ongoing {
             let sw = Instant::now();
             let (mv, v_p, move_idx_piece, search_data, visits) =
@@ -52,8 +52,8 @@ let sw = Instant::now();
                 mv
             } else {
                 let weighted_index = WeightedIndex::new(&search_data.policy).unwrap();
-
                 let mut rng = rand::thread_rng();
+                // println!("{}, {:?}, {:?}", thread_name, weighted_index, rng);
                 let sampled_idx = weighted_index.sample(&mut rng);
                 let mut legal_moves: Vec<Move> = Vec::new();
                 bs.board().generate_moves(|moves| {
@@ -80,7 +80,7 @@ let sw = Instant::now();
                 .send_async(CollectorMessage::GeneratorStatistics(
                     settings.max_nodes as f32,
                 ))
-.await
+                .await
                 .unwrap();
             bs.play(final_mv);
             positions.push(pos);
@@ -90,7 +90,7 @@ let sw = Instant::now();
             positions,
             final_board: bs,
         };
-let elapsed_ms = sw.elapsed().as_nanos() as f32 / 1e9;
+        let elapsed_ms = sw.elapsed().as_nanos() as f32 / 1e9;
         println!("one done {}s", elapsed_ms);
         // println!("one done!");
         tz
