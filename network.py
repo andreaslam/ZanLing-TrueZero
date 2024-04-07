@@ -59,31 +59,24 @@ class ResBlock(nn.Module):
 
 
 class TrueNetXS(nn.Module):
-    def __init__(self, num_hidden, head_channel_policy, head_channel_values):
+    def __init__(self):
         super().__init__()
-        self.layerBlock = nn.Sequential(
-            nn.Conv2d(21, num_hidden, kernel_size=1, padding=0),
-            nn.BatchNorm2d(num_hidden),
-            nn.ReLU(),
-        )
+        self.flatten = nn.Flatten()
+        self.layer = nn.Linear(1344, 1344)
         self.policyHead = nn.Sequential(
-            nn.Conv2d(num_hidden, head_channel_policy, kernel_size=1, padding=0),
-            nn.BatchNorm2d(head_channel_policy),
+            nn.Linear(1344, 1344),
             nn.ReLU(),
-            nn.Flatten(),
-            nn.Linear(head_channel_policy * 64, 1880),
+            nn.Linear(1344, 1880),
         )
         self.valueHead = nn.Sequential(
-            nn.Conv2d(num_hidden, head_channel_values, kernel_size=1, padding=0),
-            nn.BatchNorm2d(head_channel_values),
+            nn.Linear(1344, 5),
             nn.ReLU(),
-            nn.Flatten(),
-            nn.Linear(head_channel_values * 64, 5),
             nn.Tanh(),
         )
 
     def forward(self, x):
-        x = self.layerBlock(x)
+        x = self.flatten(x)
+        x = self.layer(x)
         policy = self.policyHead(x)
         value = self.valueHead(x)
         return value, policy
