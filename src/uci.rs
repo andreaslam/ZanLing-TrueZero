@@ -214,12 +214,12 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
         fpu: 0.0,
         wdl: None,
         moves_left: None,
-        c_puct: 0.0,
+        c_puct: 2.0,
         max_nodes: nodes,
         alpha: 0.0,
         eps: 0.0,
         search_type: UCISearch,
-        pst: 0.0,
+        pst: 1.5,
         // cap_randomisation: None,
     };
     let rt = Runtime::new().unwrap();
