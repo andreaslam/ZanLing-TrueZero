@@ -107,10 +107,7 @@ def main():
         raw_data = json.loads(received_data)
         received_data = str(raw_data)
 
-        if any(
-            purpose in received_data
-            for purpose in ["PythonTraining", "RustDataGen", "RequestingNet"]
-        ):
+        if "RequestingNet" in received_data:
             send_net_in_bytes(model, server)
 
         if "JobSendPath" in received_data:
