@@ -49,7 +49,7 @@ async fn main() {
         .write_all(serialised.as_bytes())
         .expect("Failed to send data");
     println!("Connected to server!");
-    let num_executors = 2;
+    let num_executors = 1;
     let batch_size = 2048; // executor batch size
     let num_generators = num_executors * batch_size * 2;
     let (game_sender, game_receiver) =
