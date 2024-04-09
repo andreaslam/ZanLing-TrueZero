@@ -54,7 +54,6 @@ impl Net {
     pub fn new(path: &str) -> Self {
         // let path = "tz.pt";
         // // println!("{}", path);
-        let mut net = tch::CModule::load(path).expect("ERROR");
 
         let device = if has_cuda() {
             Device::Cuda(0)
@@ -64,7 +63,9 @@ impl Net {
             Device::Cpu
         };
 
+        let mut net = tch::CModule::load_on_device(path, device).expect("ERROR");
         net.set_eval();
+        
         Self {
             net: net,
             device: device,
@@ -140,6 +141,7 @@ impl Tree {
                     legal_moves.extend(moves);
                     false
                 });
+                // add policy softmax temperature and Dirichlet noise
                 let mut sum = 0.0;
                 for child in self.nodes[0].children.clone() {
                     self.nodes[child].policy = self.nodes[child].policy.powf(self.settings.pst);
@@ -150,7 +152,6 @@ impl Tree {
                 }
                 match self.settings.search_type {
                     TypeRequest::TrainerSearch(_) => {
-                        // add policy softmax temperature and Dirichlet noise
                         // TODO extract below as a function?
 
                         // add Dirichlet noise
