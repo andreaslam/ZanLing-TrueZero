@@ -22,7 +22,7 @@ use tz_rust::{
 };
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    env::set_var("RUST_BACKTRACE", "1");
+    env::set_var("RUST_BACKTRACE", "2");
 
     panic::set_hook(Box::new(|panic_info| {
         // print panic information
@@ -460,7 +460,6 @@ fn commander_main(
                     exe_sender.send(net_path.clone()).unwrap();
                     // println!("SENT!");
                 }
-                println!("net updated");
                 curr_net = net_path.clone();
             }
         }
