@@ -255,10 +255,13 @@ fn collector_main(
     } else {
         println!("created {}", folder_name);
     }
-    let mut counter = 0;
     let id = id_recv.recv().unwrap();
-
-    let mut path = format!("games/gen_{}_games_{}", id, counter);
+    let file_save_time = SystemTime::now();
+    let file_save_time_duration = file_save_time
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
+    let file_save_time_num = file_save_time_duration.as_nanos();
+    let mut path = format!("games/gen_{}_games_{}", id, file_save_time_num);
     let mut bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
     let mut nps_start_time = Instant::now();
     let mut nps_vec: Vec<f32> = Vec::new();
@@ -314,8 +317,12 @@ fn collector_main(
                     //     }
                     // }
                     // println!("{}, {}", thread_name, counter);
-                    counter += 1;
-                    path = format!("games/gen_{}_games_{}", id, counter);
+                    let file_save_time = SystemTime::now();
+                    let file_save_time_duration = file_save_time
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Time went backwards");
+                    let file_save_time_num = file_save_time_duration.as_nanos();
+                    path = format!("games/gen_{}_games_{}", id, file_save_time_num);
                     bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
                 }
             }
