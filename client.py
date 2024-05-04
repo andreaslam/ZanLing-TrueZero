@@ -61,7 +61,7 @@ def load_file(games_path):
 
 HOST = "127.0.0.1"
 PORT = 38475
-BUFFER_SIZE = 500000
+BUFFER_SIZE = 1000000
 BATCH_SIZE = 2048
 MIN_SAMPLING = 10
 SAMPLING_RATIO = 0.25
@@ -98,7 +98,7 @@ def main():
         clip_norm=5.0,
         mask_policy=True,
     )
-    op = optim.AdamW(params=model.parameters(), lr=2e-3)
+    op = optim.AdamW(params=model.parameters(), lr=1e-3)
     log = load_previous_data(data_paths, loopbuf)
 
     while True:
@@ -129,10 +129,14 @@ def main():
 
 
 def extract_incoming_data_given_bytes(loopbuf, log, raw_data):
+    bin_data = raw_data["purpose"]["JobSendData"][0]
+    off_data = raw_data["purpose"]["JobSendData"][1]
+    meta_data = raw_data["purpose"]["JobSendData"][2]
+
     bin_data, off_data, meta_data = (
-        raw_data["purpose"]["JobSendData"][0]["BinFile"],
-        raw_data["purpose"]["JobSendData"][1]["OffFile"],
-        raw_data["purpose"]["JobSendData"][2]["MetaDataFile"],
+        bytes(dict(bin_data)["BinFile"]),
+        bytes(dict(off_data)["OffFile"]),
+        bytes(dict(meta_data)["MetaDataFile"]),
     )
 
     if not os.path.exists("./python_client_games"):
@@ -140,14 +144,19 @@ def extract_incoming_data_given_bytes(loopbuf, log, raw_data):
 
     path = f"./python_client_games/temp_games_{int(time.time())}"
     with open(path + ".bin", "wb") as file:
-        file.write(bytes(bin_data))
-    with open(path + ".off", "wb") as file:
-        file.write(bytes(off_data))
+        file.write(bin_data)
 
+    with open(path + ".off", "wb") as file:
+        file.write(off_data)
+    decoded_string = meta_data.decode("utf-8")
+    data = json.loads(decoded_string)
     with open(path + ".json", "w") as file:
-        json.dump(meta_data, file, indent=4)
+        json.dump(
+            data, file, indent=4
+        )  # Use indent parameter for pretty formatting (optional)
     with open("datafile.txt", "a") as f:
         f.write(path + "\n")
+    print(path)
     data = load_file(path)
     loopbuf.append(log, data)
     print("[loaded files] buffer size:", loopbuf.position_count)
@@ -199,8 +208,9 @@ def save_and_register_net(model, starting_gen):
         torch.jit.save(model, model_path)
     with open("traininglog.txt", "a") as f:
         f.write(model_path + "\n")
-    with open("datafile.txt", "w"):
-        pass
+    if not os.path.exists("datafile.txt"):
+        with open("datafile.txt", "w"):
+            pass
     return model_path
 
 
@@ -270,7 +280,6 @@ def initialise_samplers(loopbuf):
 
 def extract_incoming_data_given_path(loopbuf, log, raw_data):
     file_path = raw_data["purpose"]["JobSendPath"]
-    print(file_path)
     with open("datafile.txt", "a") as f:
         f.write(file_path + "\n")
     data = load_file(file_path)
@@ -381,7 +390,7 @@ def check_net_exists(device, pattern):
                 #     num_hidden=64,
                 #     head_channel_policy=8,
                 #     head_channel_values=4,
-                network.TrueNetXS().to(device)
+                network.TrueNetXS(num_hidden=64).to(device)
             ).eval()
             torch.jit.save(net, "nets/tz_0.pt")
 
