@@ -30,8 +30,8 @@ fn main() {
 
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
     let num_games = 10000;
-    let num_threads = 32;
-    let engine_0: String = "./nets/tz_6515.pt".to_string(); // new engine
+    let num_threads = 2048;
+    let engine_0: String = "./tz_6515.pt".to_string(); // new engine
     let engine_1: String = "./chess_16x128_gen3634.pt".to_string(); // old engine
     let num_executors = 2; // always be 2, 2 players, one each (one for each neural net)
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
@@ -126,7 +126,7 @@ fn generator_main(
         wdl: None,
         moves_left: None,
         c_puct: 0.0,
-        max_nodes: 200,
+        max_nodes: 800,
         alpha: 0.0,
         eps: 0.0,
         search_type: NonTrainerSearch,
@@ -138,6 +138,7 @@ fn generator_main(
     let mut swap_count = 0;
     let mut fen = openings.choose(&mut rand::thread_rng()).unwrap();
     loop {
+        let mut moves_list: Vec<String> = Vec::new();
         if swap_count % 2 == 0 {
             fen = openings.choose(&mut rand::thread_rng()).unwrap();
         } else {
@@ -151,6 +152,7 @@ fn generator_main(
             let (mv, _, _, _, _) =
                 rt.block_on(async { get_move(bs.clone(), engine.clone(), settings.clone()).await });
             bs.play(mv);
+            moves_list.push(format!("{:#}", mv));
             move_counter += 1;
         }
         let outcome: Option<bool> = match bs.status() {
@@ -158,6 +160,8 @@ fn generator_main(
             GameStatus::Won => Some((move_counter - 1) % 2 == 0),
             GameStatus::Ongoing => panic!("Game is still ongoing!"),
         };
+        let moves_list_str = moves_list.join(" ");
+        println!("first move engine_{} opening {}, moves {}", swap_count % 2, fen, moves_list_str);
         swap_count += 1;
         sender_collector
             .send(CollectorMessage::TestingResult(outcome))
