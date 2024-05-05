@@ -172,7 +172,7 @@ fn collector_main(
     engine_0_path: String,
     engine_1_path: String,
 ) {
-    let mut results = (0, 0, 0);
+    let mut results = (0, 0, 0); // (w,l,d) in the perspective of engine_0
     let mut counter = 0;
     loop {
         let msg = receiver.recv().unwrap();
