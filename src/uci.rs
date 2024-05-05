@@ -124,7 +124,7 @@ fn set_position(commands: Vec<&str>, bs: &mut BoardStack, stack: &mut Vec<u64>) 
     } else {
         &fen.trim()
     };
-    let board = Board::from_fen(fenstr, false).unwrap();
+    let board = Board::from_fen(fenstr, false).unwrap_or(Board::default());
     *bs = BoardStack::new(board.clone());
     stack.clear();
 
