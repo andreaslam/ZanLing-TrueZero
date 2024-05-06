@@ -1,5 +1,6 @@
 use crossbeam::thread;
 use flume::{Receiver, Sender};
+use futures::executor::ThreadPool;
 use rand::prelude::*;
 use std::{
     env,
@@ -10,7 +11,6 @@ use std::{
     path::Path,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-use tokio::task::spawn;
 use tz_rust::{
     dummyreq::{send_request, send_request_async},
     executor::{executor_main, Packet},
@@ -20,8 +20,8 @@ use tz_rust::{
     selfplay::{CollectorMessage, DataGen},
     settings::SearchSettings,
 };
-#[tokio::main(flavor = "multi_thread")]
-async fn main() {
+fn main() {
+    let pool = ThreadPool::new().expect("Failed to build pool");
     env::set_var("RUST_BACKTRACE", "2");
 
     panic::set_hook(Box::new(|panic_info| {
@@ -35,28 +35,27 @@ async fn main() {
         match TcpStream::connect("127.0.0.1:38475") {
             Ok(s) => break s,
             Err(_) => continue,
-        };
+        }
     };
     // identification - this is rust data generation
-
     let message = MessageServer {
         purpose: MessageType::Initialise(Entity::RustDataGen),
     };
-    let mut handles_vec = vec![];
-    let mut serialised = serde_json::to_string(&message).expect("serialisation failed");
-    serialised += "\n";
+    let serialised = serde_json::to_string(&message).expect("serialization failed");
+    let mut serialised = serialised + "\n";
     stream
         .write_all(serialised.as_bytes())
         .expect("Failed to send data");
     println!("Connected to server!");
-    let num_executors = 1;
-    let batch_size = 2048; // executor batch size
+
+    let num_executors = 2;
+    let batch_size = 1024; // executor batch size
     let num_generators = num_executors * batch_size * 2;
     let (game_sender, game_receiver) =
         flume::bounded::<CollectorMessage>(num_executors * batch_size);
+
     thread::scope(|s| {
         // commander
-
         let mut vec_communicate_exe_send: Vec<Sender<String>> = Vec::new(); // commander to executor, send net
         let mut vec_communicate_exe_recv: Vec<Receiver<String>> = Vec::new(); // commander to executor, send net
 
@@ -68,7 +67,6 @@ async fn main() {
         }
 
         // send-recv pair between commander and collector
-
         let (id_send, id_recv) = flume::bounded::<usize>(1);
 
         let _ = s
@@ -86,17 +84,14 @@ async fn main() {
         // selfplay threads
         let (tensor_exe_send, tensor_exe_recv) =
             flume::bounded::<Packet>(num_executors * num_generators); // mcts to executor
-        let spam = tensor_exe_send.clone();
 
         // executor
-        let mut n = 0;
         for communicate_exe_recv in vec_communicate_exe_recv {
-            // send/recv pair between executor and commander
             let eval_per_sec_sender = game_sender.clone();
             let tensor_exe_recv_clone = tensor_exe_recv.clone();
             let _ = s
                 .builder()
-                .name(format!("executor_{}", n.to_string()))
+                .name("executor".to_string())
                 .spawn(move |_| {
                     executor_main(
                         communicate_exe_recv,
@@ -106,17 +101,14 @@ async fn main() {
                     )
                 })
                 .unwrap();
-            n += 1;
         }
 
         for n in 0..num_generators {
-            // sender-receiver pair to communicate for each thread instance to the executor
             let sender_clone = game_sender.clone();
             let mut selfplay_master = DataGen { iterations: 1 };
             let tensor_exe_send_clone = tensor_exe_send.clone();
             let nps_sender = game_sender.clone();
-
-            let handle = spawn(async move {
+            let fut_generator = async move {
                 generator_main(
                     sender_clone,
                     selfplay_master,
@@ -124,22 +116,12 @@ async fn main() {
                     nps_sender,
                     n,
                 )
-                .await
-            });
-            handles_vec.push(handle);
+                .await;
+            };
+            pool.spawn_ok(fut_generator);
         }
-        // dummy thread
-        // for n in 0..num_generators {
-        //     let tensor_exe_send_clone = tensor_exe_send.clone();
-        //     let spam_handle = spam.clone();
-        //     let h1 = spawn(async move { send_request_async(spam_handle, n).await });
-
-        //     handles_vec.push(h1);
-        //     // std::thread::spawn(|| {send_request(tensor_exe_send_clone)});
-        // }
 
         // collector
-
         let _ = s
             .builder()
             .name("collector".to_string())
@@ -153,11 +135,6 @@ async fn main() {
             .unwrap();
     })
     .unwrap();
-    for handle in handles_vec {
-        if let Err(e) = handle.await {
-            eprintln!("Error joining thread: {:?}", e);
-        }
-    }
 }
 
 async fn generator_main(
@@ -172,8 +149,7 @@ async fn generator_main(
         wdl: None,
         moves_left: None,
         c_puct: 3.0,
-        // max_nodes: 400,
-        max_nodes: 400,
+        max_nodes: 800,
         alpha: 0.3,
         eps: 0.3,
         search_type: TrainerSearch(None),
@@ -365,6 +341,7 @@ fn collector_main(
                 }
             }
             CollectorMessage::GameResult(_) => {}
+            CollectorMessage::TestingResult(_) => {}
         }
     }
 }
