@@ -6,9 +6,7 @@ use crate::{
 };
 use flume::{Receiver, RecvError, Selector, Sender};
 use std::{
-    cmp::min,
-    collections::VecDeque,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    cmp::min, collections::VecDeque, process, time::{Duration, Instant, SystemTime, UNIX_EPOCH}
 };
 use superluminal_perf::{begin_event_with_color, end_event};
 use tch::Tensor;
@@ -242,6 +240,7 @@ pub fn executor_main(
         debug_counter += 1;
     }
     // Return the senders to avoid them being dropped and disconnected
+    process::exit(0)
 }
 
 pub fn executor_static(
@@ -319,4 +318,5 @@ pub fn executor_static(
         debug_counter += 1;
     }
     // Return the senders to avoid them being dropped and disconnected
+    process::exit(0)
 }
