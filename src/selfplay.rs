@@ -16,8 +16,8 @@ pub enum CollectorMessage {
     FinishedGame(Simulation),
     GeneratorStatistics(f32),
     ExecutorStatistics(f32),
-
     GameResult(Option<Color>),
+    TestingResult(Option<bool>), // engine_0 win = true, engine_0 loss = false
 }
 
 #[derive(PartialEq, Clone, Debug, Copy)]
@@ -91,7 +91,7 @@ impl DataGen {
             final_board: bs,
         };
         let elapsed_ms = sw.elapsed().as_nanos() as f32 / 1e9;
-        println!("one done {}s", elapsed_ms);
+        // println!("one done {}s", elapsed_ms);
         // println!("one done!");
         tz
     }
