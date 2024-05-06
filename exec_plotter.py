@@ -2,10 +2,11 @@ import matplotlib.pyplot as plt
 import io
 import re
 
+
 def extract_data_fmt(input_string):
     # example entry
     # 1710608194100142900 1710608194400395200 executor_0 waiting_for_batch
-    
+
     return re.findall(r"\d+\s\d+\s\S+\s\S+\s", input_string)
 
 
@@ -28,8 +29,9 @@ def process_tasks(tasks):
             sublist[2],
             sublist[3],
         ]
-        for sublist in tasks 
+        for sublist in tasks
     ]
+
 
 def plot_schedule(tasks):
     task_desc_colors = {}  # Store colours for each task description
@@ -100,6 +102,7 @@ def plot_schedule(tasks):
     plt.tight_layout()
     plt.savefig("plt.png")
     # plt.show()
+
 
 # Example usage:
 tasks = process_tasks(read_tasks_from_file("logs.txt"))
