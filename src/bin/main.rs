@@ -50,7 +50,7 @@ fn main() {
 
     let num_executors = 4;
     let batch_size = 1024; // executor batch size
-    let num_generators = num_executors * batch_size * 8;
+    let num_generators = num_executors * batch_size * 2;
     let (game_sender, game_receiver) =
         flume::bounded::<CollectorMessage>(num_executors * batch_size);
 
@@ -61,7 +61,7 @@ fn main() {
 
         for _ in 0..num_executors {
             let (communicate_exe_send, communicate_exe_recv) =
-                flume::bounded::<String>(4 * num_generators);
+                flume::bounded::<String>(num_generators);
             vec_communicate_exe_send.push(communicate_exe_send);
             vec_communicate_exe_recv.push(communicate_exe_recv);
         }
@@ -83,7 +83,7 @@ fn main() {
 
         // selfplay threads
         let (tensor_exe_send, tensor_exe_recv) =
-            flume::bounded::<Packet>(num_executors * num_generators); // mcts to executor
+            flume::bounded::<Packet>(num_generators); // mcts to executor
 
         // executor
         let mut exec_id = 0;
@@ -109,13 +109,11 @@ fn main() {
             let sender_clone = game_sender.clone();
             let mut selfplay_master = DataGen { iterations: 1 };
             let tensor_exe_send_clone = tensor_exe_send.clone();
-            let nps_sender = game_sender.clone();
             let fut_generator = async move {
                 generator_main(
                     sender_clone,
                     selfplay_master,
                     tensor_exe_send_clone,
-                    nps_sender,
                     n,
                 )
                 .await;
@@ -143,7 +141,6 @@ async fn generator_main(
     sender_collector: Sender<CollectorMessage>,
     datagen: DataGen,
     tensor_exe_send: Sender<Packet>,
-    nps_sender: Sender<CollectorMessage>,
     id: usize,
 ) {
     let settings: SearchSettings = SearchSettings {
@@ -157,6 +154,7 @@ async fn generator_main(
         search_type: TrainerSearch(None),
         pst: 1.25,
     };
+    let nps_sender = sender_collector.clone();
     loop {
         let sim = datagen
             // .fast_data(&tensor_exe_send, &nps_sender, &settings, id)
