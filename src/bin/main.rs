@@ -48,9 +48,9 @@ fn main() {
         .expect("Failed to send data");
     println!("Connected to server!");
 
-    let num_executors = 2;
+    let num_executors = 4;
     let batch_size = 1024; // executor batch size
-    let num_generators = num_executors * batch_size * 2;
+    let num_generators = num_executors * batch_size * 8;
     let (game_sender, game_receiver) =
         flume::bounded::<CollectorMessage>(num_executors * batch_size);
 
@@ -86,12 +86,13 @@ fn main() {
             flume::bounded::<Packet>(num_executors * num_generators); // mcts to executor
 
         // executor
+        let mut exec_id = 0;
         for communicate_exe_recv in vec_communicate_exe_recv {
             let eval_per_sec_sender = game_sender.clone();
             let tensor_exe_recv_clone = tensor_exe_recv.clone();
             let _ = s
                 .builder()
-                .name("executor".to_string())
+                .name(format!("executor-{}", exec_id).to_string())
                 .spawn(move |_| {
                     executor_main(
                         communicate_exe_recv,
@@ -101,6 +102,7 @@ fn main() {
                     )
                 })
                 .unwrap();
+            exec_id += 1;
         }
 
         for n in 0..num_generators {
