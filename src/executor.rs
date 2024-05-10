@@ -6,7 +6,7 @@ use crate::{
 };
 use flume::{Receiver, RecvError, Selector, Sender};
 use std::{
-    cmp::min, collections::VecDeque, process, time::{Duration, Instant, SystemTime, UNIX_EPOCH}
+    cmp::min, collections::VecDeque, process, thread, time::{Duration, Instant, SystemTime, UNIX_EPOCH}
 };
 use superluminal_perf::{begin_event_with_color, end_event};
 use tch::Tensor;
@@ -26,7 +26,7 @@ pub enum Message {
     NewNetwork(Result<String, RecvError>),
     JobTensor(Result<Packet, RecvError>), // (converted) tensor from mcts search that needs NN evaluation
 
-    StopServer(), // end the executor process
+    StopServer, // end the executor process
 }
 
 pub enum ReturnMessage {
@@ -84,11 +84,17 @@ pub fn executor_main(
         }
 
         // register all tensor receivers in the selector
-        match network {
-            Some(_) => {
-                selector = selector.recv(&tensor_receiver, |res| Message::JobTensor(res));
+        // println!("{}, {} {}, {}", input_vec.len(), thread_name, max_batch_size, has_started);
+        // println!("{}",((input_vec.len() == max_batch_size) || (has_started == false)) || ((input_vec.len() < max_batch_size )));
+        if input_vec.len() < max_batch_size {
+
+            match network {
+                Some(_) => {
+                    selector = selector.recv(&tensor_receiver, |res| Message::JobTensor(res));
+                }
+                None => (),
             }
-            None => (),
+        } else {
         }
 
         let now_end = SystemTime::now();
@@ -102,7 +108,7 @@ pub fn executor_main(
 
         // println!("RECV SIZE {} NUM SENDERS {} RECV {}", tensor_receiver.len(), tensor_receiver.sender_count(), tensor_receiver.receiver_count());
         match message {
-            Message::StopServer() => break,
+            Message::StopServer => break,
             Message::NewNetwork(Ok(graph)) => {
                 // // println!("    NEW NET!");
                 handle_new_graph(&mut network, Some(graph), &thread_name);
@@ -129,10 +135,10 @@ pub fn executor_main(
                         .duration_since(UNIX_EPOCH)
                         .expect("Time went backwards");
                     let epoch_seconds_end = since_epoch.as_nanos();
-                    // println!(
-                    //     "{} {} {} waiting_for_batch",
-                    //     epoch_seconds_start, epoch_seconds_end, thread_name
-                    // );
+                    println!(
+                        "{} {} {} waiting_for_batch",
+                        epoch_seconds_start, epoch_seconds_end, thread_name
+                    );
                     let network = network.as_mut().expect("Network should be available");
                     let elapsed = waiting_batch.elapsed().as_nanos() as f32 / 1e6;
 
@@ -166,10 +172,10 @@ pub fn executor_main(
                         .duration_since(UNIX_EPOCH)
                         .expect("Time went backwards");
                     let epoch_seconds_end_evals = since_epoch_evals.as_nanos();
-                    // println!(
-                    //     "{} {} {} evaluation_time_taken",
-                    //     epoch_seconds_start_evals, epoch_seconds_end_evals, thread_name
-                    // );
+                    println!(
+                        "{} {} {} evaluation_time_taken",
+                        epoch_seconds_start_evals, epoch_seconds_end_evals, thread_name
+                    );
                     let sw_inference = Instant::now();
                     let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
                     // let evals_per_sec = batch_size as f32 / elapsed;
@@ -210,10 +216,10 @@ pub fn executor_main(
                         .expect("Time went backwards");
                     let epoch_seconds_end_packing = since_epoch_packing.as_nanos();
 
-                    // println!(
-                    //     "{} {} {} packing_time",
-                    //     epoch_seconds_start_packing, epoch_seconds_end_packing, thread_name
-                    // );
+                    println!(
+                        "{} {} {} packing_time",
+                        epoch_seconds_start_packing, epoch_seconds_end_packing, thread_name
+                    );
 
                     let packing_elapsed = packing_time.elapsed().as_nanos() as f32 / 1e6;
                     // println!("loop {} packing time {}ms", debug_counter, packing_elapsed);
@@ -269,11 +275,11 @@ pub fn executor_static(
 
         // Register all receivers in the selector
         selector = selector.recv(&tensor_receiver, |res| Message::JobTensor(res));
-        selector = selector.recv(&ctrl_receiver, |_| Message::StopServer());
+        selector = selector.recv(&ctrl_receiver, |_| Message::StopServer);
         let message = selector.wait();
 
         match message {
-            Message::StopServer() => {
+            Message::StopServer => {
                 break;
             }
             Message::NewNetwork(_) => {
