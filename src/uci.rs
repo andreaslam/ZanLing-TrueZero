@@ -236,7 +236,7 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
         });
 
         println!("bestmove {:#}", best_move);
-        let _ = ctrl_sender.send(Message::StopServer());
+        let _ = ctrl_sender.send(Message::StopServer);
     })
     .unwrap();
 }
