@@ -69,7 +69,10 @@ pub fn executor_main(
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards");
     let mut epoch_seconds_start = since_epoch.as_nanos(); // batch
+    let mut prev_count = max_batch_size;
+    println!("{} {:?}", thread_name, tensor_receiver.capacity());
     loop {
+        let mut selector = Selector::new();
         begin_event_with_color("waiting_for_job", CL_ORANGE);
         let sw = Instant::now();
         // // println!("thread {} loop {}:", thread_name, debug_counter);
@@ -77,7 +80,6 @@ pub fn executor_main(
         // // println!("    thread {} graph_disconnected: {}", thread_name, graph_disconnected);
         assert!(network.is_some() || !graph_disconnected);
 
-        let mut selector = Selector::new();
 
         if !graph_disconnected {
             selector = selector.recv(&net_receiver, |res| Message::NewNetwork(res));
@@ -86,17 +88,15 @@ pub fn executor_main(
         // register all tensor receivers in the selector
         // println!("{}, {} {}, {}", input_vec.len(), thread_name, max_batch_size, has_started);
         // println!("{}",((input_vec.len() == max_batch_size) || (has_started == false)) || ((input_vec.len() < max_batch_size )));
-        if input_vec.len() < max_batch_size {
+        prev_count = tensor_receiver.len();
 
             match network {
                 Some(_) => {
                     selector = selector.recv(&tensor_receiver, |res| Message::JobTensor(res));
+                    prev_count = tensor_receiver.len()
                 }
                 None => (),
             }
-        } else {
-        }
-
         let now_end = SystemTime::now();
         let since_epoch = now_end
             .duration_since(UNIX_EPOCH)
@@ -135,10 +135,10 @@ pub fn executor_main(
                         .duration_since(UNIX_EPOCH)
                         .expect("Time went backwards");
                     let epoch_seconds_end = since_epoch.as_nanos();
-                    println!(
-                        "{} {} {} waiting_for_batch",
-                        epoch_seconds_start, epoch_seconds_end, thread_name
-                    );
+                    // println!(
+                    //     "{} {} {} waiting_for_batch",
+                    //     epoch_seconds_start, epoch_seconds_end, thread_name
+                    // );
                     let network = network.as_mut().expect("Network should be available");
                     let elapsed = waiting_batch.elapsed().as_nanos() as f32 / 1e6;
 
@@ -172,10 +172,10 @@ pub fn executor_main(
                         .duration_since(UNIX_EPOCH)
                         .expect("Time went backwards");
                     let epoch_seconds_end_evals = since_epoch_evals.as_nanos();
-                    println!(
-                        "{} {} {} evaluation_time_taken",
-                        epoch_seconds_start_evals, epoch_seconds_end_evals, thread_name
-                    );
+                    // println!(
+                    //     "{} {} {} evaluation_time_taken",
+                    //     epoch_seconds_start_evals, epoch_seconds_end_evals, thread_name
+                    // );
                     let sw_inference = Instant::now();
                     let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
                     // let evals_per_sec = batch_size as f32 / elapsed;
@@ -216,10 +216,10 @@ pub fn executor_main(
                         .expect("Time went backwards");
                     let epoch_seconds_end_packing = since_epoch_packing.as_nanos();
 
-                    println!(
-                        "{} {} {} packing_time",
-                        epoch_seconds_start_packing, epoch_seconds_end_packing, thread_name
-                    );
+                    // println!(
+                    //     "{} {} {} packing_time",
+                    //     epoch_seconds_start_packing, epoch_seconds_end_packing, thread_name
+                    // );
 
                     let packing_elapsed = packing_time.elapsed().as_nanos() as f32 / 1e6;
                     // println!("loop {} packing time {}ms", debug_counter, packing_elapsed);
@@ -243,6 +243,7 @@ pub fn executor_main(
         }
         let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
         // println!("loop {}, elapsed time: {}s", debug_counter, elapsed);
+        prev_count = 0;
         debug_counter += 1;
     }
     // Return the senders to avoid them being dropped and disconnected
@@ -324,5 +325,4 @@ pub fn executor_static(
         debug_counter += 1;
     }
     // Return the senders to avoid them being dropped and disconnected
-    process::exit(0)
 }
