@@ -405,7 +405,7 @@ class DataReceiver(QObject):
                         logger.info("GUI success!")
                         login_screen.show_success_message("Login success!")
                         login_screen.clear_error_message()
-                        QThread.msleep(3000)
+                        QThread.msleep(1000)
                         self.data_received.emit()
                         done = True
                         break
@@ -426,7 +426,7 @@ class DataReceiver(QObject):
     def run_gui_testing(self, login_screen, experiment_tracker):
         password = "bar"
         print(
-            "[Note]: this is the demo version of TrueScheduler. use 'bar' to access the rest of the GUI."
+            f"[Note]: this is the demo version of TrueScheduler. use '{password}' to access the rest of the GUI."
         )
         print("debugging prints and logging enabled.")
         while True:
