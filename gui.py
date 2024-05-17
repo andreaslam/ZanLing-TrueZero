@@ -282,17 +282,17 @@ class ExperimentTracker(QWidget):
         for i in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(i)
             datetime_picker = tab.findChild(QDateTimeEdit, "datetime_picker")
+            experiment_name_box = tab.findChild(QLineEdit, "experiment_name_box")
+            command_box = tab.findChild(QLineEdit, "command_box")
+            test_parameters_box = tab.findChild(QLineEdit, "test_parameters_box")
+
+            if experiment_name_box.text():
+                experiment_name = experiment_name_box.text()
+            else:
+                experiment_name = f"Experiment {i+1}"
             if (
                 datetime_picker.dateTime() >= current_time
             ):  # Check if datetime is in the future
-                experiment_name_box = tab.findChild(QLineEdit, "experiment_name_box")
-                command_box = tab.findChild(QLineEdit, "command_box")
-                test_parameters_box = tab.findChild(QLineEdit, "test_parameters_box")
-
-                if experiment_name_box.text():
-                    experiment_name = experiment_name_box.text()
-                else:
-                    experiment_name = f"Experiment {i+1}"
 
                 tab_data = {
                     "experiment_name": experiment_name,
@@ -304,27 +304,27 @@ class ExperimentTracker(QWidget):
                 if tab_data not in self.prevs.values():
                     print("self.prevs", self.prevs)
                     form_data[f"Experiment {i + 1}"] = tab_data
-                    success_scheduled.append(i)
+                    success_scheduled.append(experiment_name)
                     self.prevs[f"Experiment {i + 1}"] = tab_data
                 else:
                     alr_scheduled = True
             else:
                 incorrects = True
-                missed.append(i)
+                missed.append(experiment_name)
 
         if form_data:  # Only put data in queue if there are valid experiments
             self.queue.put(form_data)
             if incorrects:
                 self.show_warning_message(
-                    f"The following experiments have already passed their start time: {', '.join([str(index + 1) for index in missed])}"
+                    f"The following experiments have already passed their start time: {', '.join([experiment for experiment in missed])}"
                 )
             else:
                 self.show_success_message(
-                    f"Scheduled the following successfully: {', '.join([str(index + 1) for index in success_scheduled])}"
+                    f"Scheduled the following successfully: {', '.join([experiment for experiment in success_scheduled])}"
                 )
             if alr_scheduled:
                 self.show_warning_message(
-                    f"The following experiments have been scheduled before: {', '.join([str(index + 1) for index in missed])}"
+                    f"The following experiments have been scheduled before: {', '.join([experiment for experiment in success_scheduled])}"
                 )
         else:
             self.show_error_message(
@@ -359,6 +359,9 @@ class ExperimentTracker(QWidget):
         self.error_label.hide()
         self.success_label.clear()
         self.success_label.hide()
+
+
+# TODO: build an experiment scheulder (SPRT) and an experiment rescheuduler (open json file and edit)
 
 
 class DataReceiver(QObject):
@@ -438,7 +441,6 @@ class DataReceiver(QObject):
                 login_screen.clear_error_message()
                 self.data_received.emit()
                 break  # Break the loop on successful authentication
-            QThread.msleep(3000)  # Adjust sleep time as needed
 
         self.data_received.emit()
 
