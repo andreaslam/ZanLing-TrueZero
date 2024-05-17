@@ -126,13 +126,10 @@ class ServerListenerThread(QThread):
                 self.server_manager_queue.put(init_msg)
                 logger.info(f"[ServerListenerThread] sending {init_msg} to LiaseThread")
                 break
-
         while True:
             server.send(
-                client.make_msg_send(
-                    {"Initialise": "GUIMonitor"},
+                    {"Initialise": "GUIMonitor"}
                 )
-            )
             while True:
                 received_data = server.receive()
                 if isinstance(received_data, dict):
