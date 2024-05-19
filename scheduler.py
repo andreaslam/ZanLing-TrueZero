@@ -17,9 +17,8 @@ import network
 
 logger = logging.getLogger(__name__)
 
-# Set up logging configuration
 logging.basicConfig(
-    filename="myapp.log",
+    filename="truescheduler.log",
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
@@ -36,7 +35,7 @@ class LiaseThread(QThread):
 
     def run(self):
         init_msg = None
-        logger.info("spawning run() from data_receiver")
+        logger.info("[LiaseThread] spawning run() from data_receiver")
         while True:  # Login first to SSH
             output = self.manager_gui_queue.get()
             if output == init_msg:
@@ -54,30 +53,30 @@ class LiaseThread(QThread):
                     self.ssh_client.connect(
                         ip, port=port, username=hostname, password=password
                     )
-                    logger.info("SSH login successful")
+                    logger.info("[LiaseThread] SSH login successful")
                     init_msg = None  # too early to send a success msg but not sure if failed yet
                     if port_forwarding:
                         ssh_transport = self.ssh_client.get_transport()
                         ssh_transport.request_port_forward("", local_port)
-                        logger.info("SSH port forwarding successful")
+                        logger.info("[LiaseThread] SSH port forwarding successful")
                     break
                 except Exception as e:
                     self.manager_gui_queue.put("failed")
-                    logger.info(f"sending error back to GUI {e}")
+                    logger.error(f"[LiaseThread] sending error back to GUI: '{e}'")
                     init_msg = "failed"
 
         # Send login to ServerListener
         init_msg = None
         msg = {"ip": ip, "port": port}
-        logger.info(f"[Liase thread]: sending {msg} to ServerListenerThread")
+        logger.info(f"[LiaseThread] sending: '{msg}' to ServerListenerThread")
         self.server_manager_queue.put(msg)
         init_msg = msg
         while True:
             output = self.server_manager_queue.get()
             if output != init_msg:
                 print(f"output {output}, init_msg {init_msg}")
-                logger.info(
-                    f"[Liase thread]: sending {output} to GUI. Forwarded from ServerListenerThread"
+                logger.debug(
+                    f"[Liase thread] sending: '{output}' to GUI. Forwarded from ServerListenerThread"
                 )
                 self.manager_gui_queue.put(output)
                 break
@@ -87,7 +86,7 @@ class LiaseThread(QThread):
         # # receive experiment requests from gui.py
         # while True:
         #     logger.info(
-        #         f"[Liase thread]: sending {output} to ServerListenerThread. Forwarded from GUI"
+        #         f"[LiaseThread] sending {output} to ServerListenerThread. Forwarded from GUI"
         #     )
         #     output = self.manager_gui_queue.get()
         #     self.server_manager_queue.put(output)
@@ -104,13 +103,13 @@ class ServerListenerThread(QThread):
 
     def run(self):
         init_msg = None
-        logger.info("importing client...")
+        logger.info("[ServerListenerThread] importing client...")
         import client
 
-        logger.info("imported client!")
+        logger.info("[ServerListenerThread] imported client!")
         while True:  # Wait for SSH login from LiaseThread
             output = self.server_manager_queue.get()
-            logger.info(f"[ServerListenerThread]: output (raw) {output}")
+            logger.info(f"[ServerListenerThread] output (raw) {output}")
             if init_msg:
                 self.server_manager_queue.put(init_msg)
             if output != init_msg and isinstance(output, dict):
@@ -121,15 +120,13 @@ class ServerListenerThread(QThread):
                 host, port = list(output.values())
                 server = client.Server(host, int(port))
                 server.connect()
-                logger.info("serverlistenerthread server connected")
+                logger.info("[ServerListenerThread] server connected")
                 init_msg = "ok"
                 self.server_manager_queue.put(init_msg)
                 logger.info(f"[ServerListenerThread] sending {init_msg} to LiaseThread")
                 break
         while True:
-            server.send(
-                    {"Initialise": "GUIMonitor"}
-                )
+            server.send({"Initialise": "GUIMonitor"})
             while True:
                 received_data = server.receive()
                 if isinstance(received_data, dict):
@@ -182,7 +179,7 @@ class ServerListenerThread(QThread):
 
 
 def launch_gui(manager_gui_queue=None, testing=False):
-    logger.info("App launched")
+    logger.info("[TrueScheduler launch_gui] App launched")
     app = QApplication(sys.argv)
     server_gui_queue = Queue()
     login_screen = LoginScreen(server_gui_queue)
@@ -199,7 +196,9 @@ def launch_gui(manager_gui_queue=None, testing=False):
             args=(login_screen, welcome_screen),
         )
     else:
-        logger.info("spawning run_gui thread from data_receiver")
+        logger.info(
+            "[TrueScheduler launch_gui] spawning run_gui thread from data_receiver"
+        )
         data_receiver_thread = threading.Thread(
             target=data_receiver.run_gui,
             args=(login_screen, welcome_screen, data_receiver, manager_gui_queue),
@@ -214,7 +213,7 @@ def launch_gui(manager_gui_queue=None, testing=False):
 
 def startup_scheduler():
     logging.basicConfig(filename="myapp.log", level=logging.INFO)
-    logger.info("Started")
+    logger.info("[TrueScheduler] started logging")
 
     manager_gui_queue = Queue()  # between GUI and LiaseThread
     server_manager_queue = Queue()  # between LiaseThread and ServerListenerThread
@@ -225,7 +224,7 @@ def startup_scheduler():
     server_listener_thread.start()
 
     launch_gui(manager_gui_queue)
-    logger.info("Finished")
+    logger.info("[TrueScheduler] sinished logging")
 
 
 if __name__ == "__main__":
