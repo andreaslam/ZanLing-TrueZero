@@ -19,11 +19,12 @@ from PySide6.QtCore import Signal, QObject, QDateTime, Qt, QThread, QCoreApplica
 import re
 import logging
 import os
+from copy import deepcopy
 import json
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
-    filename="myapp.log",
+    filename="truescheduler.log",
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
@@ -191,14 +192,17 @@ class ExperimentTracker(QWidget):
                 # If it exists, load the JSON data into a Python dictionary
                 with open(self.file_name, "r") as file:
                     self.prevs = json.load(file)
+                    logger.info(
+                        f"[ExperimentTracker] loaded previous experiments from {self.file_name}"
+                    )
             else:
                 # If it doesn't exist, create an empty dictionary
                 with open(self.file_name, "w") as file:
                     pass
-
                 self.prevs = {}
         except Exception:
             self.prevs = {}
+        logger.info("[ExperimentTracker] initialisation complete")
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignCenter)
         self.tab_widget = QTabWidget()
@@ -279,6 +283,7 @@ class ExperimentTracker(QWidget):
         alr_scheduled = False
         missed = []
         success_scheduled = []
+        success_scheduled_len = 0
         for i in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(i)
             datetime_picker = tab.findChild(QDateTimeEdit, "datetime_picker")
@@ -293,7 +298,6 @@ class ExperimentTracker(QWidget):
             if (
                 datetime_picker.dateTime() >= current_time
             ):  # Check if datetime is in the future
-
                 tab_data = {
                     "experiment_name": experiment_name,
                     "command": command_box.text(),
@@ -302,10 +306,10 @@ class ExperimentTracker(QWidget):
                 }
 
                 if tab_data not in self.prevs.values():
-                    print("self.prevs", self.prevs)
                     form_data[f"Experiment {i + 1}"] = tab_data
                     success_scheduled.append(experiment_name)
                     self.prevs[f"Experiment {i + 1}"] = tab_data
+                    # print("self.prevs", self.prevs)
                 else:
                     alr_scheduled = True
             else:
@@ -318,13 +322,23 @@ class ExperimentTracker(QWidget):
                 self.show_warning_message(
                     f"The following experiments have already passed their start time: {', '.join([experiment for experiment in missed])}"
                 )
-            else:
+            if success_scheduled_len != len(success_scheduled):
                 self.show_success_message(
                     f"Scheduled the following successfully: {', '.join([experiment for experiment in success_scheduled])}"
                 )
+                logger.info(
+                    f"[ExperimentTracker] scheduled experiments: {success_scheduled}"
+                )
+                success_scheduled_len = len(success_scheduled)
             if alr_scheduled:
+                all_scheduled_experiment_names = [
+                    x["experiment_name"] for x in list(self.prevs.values())
+                ]
+                all_scheduled_experiment_names.remove(
+                    experiment_name
+                )  # remove current experiment being scheduled from displaying
                 self.show_warning_message(
-                    f"The following experiments have been scheduled before: {', '.join([experiment for experiment in success_scheduled])}"
+                    f"The following experiments have been scheduled before: {', '.join(all_scheduled_experiment_names)}"
                 )
         else:
             self.show_error_message(
@@ -382,7 +396,14 @@ class DataReceiver(QObject):
             manager_gui_queue.put(output)  # Send input to manager_gui
 
             prev = None
-            logger.info(f"pre-loop: {prev}, {output}")
+            filtered_output = deepcopy(output)
+            filtered_output["password"] = "*" * len(filtered_output["password"])
+            filtered_prev = deepcopy(prev)
+            if filtered_prev:
+                filtered_prev["password"] = "*" * len(filtered_prev["password"])
+            logger.debug(
+                f"[DataReceiver] pre-loop: previous output: {filtered_prev}, current output: {filtered_output}"
+            )
             # loop for waiting response
             while True:
                 listener_output = (
@@ -391,18 +412,23 @@ class DataReceiver(QObject):
                 manager_gui_queue.put(
                     listener_output
                 )  # re-send input to manager_gui, since checking the response itself consumes the message
-                logger.info(f"const recving: {prev}, {output}, {listener_output}")
+                filtered_prev = deepcopy(prev)
+                if filtered_prev:
+                    filtered_prev["password"] = "*" * len(filtered_prev["password"])
+                logger.debug(
+                    f"[DataReceiver] listening login loop {filtered_prev}, {filtered_output}, {listener_output}"
+                )
                 if listener_output != prev and listener_output:
                     if listener_output == "failed":
                         manager_gui_queue.get()
-                        logger.info("GUI failed!")
+                        logger.error("[DataReceiver] GUI failed!")
                         login_screen.show_error_message("Incorrect credentials")
                         QThread.msleep(5000)
                         login_screen.login_failed.emit()
                         break
                     elif listener_output == "ok":
                         manager_gui_queue.get()
-                        logger.info("GUI success!")
+                        logger.info("[DataReceiver] GUI success!")
                         login_screen.show_success_message("Login success!")
                         login_screen.clear_error_message()
                         QThread.msleep(1000)
@@ -459,11 +485,11 @@ def main():
 
     manager_gui_queue = Queue()
     login_screen = LoginScreen(manager_gui_queue)
-    welcome_screen = QWidget()  # Placeholder for welcome screen
+    login_screen.resize(1000, 650)
     data_receiver = DataReceiver(manager_gui_queue)
     data_receiver_thread = threading.Thread(
-        target=data_receiver.run_gui,
-        args=(login_screen, welcome_screen, data_receiver, manager_gui_queue),
+        target=data_receiver.run_gui_testing,
+        args=(login_screen, data_receiver),
         daemon=True,
     )
     data_receiver_thread.start()
