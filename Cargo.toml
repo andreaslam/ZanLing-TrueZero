@@ -11,7 +11,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies.pyo3]
 version = "0.21.2"
-features = ["extension-module"]
+features = ["extension-module", "auto-initialize"]
 
 [dependencies]
 anyhow = "1.0.72"
@@ -26,7 +26,7 @@ internal-iterator = "0.2.1"
 serde_json = "1.0.107"
 flume = "0.11.0"
 crossbeam = "0.8.2"
-futures = {version="0.3.29", features=["thread-pool"]}
+futures = {version = "0.3.29", features=["thread-pool"]}
 itertools = "0.13.0"
 tokio = { version = "1", features = ["full"] }
 superluminal-perf = "0.3.0"
