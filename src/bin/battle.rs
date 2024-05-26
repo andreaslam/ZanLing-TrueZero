@@ -1,7 +1,7 @@
 use cozy_chess::{Board, GameStatus, Move};
 use crossbeam::thread;
-use tokio::runtime::Runtime;
 use std::{env, io, panic, str::FromStr};
+use tokio::runtime::Runtime;
 use tz_rust::{
     boardmanager::BoardStack,
     executor::{
@@ -106,7 +106,9 @@ fn main() {
                 let mv = get_input(&bs);
                 bs.play(mv);
                 let rt = Runtime::new().unwrap();
-                let (mv, _, _, _, _) = rt.block_on(async {get_move(bs.clone(), tensor_exe_send.clone(), settings.clone()).await});
+                let (mv, _, _, _, _) = rt.block_on(async {
+                    get_move(bs.clone(), tensor_exe_send.clone(), settings.clone()).await
+                });
                 println!("{:#}", mv);
                 bs.play(mv);
             }
@@ -114,13 +116,15 @@ fn main() {
             // bot plays first
             while bs.status() == GameStatus::Ongoing {
                 let rt = Runtime::new().unwrap();
-                let (mv, _, _, _, _) = rt.block_on(async {get_move(bs.clone(), tensor_exe_send.clone(), settings.clone()).await});
+                let (mv, _, _, _, _) = rt.block_on(async {
+                    get_move(bs.clone(), tensor_exe_send.clone(), settings.clone()).await
+                });
                 bs.play(mv);
                 println!("{:#}", mv);
                 let mv = get_input(&bs);
                 bs.play(mv);
             }
         }
-        ctrl_sender.send(StopServer()).unwrap();
+        ctrl_sender.send(StopServer).unwrap();
     });
 }
