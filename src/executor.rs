@@ -59,9 +59,6 @@ pub fn executor_main(
     evals_per_sec_sender: Sender<CollectorMessage>,
     executor_id: usize,
 ) {
-    let executor_id = if Cuda::device_count() > executor_id.try_into().unwrap() {
-        0
-    } else {executor_id}; // defaults to 0th GPU for now
     let mut graph_disconnected = false;
     let mut network: Option<Net> = None;
     let thread_name = std::thread::current()
