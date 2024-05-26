@@ -6,10 +6,13 @@ use crate::{
 };
 use flume::{Receiver, RecvError, Selector, Sender};
 use std::{
-    cmp::min, collections::VecDeque, process, thread, time::{Duration, Instant, SystemTime, UNIX_EPOCH}
+    cmp::min,
+    collections::VecDeque,
+    process, thread,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use superluminal_perf::{begin_event_with_color, end_event};
-use tch::Tensor;
+use tch::{Cuda, Tensor};
 
 pub struct Packet {
     pub job: Tensor,
@@ -33,7 +36,12 @@ pub enum ReturnMessage {
     ReturnMessage(Result<ReturnPacket, RecvError>),
 }
 
-fn handle_new_graph(network: &mut Option<Net>, graph: Option<String>, thread_name: &str) {
+pub fn handle_new_graph(
+    network: &mut Option<Net>,
+    graph: Option<String>,
+    thread_name: &str,
+    id: usize,
+) {
     // drop previous network if any to save GPU memory
     if let Some(network) = network.take() {
         // // // println!("{} dropping network", thread_name);
@@ -41,7 +49,7 @@ fn handle_new_graph(network: &mut Option<Net>, graph: Option<String>, thread_nam
     }
 
     // load the new network if any
-    *network = graph.map(|graph| Net::new(&graph[..]));
+    *network = graph.map(|graph| Net::new_with_device_id(&graph[..], id));
 }
 
 pub fn executor_main(
@@ -49,7 +57,11 @@ pub fn executor_main(
     tensor_receiver: Receiver<Packet>, // receive tensors from mcts
     max_batch_size: usize,
     evals_per_sec_sender: Sender<CollectorMessage>,
+    executor_id: usize,
 ) {
+    let executor_id = if Cuda::device_count() > executor_id.try_into().unwrap() {
+        0
+    } else {executor_id}; // defaults to 0th GPU for now
     let mut graph_disconnected = false;
     let mut network: Option<Net> = None;
     let thread_name = std::thread::current()
@@ -70,7 +82,7 @@ pub fn executor_main(
         .expect("Time went backwards");
     let mut epoch_seconds_start = since_epoch.as_nanos(); // batch
     let mut prev_count = max_batch_size;
-    println!("{} {:?}", thread_name, tensor_receiver.capacity());
+    // println!("{} {:?}", thread_name, tensor_receiver.capacity());
     loop {
         let mut selector = Selector::new();
         begin_event_with_color("waiting_for_job", CL_ORANGE);
@@ -79,7 +91,6 @@ pub fn executor_main(
         // // println!("    thread {} number of requests made from mcts: {}, {}", thread_name, output_senders.len(), num_threads);
         // // println!("    thread {} graph_disconnected: {}", thread_name, graph_disconnected);
         assert!(network.is_some() || !graph_disconnected);
-
 
         if !graph_disconnected {
             selector = selector.recv(&net_receiver, |res| Message::NewNetwork(res));
@@ -90,13 +101,13 @@ pub fn executor_main(
         // println!("{}",((input_vec.len() == max_batch_size) || (has_started == false)) || ((input_vec.len() < max_batch_size )));
         prev_count = tensor_receiver.len();
 
-            match network {
-                Some(_) => {
-                    selector = selector.recv(&tensor_receiver, |res| Message::JobTensor(res));
-                    prev_count = tensor_receiver.len()
-                }
-                None => (),
+        match network {
+            Some(_) => {
+                selector = selector.recv(&tensor_receiver, |res| Message::JobTensor(res));
+                prev_count = tensor_receiver.len();
             }
+            None => (),
+        }
         let now_end = SystemTime::now();
         let since_epoch = now_end
             .duration_since(UNIX_EPOCH)
@@ -111,7 +122,7 @@ pub fn executor_main(
             Message::StopServer => break,
             Message::NewNetwork(Ok(graph)) => {
                 // // println!("    NEW NET!");
-                handle_new_graph(&mut network, Some(graph), &thread_name);
+                handle_new_graph(&mut network, Some(graph), &thread_name, executor_id);
             }
             Message::JobTensor(job) => {
                 // println!("EXEC ID {} CHANNEL_LEN {}", thread_name, tensor_receiver.len());
@@ -130,6 +141,7 @@ pub fn executor_main(
                 // evaluate batches
                 waiting_job = Instant::now();
                 while input_vec.len() >= max_batch_size {
+                    // println!("{} {}", thread_name, tensor_receiver.len());
                     let now_end = SystemTime::now();
                     let since_epoch = now_end
                         .duration_since(UNIX_EPOCH)
@@ -267,7 +279,7 @@ pub fn executor_static(
     let mut output_senders: VecDeque<Sender<ReturnMessage>> = VecDeque::new();
     let mut id_vec: VecDeque<String> = VecDeque::new();
 
-    handle_new_graph(&mut network, Some(net_path), thread_name.as_str());
+    handle_new_graph(&mut network, Some(net_path), thread_name.as_str(), 0); // TODO maybe pass an option to use either/both GPUs? and not hardcode static GPU to 1 GPU only?
 
     loop {
         let sw = Instant::now();
