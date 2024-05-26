@@ -30,7 +30,7 @@ fn main() {
 
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
     let num_games = 10000;
-    let num_threads = 2048;
+    let num_threads = 1024;
     let engine_0: String = "./tz_6515.pt".to_string(); // new engine
     let engine_1: String = "./chess_16x128_gen3634.pt".to_string(); // old engine
     let num_executors = 2; // always be 2, 2 players, one each (one for each neural net)
@@ -125,8 +125,8 @@ fn generator_main(
         fpu: 0.0,
         wdl: None,
         moves_left: None,
-        c_puct: 0.0,
-        max_nodes: 800,
+        c_puct: 2.0,
+        max_nodes: 1,
         alpha: 0.0,
         eps: 0.0,
         search_type: NonTrainerSearch,
@@ -161,7 +161,12 @@ fn generator_main(
             GameStatus::Ongoing => panic!("Game is still ongoing!"),
         };
         let moves_list_str = moves_list.join(" ");
-        println!("first move engine_{} opening {}, moves {}", swap_count % 2, fen, moves_list_str);
+        println!(
+            "first move engine_{} opening {}, moves {}",
+            swap_count % 2,
+            fen,
+            moves_list_str
+        );
         swap_count += 1;
         sender_collector
             .send(CollectorMessage::TestingResult(outcome))
@@ -208,7 +213,7 @@ fn collector_main(
                         elo_max - elo_min
                     );
                     println!("===");
-                    ctrl_sender.send(Message::StopServer()).unwrap();
+                    ctrl_sender.send(Message::StopServer).unwrap();
                     process::exit(0)
                 } else {
                     match result {
