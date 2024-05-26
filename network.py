@@ -59,17 +59,17 @@ class ResBlock(nn.Module):
 
 
 class TrueNetXS(nn.Module):
-    def __init__(self):
+    def __init__(self, num_hidden=64):
         super().__init__()
         self.flatten = nn.Flatten()
-        self.layer = nn.Linear(1344, 1344)
+        self.layer = nn.Linear(1344, num_hidden)
         self.policyHead = nn.Sequential(
-            nn.Linear(1344, 1344),
+            nn.Linear(num_hidden, num_hidden),
             nn.ReLU(),
-            nn.Linear(1344, 1880),
+            nn.Linear(num_hidden, 1880),
         )
         self.valueHead = nn.Sequential(
-            nn.Linear(1344, 5),
+            nn.Linear(num_hidden, 5),
             nn.ReLU(),
             nn.Tanh(),
         )
