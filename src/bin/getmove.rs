@@ -1,7 +1,7 @@
 use cozy_chess::Board;
 use crossbeam::thread;
-use tokio::runtime::Runtime;
 use std::{env, panic, time::Instant};
+use tokio::runtime::Runtime;
 use tz_rust::{
     boardmanager::BoardStack,
     executor::{
@@ -77,7 +77,8 @@ fn main() {
             pst: 0.0,
         };
         let rt = Runtime::new().unwrap();
-        let (best_move, nn_data, _, _, _) = rt.block_on(async {get_move(bs, tensor_exe_send.clone(), settings.clone()).await});
+        let (best_move, nn_data, _, _, _) =
+            rt.block_on(async { get_move(bs, tensor_exe_send.clone(), settings.clone()).await });
         for (mv, score) in move_list.iter().zip(nn_data.policy.iter()) {
             println!("{:#}, {}", mv, score);
         }
@@ -86,7 +87,7 @@ fn main() {
         println!("Elapsed time: {}ms", sw.elapsed().as_nanos() as f32 / 1e6);
         let nps = settings.max_nodes as f32 / (sw.elapsed().as_nanos() as f32 / 1e9);
         println!("Nodes per second: {}nps", nps);
-        ctrl_sender.send(StopServer()).unwrap();
+        ctrl_sender.send(StopServer).unwrap();
     })
     .unwrap();
 }
