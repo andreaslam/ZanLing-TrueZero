@@ -77,6 +77,7 @@ impl Net {
 
     pub fn new_with_device_id(path: &str, id: usize) -> Self {
         maybe_init_cuda();
+        println!("initiated on {}", id);
         let device = if has_cuda() {
             Device::Cuda(id)
         } else if has_mps() {
