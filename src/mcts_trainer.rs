@@ -19,6 +19,7 @@ use std::{
 };
 use superluminal_perf::{begin_event_with_color, end_event};
 use tch::{
+    maybe_init_cuda,
     utils::{has_cuda, has_mps},
     CModule, Device,
 };
@@ -54,7 +55,7 @@ impl Net {
     pub fn new(path: &str) -> Self {
         // let path = "tz.pt";
         // // println!("{}", path);
-
+        maybe_init_cuda();
         let device = if has_cuda() {
             Device::Cuda(0)
         } else if has_mps() {
@@ -63,9 +64,30 @@ impl Net {
             Device::Cpu
         };
 
+        // let device = Device::Cpu;
+
         let mut net = tch::CModule::load_on_device(path, device).expect("ERROR");
         net.set_eval();
-        
+
+        Self {
+            net: net,
+            device: device,
+        }
+    }
+
+    pub fn new_with_device_id(path: &str, id: usize) -> Self {
+        maybe_init_cuda();
+        let device = if has_cuda() {
+            Device::Cuda(id)
+        } else if has_mps() {
+            Device::Mps
+        } else {
+            Device::Cpu
+        };
+
+        let mut net = tch::CModule::load_on_device(path, device).expect("ERROR");
+        net.set_eval();
+
         Self {
             net: net,
             device: device,
@@ -211,14 +233,24 @@ impl Tree {
             TypeRequest::UCISearch => {
                 let cp_eval = eval_in_cp(self.nodes[selected_node].eval_score);
                 let elapsed_ms = sw.elapsed().as_nanos() as f32 / 1e6;
-                let nps = self.nodes[0].visits as f32 / (sw.elapsed().as_nanos() as f32 / 1e9);
-                let pv = self.get_pv();
+                let nps = self.nodes.len() as f32 / (sw.elapsed().as_nanos() as f32 / 1e9);
+                let (pv, mate) = self.get_pv();
+                let eval_string = {
+                    if mate {
+                        format!("mate {}", pv.len())
+                    } else {
+                        format!(
+                            "cp {}",
+                            (cp_eval * 100.).round().max(-1000.).min(1000.) as i64,
+                        )
+                    }
+                };
                 if self.pv != pv {
                     println!(
-                        "info depth {} seldepth {} score cp {} nodes {} nps {} time {} pv {}",
+                        "info depth {} seldepth {} score {} nodes {} nps {} time {} pv {}",
                         min_depth,
                         max_depth,
-                        (cp_eval * 100.).round().max(-1000.).min(1000.) as i64,
+                        eval_string,
                         self.nodes.len(),
                         nps as usize,
                         elapsed_ms as usize,
@@ -232,11 +264,15 @@ impl Tree {
         }
     }
 
-    fn get_pv(&self) -> String {
+    fn get_pv(&self) -> (String, bool) {
         let mut pv_nodes: Vec<usize> = vec![];
         let mut curr_node = 0;
+        let mut terminal = false; // by default assume the pv has not reached mate
         loop {
             if self.nodes[curr_node].children.is_empty() || self.board.is_terminal() {
+                if self.board.is_terminal() {
+                    terminal = true;
+                }
                 break;
             }
             curr_node = self.nodes[curr_node]
@@ -248,12 +284,12 @@ impl Tree {
         }
         let mut pv_string: String = String::new();
         if pv_nodes.is_empty() {
-            pv_string
+            (pv_string, terminal)
         } else {
             for item in pv_nodes {
                 pv_string.push_str(&format!("{} ", self.nodes[item].mv.unwrap()));
             }
-            pv_string
+            (pv_string, terminal)
         }
     }
 
@@ -360,7 +396,7 @@ impl Tree {
 
         // creating a send/recv pair for executor
 
-        let (resender_send, resender_recv) = flume::bounded::<ReturnMessage>(1); // mcts to executor
+        let (resender_send, resender_recv) = flume::unbounded::<ReturnMessage>(); // mcts to executor
         let thread_name = std::thread::current()
             .name()
             .unwrap_or("unnamed-generator")
