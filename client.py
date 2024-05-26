@@ -284,6 +284,7 @@ def extract_incoming_data_given_path(loopbuf, log, raw_data):
         f.write(file_path + "\n")
     data = load_file(file_path)
     loopbuf.append(log, data)
+    print("[loaded files] buffer size:", loopbuf.position_count)
     log.finished_data()
     try:
         log.save("log.npz")
