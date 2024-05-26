@@ -3,6 +3,7 @@ use flume::{Receiver, Sender};
 use futures::executor::ThreadPool;
 use rand::prelude::*;
 use std::{
+    cmp::{max, min},
     env,
     fs::{self, File},
     io::{self, BufRead, BufReader, Read, Write},
@@ -48,9 +49,10 @@ fn main() {
         .expect("Failed to send data");
     println!("Connected to server!");
 
-    let num_executors = 4;
+    let mut num_executors = 2;
     let batch_size = 1024; // executor batch size
-    let num_generators = num_executors * batch_size * 2;
+    let num_generators = num_executors * batch_size * 8;
+    num_executors = max(min(tch::Cuda::device_count() as usize, num_executors), 1);
     let (game_sender, game_receiver) =
         flume::bounded::<CollectorMessage>(num_executors * batch_size);
 
@@ -82,8 +84,7 @@ fn main() {
             .unwrap();
 
         // selfplay threads
-        let (tensor_exe_send, tensor_exe_recv) =
-            flume::bounded::<Packet>(num_generators); // mcts to executor
+        let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(num_generators); // mcts to executor
 
         // executor
         let mut exec_id = 0;
@@ -99,6 +100,7 @@ fn main() {
                         tensor_exe_recv_clone,
                         batch_size,
                         eval_per_sec_sender,
+                        exec_id,
                     )
                 })
                 .unwrap();
@@ -110,13 +112,7 @@ fn main() {
             let mut selfplay_master = DataGen { iterations: 1 };
             let tensor_exe_send_clone = tensor_exe_send.clone();
             let fut_generator = async move {
-                generator_main(
-                    sender_clone,
-                    selfplay_master,
-                    tensor_exe_send_clone,
-                    n,
-                )
-                .await;
+                generator_main(sender_clone, selfplay_master, tensor_exe_send_clone, n).await;
             };
             pool.spawn_ok(fut_generator);
         }
