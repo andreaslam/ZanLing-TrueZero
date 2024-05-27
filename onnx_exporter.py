@@ -46,7 +46,7 @@ def main():
         torch_model.eval()
 
         # Perform a forward pass
-        torch_out = torch_model(torch_input)
+        torch_model(torch_input)
 
         # Export the model to ONNX format
         onnx_model_path = args.model_path.replace(".pt", ".onnx")
