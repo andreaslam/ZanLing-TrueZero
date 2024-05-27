@@ -151,7 +151,7 @@ cargo run --bin ucimain
 - `gui.py` - GUI code for `scheduler.py`. Code is currently work in progress. Running this file directly launches a demo version without server backend.
 - `experiment.py` - code that can convert data generated from `client.py` into TensorBoard-readable format. This is an alternative experiment visualiser. Additionally, the code supports remote visualisation if SSH port forwarding is enabled on your device.
 - `exec_plotter.py` - debugging code that shows the thread schedule. Useful for debugging async tasks (such as data generation code for the Engine)
-
+- `onnx_exporter.py` - contains code to convert `.pt` model weights to `.onnx`
 
 ## Libraries/technologies used 
 This Python and Rust Engine uses the following:
