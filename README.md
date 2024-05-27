@@ -154,10 +154,9 @@ cargo run --bin ucimain
 
 
 ## Libraries/technologies used 
-
+This Python and Rust Engine uses the following:
 ### Python 
 
-This Python and Rust Engine uses the following:
 - **PyTorch** - used for creating and training the Neural Network. Also used for visualising experiments through its TensorBoard API.
 - **Matplotlib** - used for plotting and creating animations and visualisations in `visualisenet.py`. 
 - **NumPy** - used for processing data (chess board representation after one-hot encoding, handling final outcome and final game result
