@@ -150,7 +150,7 @@ fn generator_main(
         while bs.status() == GameStatus::Ongoing {
             let engine = &engines[move_counter % 2];
             let (mv, _, _, _, _) =
-                rt.block_on(async { get_move(bs.clone(), engine.clone(), settings.clone()).await });
+                rt.block_on(async { get_move(bs.clone(), engine.clone(), settings.clone(), None).await });
             bs.play(mv);
             moves_list.push(format!("{:#}", mv));
             move_counter += 1;
