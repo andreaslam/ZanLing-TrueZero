@@ -90,7 +90,7 @@ fn main() {
                 }
                 let rt = Runtime::new().unwrap();
                 let (mv, _, _, _, _) = rt.block_on(async {
-                    get_move(bs.clone(), tensor_exe_send.clone(), settings.clone()).await
+                    get_move(bs.clone(), tensor_exe_send.clone(), settings.clone(), None).await
                 });
                 bs.play(mv);
                 println!("{:#}", mv);
