@@ -33,12 +33,7 @@ pub fn eval_in_cp(eval: f32) -> f32 {
 }
 
 pub fn run_uci(net_path: &str) {
-    panic::set_hook(Box::new(|panic_info| {
-        // print panic information
-        eprintln!("Panic occurred: {:?}", panic_info);
-        // exit the program immediately
-        std::process::exit(1);
-    }));
+    panic::set_hook(Box::new(|_| {}));
 
     // initialise engine
     let board = Board::default();
