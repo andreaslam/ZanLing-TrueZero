@@ -78,7 +78,7 @@ fn main() {
         };
         let rt = Runtime::new().unwrap();
         let (best_move, nn_data, _, _, _) =
-            rt.block_on(async { get_move(bs, tensor_exe_send.clone(), settings.clone()).await });
+            rt.block_on(async { get_move(bs, tensor_exe_send.clone(), settings.clone(), None).await });
         for (mv, score) in move_list.iter().zip(nn_data.policy.iter()) {
             println!("{:#}, {}", mv, score);
         }
