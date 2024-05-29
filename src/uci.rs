@@ -8,7 +8,16 @@ use crate::{
 };
 use cozy_chess::{Board, Color, Move, Piece, Square};
 use crossbeam::thread;
-use std::{cmp::max, io, panic, process, str::FromStr};
+use std::{
+    cmp::max,
+    io::{self, BufRead},
+    panic, process,
+    str::FromStr,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 use tokio::runtime::Runtime;
 const STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -180,7 +189,7 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
             },
         }
     }
-    // println!("max_time {:?}", max_time);
+
     let mut time: Option<u128> = None;
 
     let stm = bs.board().side_to_move();
@@ -189,7 +198,6 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
         Color::Black => Some(1),
     };
     if let Some(t) = times[stm_num.unwrap()] {
-        // println!("{}", t);
         let mut base = t / movestogo.max(1);
 
         if let Some(i) = incs[stm_num.unwrap()] {
@@ -199,18 +207,17 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
         nodes = time.unwrap() as u128 / 120;
     }
     nodes = max(1, nodes);
-    // `go movetime <time>`
+
     if let Some(max) = max_time {
-        // if both movetime and increment time controls given, use
         time = Some(time.unwrap_or(u128::MAX).min(max));
         nodes = time.unwrap() as u128 / 120;
     }
 
-    // 5ms move overhead
     if let Some(t) = time.as_mut() {
         *t = t.saturating_sub(5);
     }
-    let settings: SearchSettings = SearchSettings {
+
+    let settings = SearchSettings {
         fpu: 0.0,
         wdl: None,
         moves_left: None,
@@ -220,23 +227,52 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
         eps: 0.0,
         search_type: UCISearch,
         pst: 1.5,
-        // cap_randomisation: None,
     };
+
     let rt = Runtime::new().unwrap();
     let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(1);
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
+
+    // Add an atomic boolean to signal stopping
+    let stop_signal = Arc::new(AtomicBool::new(false));
+    let stop_signal_clone = stop_signal.clone();
+
+    // Thread to listen for stop command
+
     thread::scope(|s| {
+        s.builder()
+            .name("stop-listener".to_string())
+            .spawn(move |_| listen_stop(stop_signal_clone))
+            .unwrap();
         s.builder()
             .name("executor".to_string())
             .spawn(move |_| executor_static(net_path.to_string(), tensor_exe_recv, ctrl_recv, 1))
             .unwrap();
 
         let (best_move, _, _, _, _) = rt.block_on(async {
-            get_move(bs.clone(), tensor_exe_send.clone(), settings.clone()).await
+            get_move(
+                bs.clone(),
+                tensor_exe_send.clone(),
+                settings.clone(),
+                Some(stop_signal.clone()),
+            )
+            .await
         });
 
         println!("bestmove {:#}", best_move);
         let _ = ctrl_sender.send(Message::StopServer);
     })
     .unwrap();
+}
+
+fn listen_stop(stop_signal_clone: Arc<AtomicBool>) {
+    let stdin = io::stdin();
+    for line in stdin.lock().lines() {
+        if let Ok(line) = line {
+            if line.trim() == "stop" {
+                stop_signal_clone.store(true, Ordering::SeqCst);
+                break;
+            }
+        }
+    }
 }
