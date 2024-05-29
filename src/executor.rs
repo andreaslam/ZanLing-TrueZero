@@ -144,10 +144,10 @@ pub fn executor_main(
                         .duration_since(UNIX_EPOCH)
                         .expect("Time went backwards");
                     let epoch_seconds_end = since_epoch.as_nanos();
-                    // println!(
-                    //     "{} {} {} waiting_for_batch",
-                    //     epoch_seconds_start, epoch_seconds_end, thread_name
-                    // );
+                    println!(
+                        "{} {} {} waiting_for_batch",
+                        epoch_seconds_start, epoch_seconds_end, thread_name
+                    );
                     let network = network.as_mut().expect("Network should be available");
                     let elapsed = waiting_batch.elapsed().as_nanos() as f32 / 1e6;
 
@@ -181,10 +181,10 @@ pub fn executor_main(
                         .duration_since(UNIX_EPOCH)
                         .expect("Time went backwards");
                     let epoch_seconds_end_evals = since_epoch_evals.as_nanos();
-                    // println!(
-                    //     "{} {} {} evaluation_time_taken",
-                    //     epoch_seconds_start_evals, epoch_seconds_end_evals, thread_name
-                    // );
+                    println!(
+                        "{} {} {} evaluation_time_taken",
+                        epoch_seconds_start_evals, epoch_seconds_end_evals, thread_name
+                    );
                     let sw_inference = Instant::now();
                     let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
                     // let evals_per_sec = batch_size as f32 / elapsed;
@@ -225,10 +225,10 @@ pub fn executor_main(
                         .expect("Time went backwards");
                     let epoch_seconds_end_packing = since_epoch_packing.as_nanos();
 
-                    // println!(
-                    //     "{} {} {} packing_time",
-                    //     epoch_seconds_start_packing, epoch_seconds_end_packing, thread_name
-                    // );
+                    println!(
+                        "{} {} {} packing_time",
+                        epoch_seconds_start_packing, epoch_seconds_end_packing, thread_name
+                    );
 
                     let packing_elapsed = packing_time.elapsed().as_nanos() as f32 / 1e6;
                     // println!("loop {} packing time {}ms", debug_counter, packing_elapsed);
