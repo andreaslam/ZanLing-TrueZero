@@ -48,7 +48,7 @@ fn main() {
         .expect("Failed to send data");
     println!("Connected to server!");
 
-    let mut num_executors = 2;
+    let mut num_executors = 8;
     // num_executors = max(min(tch::Cuda::device_count() as usize, num_executors), 1);
     let batch_size = 8192;
     let num_generators = num_executors * batch_size * 8;
