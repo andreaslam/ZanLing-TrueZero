@@ -9,6 +9,9 @@ use flume::{Receiver, RecvError, Selector, Sender};
 use std::{
     cmp::min,
     collections::VecDeque,
+    fs::File,
+    io::{self, Read, Write},
+    path::Path,
     process,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -21,7 +24,7 @@ pub struct Packet {
     pub id: String,
 }
 
-struct ExecutorPacket {
+pub struct ExecutorPacket {
     pub job: VecDeque<Tensor>,
     pub resenders: VecDeque<Sender<ReturnMessage>>,
     pub id: VecDeque<String>,
@@ -42,6 +45,18 @@ pub enum Message {
 
 pub enum ReturnMessage {
     ReturnMessage(Result<ReturnPacket, RecvError>),
+}
+fn copy_file_contents(src_path: &str, dest_path: &str) -> io::Result<()> {
+    let mut src_file = File::open(src_path)?;
+
+    let mut contents = Vec::new();
+    src_file.read_to_end(&mut contents)?;
+
+    let mut dest_file = File::create(dest_path)?;
+
+    dest_file.write_all(&contents)?;
+
+    Ok(())
 }
 
 pub fn handle_new_graph(
@@ -72,26 +87,28 @@ fn handle_requests(
     let mut input_vec: VecDeque<Tensor> = VecDeque::new();
     let mut output_senders: VecDeque<Sender<ReturnMessage>> = VecDeque::new();
     let mut id_vec: VecDeque<String> = VecDeque::new();
-    let mut now_start = SystemTime::now();
+    let mut now_start = SystemTime::now(); // batch timer
     let since_epoch = now_start
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards");
-    let mut epoch_seconds_start = since_epoch.as_nanos();
-    let mut eval_limit = Instant::now();
-
+    let mut epoch_seconds_start = since_epoch.as_nanos(); // batch
     loop {
         let job = tensor_receiver.recv().unwrap();
         input_vec.push_back(job.job);
         output_senders.push_back(job.resender);
         id_vec.push_back(job.id);
 
-        if input_vec.len() >= max_batch_size || (eval_limit.elapsed() > Duration::from_micros(10) && input_vec.len() > max_batch_size/2) {
+        if input_vec.len() >= max_batch_size {
             let now_end = SystemTime::now();
             let since_epoch_end = now_end
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards");
             let epoch_seconds_end = since_epoch_end.as_nanos();
-            eval_limit = Instant::now();
+
+            // println!(
+            //     "{} {} {} waiting_for_batch",
+            //     epoch_seconds_start, epoch_seconds_end, thread_name
+            // );
 
             let pack = ExecutorPacket {
                 job: std::mem::take(&mut input_vec),
@@ -99,7 +116,6 @@ fn handle_requests(
                 id: std::mem::take(&mut id_vec),
             };
             handler_send.send(pack).unwrap();
-
             now_start = SystemTime::now();
             let since_epoch_start = now_start
                 .duration_since(UNIX_EPOCH)
@@ -133,7 +149,14 @@ pub fn executor_main(
         .expect("Time went backwards");
     let mut epoch_seconds_start = since_epoch.as_nanos(); // batch
     let mut prev_count = max_batch_size;
+    let mut one_sec_timer = Instant::now();
     let (handler_send, handler_recv) = flume::bounded::<ExecutorPacket>(1); // from handler to exec
+    let mut eval_counter = 0;
+    let mut now_start = SystemTime::now(); // batch timer
+    let since_epoch = now_start
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
+    let mut epoch_seconds_start = since_epoch.as_nanos(); // batch
     thread::scope(|s| {
         let _ = s
             .builder()
@@ -154,6 +177,15 @@ pub fn executor_main(
 
             if !graph_disconnected {
                 selector = selector.recv(&net_receiver, |res| Message::NewNetwork(res));
+                let now_end = SystemTime::now();
+                let since_epoch_end = now_end
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Time went backwards");
+                let epoch_seconds_end = since_epoch_end.as_nanos();
+                println!(
+                    "{} {} {} waiting_for_batch",
+                    epoch_seconds_start, epoch_seconds_end, thread_name
+                );
             }
 
             // register all tensor receivers in the selector
@@ -163,6 +195,7 @@ pub fn executor_main(
             match network {
                 Some(_) => {
                     // selector = selector.recv(&tensor_receiver, |res| Message::JobTensor(res));
+
                     selector = selector.recv(&handler_recv, |res| Message::JobTensorExecutor(res));
                 }
                 None => (),
@@ -181,7 +214,19 @@ pub fn executor_main(
                 Message::StopServer => break,
                 Message::NewNetwork(Ok(graph)) => {
                     // // println!("    NEW NET!");
-                    handle_new_graph(&mut network, Some(graph), &thread_name, executor_id);
+
+                    let new_graph_path = format!(
+                        "nets/{}_{}.pt",
+                        Path::new(&graph).file_stem().unwrap().to_str().unwrap(),
+                        executor_id
+                    );
+                    copy_file_contents(&graph, &new_graph_path).unwrap();
+                    handle_new_graph(
+                        &mut network,
+                        Some(new_graph_path),
+                        &thread_name,
+                        executor_id,
+                    );
                 }
                 Message::JobTensor(_) => {}
                 Message::JobTensorExecutor(job) => {
@@ -226,10 +271,18 @@ pub fn executor_main(
                     let epoch_seconds_start_evals = since_epoch_evals.as_nanos();
 
                     begin_event_with_color("eval", CL_BLUE);
+                    if one_sec_timer.elapsed() < Duration::from_secs(1) {
+                        eval_counter += 1;
+                    } else {
+                        println!("EVALED {} times", eval_counter);
+                        eval_counter = 0;
+                        one_sec_timer = Instant::now();
+                    }
                     let start = Instant::now();
                     let (board_eval, policy) =
                         eval_state(input_tensors, network).expect("Evaluation failed");
-                    let delta = start.elapsed().as_secs_f32();
+                    let delta = start.elapsed().as_nanos() as f32 / 1e9;
+                    println!("{}s", delta);
                     // println!("Eval took {}, tp {}, batch_size {}, max_batch_size {}",delta, batch_size as f32 / delta, batch_size, max_batch_size);
                     end_event();
                     let now_end_evals = SystemTime::now();
@@ -243,8 +296,7 @@ pub fn executor_main(
                     );
                     let sw_inference = Instant::now();
                     let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
-                    // let evals_per_sec = batch_size as f32 / elapsed;
-
+                    let evals_per_sec = batch_size as f32 / elapsed;
                     let _ = evals_per_sec_sender
                         .send(CollectorMessage::ExecutorStatistics(batch_size as f32));
                     // println!("inference_time {}s", elapsed);
@@ -296,6 +348,11 @@ pub fn executor_main(
                         .expect("Time went backwards");
                     epoch_seconds_start = since_epoch.as_nanos();
                     // begin_event_with_color("waiting_for_batch", CL_ORANGE);
+                    now_start = SystemTime::now();
+                    let since_epoch_start = now_start
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Time went backwards");
+                    epoch_seconds_start = since_epoch_start.as_nanos();
                 }
                 Message::NewNetwork(Err(RecvError::Disconnected)) => {
                     // // println!("DISCONNECTED NET!");
@@ -369,7 +426,6 @@ pub fn executor_static(
                     let (board_eval, policy) =
                         eval_state(input_tensors, network).expect("Evaluation failed");
                     let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
-
                     for i in 0..batch_size {
                         let sender = output_senders
                             .pop_front()
