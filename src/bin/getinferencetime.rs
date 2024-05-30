@@ -5,7 +5,7 @@ use tz_rust::{decoder::eval_state, mcts_trainer::Net};
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
     const BATCH_SIZE: usize = 2048;
-    const NUM_THREADS: usize = 1; // Number of threads to spawn
+    const NUM_THREADS: usize = 1;
     const NUM_LOOPS: usize = 100;
     const NUM_WARMUPS: usize = 0;
     let entire_benchmark_timer = Instant::now();
@@ -13,18 +13,18 @@ fn main() {
     crossbeam::scope(|s| {
         for i in 0..NUM_THREADS {
             let _ = s.builder().name(format!("thread-{}", i + 1)).spawn(move |_| {
-                let net = Net::new("tz_6515.pt"); // Create a new instance of Net within the thread
+                let net = Net::new("tz_6515.pt");
 
                 // Warmup loop
                 for _ in 0..NUM_WARMUPS {
-                    let data = Tensor::from_slice(&[0.1 as f32; 1344 * BATCH_SIZE]); // 8*8*21 = 1344
+                    let data = Tensor::from_slice(&[0.1 as f32; 1344 * BATCH_SIZE]);
                     let _ = eval_state(data, &net).expect("Error");
                 }
 
                 // Timed, benchmarked loop
                 let full_run = Instant::now();
                 for _ in 0..NUM_LOOPS {
-                    let data = Tensor::from_slice(&[0.1 as f32; 1344 * BATCH_SIZE]); // 8*8*21 = 1344
+                    let data = Tensor::from_slice(&[0.1 as f32; 1344 * BATCH_SIZE]);
                     let _ = eval_state(data, &net).expect("Error");
                 }
 
