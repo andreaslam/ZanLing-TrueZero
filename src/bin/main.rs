@@ -50,11 +50,11 @@ fn main() {
 
     let mut num_executors = 2;
     // num_executors = max(min(tch::Cuda::device_count() as usize, num_executors), 1);
-    let batch_size = 1024;
-    let num_generators = num_executors * batch_size * 16;
+    let batch_size = 8192;
+    let num_generators = num_executors * batch_size * 8;
 
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(num_generators);
-
+    
     thread::scope(|s| {
         let mut vec_communicate_exe_send: Vec<Sender<String>> = Vec::new();
         let mut vec_communicate_exe_recv: Vec<Receiver<String>> = Vec::new();
