@@ -16,7 +16,7 @@ fn main() {
                 let net = Net::new("tz_6515.pt"); // Create a new instance of Net within the thread
 
                 // Warmup loop
-                for _ in 0..NUM_LOOPS {
+                for _ in 0..NUM_WARMUPS {
                     let data = Tensor::from_slice(&[0.1 as f32; 1344 * BATCH_SIZE]); // 8*8*21 = 1344
                     let _ = eval_state(data, &net).expect("Error");
                 }
@@ -45,11 +45,9 @@ fn main() {
     }).unwrap();
 
     let total_time_secs = entire_benchmark_timer.elapsed().as_nanos() as f32 / 1e9;
-    let total_evals = (BATCH_SIZE * NUM_LOOPS * NUM_THREADS) as f32;
-    let overall_evals_per_sec = total_evals / total_time_secs;
 
     println!(
-        "Total average: {} evals/s (batch size {})",
-        overall_evals_per_sec, BATCH_SIZE
+        "Benchmark ran for {}s",
+        total_time_secs
     );
 }
