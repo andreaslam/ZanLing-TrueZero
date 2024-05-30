@@ -46,18 +46,6 @@ pub enum Message {
 pub enum ReturnMessage {
     ReturnMessage(Result<ReturnPacket, RecvError>),
 }
-fn copy_file_contents(src_path: &str, dest_path: &str) -> io::Result<()> {
-    let mut src_file = File::open(src_path)?;
-
-    let mut contents = Vec::new();
-    src_file.read_to_end(&mut contents)?;
-
-    let mut dest_file = File::create(dest_path)?;
-
-    dest_file.write_all(&contents)?;
-
-    Ok(())
-}
 
 pub fn handle_new_graph(
     network: &mut Option<Net>,
@@ -215,18 +203,7 @@ pub fn executor_main(
                 Message::NewNetwork(Ok(graph)) => {
                     // // println!("    NEW NET!");
 
-                    let new_graph_path = format!(
-                        "nets/{}_{}.pt",
-                        Path::new(&graph).file_stem().unwrap().to_str().unwrap(),
-                        executor_id
-                    );
-                    copy_file_contents(&graph, &new_graph_path).unwrap();
-                    handle_new_graph(
-                        &mut network,
-                        Some(new_graph_path),
-                        &thread_name,
-                        executor_id,
-                    );
+                    handle_new_graph(&mut network, Some(graph), &thread_name, executor_id);
                 }
                 Message::JobTensor(_) => {}
                 Message::JobTensorExecutor(job) => {
