@@ -61,7 +61,7 @@ def load_file(games_path):
 
 HOST = "127.0.0.1"
 PORT = 38475
-BUFFER_SIZE = 1000000
+BUFFER_SIZE = 500000
 BATCH_SIZE = 2048
 MIN_SAMPLING = 10
 SAMPLING_RATIO = 0.25
@@ -116,6 +116,7 @@ def main():
                 full_train_and_send(
                     model, starting_gen, server, loopbuf, train_settings, op, log, data
                 )
+                starting_gen += 1
 
         if "JobSendData" in received_data:
             data = extract_incoming_data_given_bytes(loopbuf, log, raw_data)
@@ -123,6 +124,7 @@ def main():
                 full_train_and_send(
                     model, starting_gen, server, loopbuf, train_settings, op, log, data
                 )
+                starting_gen += 1
 
         if "StopServer" in received_data:
             server.close()
@@ -189,7 +191,6 @@ def full_train_and_send(
             log.save("log.npz")
         except Exception:
             print("[Warning] failed to save log.npz")
-        starting_gen += 1
         model_path = save_and_register_net(model, starting_gen)
         send_new_net(model_path, model, server)
 
