@@ -24,7 +24,6 @@ use tch::{
     CModule, Cuda, Device,
 };
 
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 
 pub enum TypeRequest {
@@ -435,12 +434,12 @@ impl Tree {
             .expect("Time went backwards");
         let epoch_seconds_end_send = since_epoch_send.as_nanos();
 
-        if id % 512 == 0 {
-            println!(
-                "{} {} {} send_request",
-                epoch_seconds_start_send, epoch_seconds_end_send, id
-            );
-        }
+        // if id % 512 == 0 {
+        //     println!(
+        //         "{} {} {} send_request",
+        //         epoch_seconds_start_send, epoch_seconds_end_send, id
+        //     );
+        // }
 
         let now_start_recv = SystemTime::now();
         let since_epoch_recv = now_start_recv
@@ -457,14 +456,14 @@ impl Tree {
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards");
         let epoch_seconds_end_recv = since_epoch_recv.as_nanos();
-        if id % 512 == 0 {
-            println!(
-                "{} {} {} recv_request",
-                epoch_seconds_start_recv, epoch_seconds_end_recv, id
-            );
+        // if id % 512 == 0 {
+        //     println!(
+        //         "{} {} {} recv_request",
+        //         epoch_seconds_start_recv, epoch_seconds_end_recv, id
+        //     );
 
-            // println!("THREAD ID {} CHANNEL_LEN {}", id, tensor_exe_send.len());
-        }
+        //     // println!("THREAD ID {} CHANNEL_LEN {}", id, tensor_exe_send.len());
+        // }
         let output = match output {
             ReturnMessage::ReturnMessage(Ok(output)) => output,
             ReturnMessage::ReturnMessage(Err(_)) => panic!("error in returning!"),
@@ -610,7 +609,6 @@ pub struct Wdl {
 }
 
 impl Node {
-
     pub fn get_q_val(&self, settings: SearchSettings) -> f32 {
         let fpu = settings.fpu; // First Player Urgency
         if self.visits > 0 {
