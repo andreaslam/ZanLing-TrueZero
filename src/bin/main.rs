@@ -48,10 +48,10 @@ fn main() {
         .expect("Failed to send data");
     println!("Connected to server!");
 
-    let mut num_executors = 2;
+    let mut num_executors = 1;
     // num_executors = max(min(tch::Cuda::device_count() as usize, num_executors), 1);
-    let batch_size = 64;
-    let num_generators = 2048;
+    let batch_size = 2048;
+    let num_generators = num_executors * batch_size * 2;
 
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(num_generators);
 
