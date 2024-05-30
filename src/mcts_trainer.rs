@@ -244,7 +244,7 @@ impl Tree {
             TypeRequest::UCISearch => {
                 let cp_eval = eval_in_cp(self.nodes[selected_node].eval_score);
                 let elapsed_ms = sw.elapsed().as_nanos() as f32 / 1e6;
-                let nps = self.nodes.len() as f32 / (sw.elapsed().as_nanos() as f32 / 1e9);
+                let nps = self.nodes.len() as f32;
                 let (pv, mate) = self.get_pv();
                 let eval_string = {
                     if mate {
