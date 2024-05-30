@@ -75,11 +75,6 @@ fn handle_requests(
     let mut input_vec: VecDeque<Tensor> = VecDeque::new();
     let mut output_senders: VecDeque<Sender<ReturnMessage>> = VecDeque::new();
     let mut id_vec: VecDeque<String> = VecDeque::new();
-    let mut now_start = SystemTime::now(); // batch timer
-    let since_epoch = now_start
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards");
-    let mut epoch_seconds_start = since_epoch.as_nanos(); // batch
     loop {
         let job = tensor_receiver.recv().unwrap();
         input_vec.push_back(job.job);
@@ -87,31 +82,16 @@ fn handle_requests(
         id_vec.push_back(job.id);
 
         if input_vec.len() >= max_batch_size {
-            let now_end = SystemTime::now();
-            let since_epoch_end = now_end
-                .duration_since(UNIX_EPOCH)
-                .expect("Time went backwards");
-            let epoch_seconds_end = since_epoch_end.as_nanos();
-
-            // println!(
-            //     "{} {} {} waiting_for_batch",
-            //     epoch_seconds_start, epoch_seconds_end, thread_name
-            // );
-
             let pack = ExecutorPacket {
                 job: std::mem::take(&mut input_vec),
                 resenders: std::mem::take(&mut output_senders),
                 id: std::mem::take(&mut id_vec),
             };
             handler_send.send(pack).unwrap();
-            now_start = SystemTime::now();
-            let since_epoch_start = now_start
-                .duration_since(UNIX_EPOCH)
-                .expect("Time went backwards");
-            epoch_seconds_start = since_epoch_start.as_nanos();
         }
     }
 }
+
 pub fn executor_main(
     net_receiver: Receiver<String>,
     tensor_receiver: Receiver<Packet>, // receive tensors from mcts
@@ -145,6 +125,7 @@ pub fn executor_main(
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards");
     let mut epoch_seconds_start = since_epoch.as_nanos(); // batch
+    let mut one_second_accumulated: f32 = 0.0;
     thread::scope(|s| {
         let _ = s
             .builder()
@@ -248,18 +229,26 @@ pub fn executor_main(
                     let epoch_seconds_start_evals = since_epoch_evals.as_nanos();
 
                     begin_event_with_color("eval", CL_BLUE);
-                    if one_sec_timer.elapsed() < Duration::from_secs(1) {
-                        eval_counter += 1;
-                    } else {
-                        println!("EVALED {} times", eval_counter);
-                        eval_counter = 0;
-                        one_sec_timer = Instant::now();
-                    }
                     let start = Instant::now();
                     let (board_eval, policy) =
                         eval_state(input_tensors, network).expect("Evaluation failed");
                     let delta = start.elapsed().as_nanos() as f32 / 1e9;
                     println!("{}s", delta);
+                    if one_sec_timer.elapsed() < Duration::from_secs(1) {
+                        one_second_accumulated += delta;
+                        eval_counter += 1;
+                    } else {
+                        println!(
+                            "EVALED {} times {}% usage",
+                            eval_counter,
+                            (eval_counter as f32
+                                * (one_second_accumulated / (eval_counter as f32)))
+                                * 100.0
+                        );
+                        eval_counter = 0;
+                        one_second_accumulated = 0.0;
+                        one_sec_timer = Instant::now();
+                    }
                     // println!("Eval took {}, tp {}, batch_size {}, max_batch_size {}",delta, batch_size as f32 / delta, batch_size, max_batch_size);
                     end_event();
                     let now_end_evals = SystemTime::now();
