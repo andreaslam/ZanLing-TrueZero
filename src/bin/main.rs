@@ -50,8 +50,8 @@ fn main() {
 
     let mut num_executors = 2;
     // num_executors = max(min(tch::Cuda::device_count() as usize, num_executors), 1);
-    let batch_size = 8192;
-    let num_generators = num_executors * batch_size * 8;
+    let batch_size = 1024;
+    let num_generators = num_executors * batch_size * 128;
 
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(num_generators);
     
