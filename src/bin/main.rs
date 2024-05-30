@@ -21,24 +21,23 @@ use tz_rust::{
     selfplay::{CollectorMessage, DataGen},
     settings::SearchSettings,
 };
+
 fn main() {
     let pool = ThreadPool::new().expect("Failed to build pool");
     env::set_var("RUST_BACKTRACE", "2");
 
     panic::set_hook(Box::new(|panic_info| {
-        // print panic information
         eprintln!("Panic occurred: {:?}", panic_info);
-        // exit the program immediately
         std::process::exit(1);
     }));
-    // connect to python-rust server
+
     let mut stream = loop {
         match TcpStream::connect("127.0.0.1:38475") {
             Ok(s) => break s,
             Err(_) => continue,
         }
     };
-    // identification - this is rust data generation
+
     let message = MessageServer {
         purpose: MessageType::Initialise(Entity::RustDataGen),
     };
@@ -50,16 +49,15 @@ fn main() {
     println!("Connected to server!");
 
     let mut num_executors = 2;
-    let batch_size = 1024; // executor batch size
-    let num_generators = num_executors * batch_size * 2;
-    num_executors = max(min(tch::Cuda::device_count() as usize, num_executors), 1);
-    let (game_sender, game_receiver) =
-        flume::bounded::<CollectorMessage>(num_executors * batch_size);
+    // num_executors = max(min(tch::Cuda::device_count() as usize, num_executors), 1);
+    let batch_size = 1024;
+    let num_generators = num_executors * batch_size * 16;
+
+    let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(num_generators);
 
     thread::scope(|s| {
-        // commander
-        let mut vec_communicate_exe_send: Vec<Sender<String>> = Vec::new(); // commander to executor, send net
-        let mut vec_communicate_exe_recv: Vec<Receiver<String>> = Vec::new(); // commander to executor, send net
+        let mut vec_communicate_exe_send: Vec<Sender<String>> = Vec::new();
+        let mut vec_communicate_exe_recv: Vec<Receiver<String>> = Vec::new();
 
         for _ in 0..num_executors {
             let (communicate_exe_send, communicate_exe_recv) =
@@ -68,7 +66,6 @@ fn main() {
             vec_communicate_exe_recv.push(communicate_exe_recv);
         }
 
-        // send-recv pair between commander and collector
         let (id_send, id_recv) = flume::bounded::<usize>(1);
 
         let _ = s
@@ -86,9 +83,7 @@ fn main() {
         // selfplay threads
         let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(num_generators); // mcts to executor
 
-        // executor
-        let mut exec_id = 0;
-        for communicate_exe_recv in vec_communicate_exe_recv {
+        for (exec_id, communicate_exe_recv) in vec_communicate_exe_recv.into_iter().enumerate() {
             let eval_per_sec_sender = game_sender.clone();
             let tensor_exe_recv_clone = tensor_exe_recv.clone();
             let _ = s
@@ -104,7 +99,6 @@ fn main() {
                     )
                 })
                 .unwrap();
-            exec_id += 1;
         }
 
         for n in 0..num_generators {
@@ -117,7 +111,6 @@ fn main() {
             pool.spawn_ok(fut_generator);
         }
 
-        // collector
         let _ = s
             .builder()
             .name("collector".to_string())
@@ -144,7 +137,7 @@ async fn generator_main(
         wdl: None,
         moves_left: None,
         c_puct: 3.0,
-        max_nodes: 800,
+        max_nodes: 400,
         alpha: 0.3,
         eps: 0.3,
         search_type: TrainerSearch(None),
@@ -153,39 +146,8 @@ async fn generator_main(
     let nps_sender = sender_collector.clone();
     loop {
         let sim = datagen
-            // .fast_data(&tensor_exe_send, &nps_sender, &settings, id)
             .play_game(&tensor_exe_send, &nps_sender, &settings, id)
             .await;
-
-        // match settings.search_type {
-        //     TrainerSearch(expansiontype) => match expansiontype {
-        //         Some(_) => {
-        //             let num_positions_sample =
-        //                 rand::thread_rng().gen_range(1..=sim.positions.len());
-        //             let mut rng = rand::thread_rng();
-        //             let random_idx: Vec<usize> = (0..num_positions_sample)
-        //                 .map(|_| rng.gen_range(0..=sim.positions.len() - 1))
-        //                 .collect();
-
-        //             for position in random_idx {
-        //                 let sim = synthetic_expansion(
-        //                     sim.clone(),
-        //                     position,
-        //                     tensor_exe_send.clone(),
-        //                     settings.clone(),
-        //                 );
-        //                 sender_collector
-        //                     .send(CollectorMessage::FinishedGame(sim))
-        //                     .unwrap();
-        //             }
-        //         }
-        //         None => {}
-        //     },
-        //     tz_rust::mcts_trainer::TypeRequest::SyntheticSearch => {}
-        //     tz_rust::mcts_trainer::TypeRequest::NonTrainerSearch => {}
-        //     tz_rust::mcts_trainer::TypeRequest::UCISearch => {}
-        // }
-
         sender_collector
             .send_async(CollectorMessage::FinishedGame(sim))
             .await
@@ -195,14 +157,10 @@ async fn generator_main(
 
 fn serialise_file_to_bytes(file_path: &str) -> io::Result<Vec<u8>> {
     let mut file = File::open(file_path)?;
-
     let metadata = file.metadata()?;
     let file_size = metadata.len() as usize;
-
     let mut buffer = Vec::with_capacity(file_size);
-
     file.read_to_end(&mut buffer)?;
-
     Ok(buffer)
 }
 
@@ -216,13 +174,9 @@ fn collector_main(
         .unwrap_or("unnamed")
         .to_owned();
     let folder_name = "games";
-
     if let Err(e) = fs::create_dir(folder_name) {
-        match e.kind() {
-            std::io::ErrorKind::AlreadyExists => {}
-            _ => {
-                println!("Error creating folder: {}", e);
-            }
+        if e.kind() != std::io::ErrorKind::AlreadyExists {
+            println!("Error creating folder: {}", e);
         }
     } else {
         println!("created {}", folder_name);
@@ -250,9 +204,7 @@ fn collector_main(
                     let mut file_data: Vec<Vec<u8>> = Vec::new(); // Clear file_data vector
                     for file in files {
                         let file_path = format!("{}{}", path, file);
-                        let data = serialise_file_to_bytes(&file_path.to_owned())
-                            .unwrap()
-                            .clone();
+                        let data = serialise_file_to_bytes(&file_path).unwrap();
                         file_data.push(data);
                     }
 
@@ -263,7 +215,6 @@ fn collector_main(
                     );
 
                     let message = MessageServer {
-                        // purpose: MessageType::JobSendPath(path.clone().to_string()),
                         purpose: MessageType::JobSendData(vec![
                             DataFileType::BinFile(bin_file),
                             DataFileType::OffFile(off_file),
@@ -274,21 +225,7 @@ fn collector_main(
                         serde_json::to_string(&message).expect("serialisation failed");
                     serialised += "\n";
                     server_handle.write_all(serialised.as_bytes()).unwrap();
-                    // for file_path in files {
-                    //     let exists_file = Path::new(file_path).is_file();
-                    //     if exists_file {
-                    //         // delete sent files
-                    //         // Attempt to delete the file
-                    //         match fs::remove_file(format!("{}{}", path, file_path)) {
-                    //             Ok(_) => {
-                    //                 println!("Deleted file {}", format!("{}{}", path, file_path));
-                    //             }
-                    //             Err(e) => println!("Error deleting the file: {}", e),
-                    //         }
-                    //     } else {
-                    //     }
-                    // }
-                    // println!("{}, {}", thread_name, counter);
+
                     let file_save_time = SystemTime::now();
                     let file_save_time_duration = file_save_time
                         .duration_since(UNIX_EPOCH)
@@ -301,14 +238,11 @@ fn collector_main(
             CollectorMessage::GeneratorStatistics(nps) => {
                 if nps_start_time.elapsed() >= Duration::from_secs(1) {
                     let nps: f32 = nps_vec.iter().sum();
-                    // println!("{} nps", nps);
                     nps_start_time = Instant::now();
                     nps_vec = Vec::new();
-
                     let message = MessageServer {
                         purpose: MessageType::StatisticsSend(Statistics::NodesPerSecond(nps)),
                     };
-
                     let mut serialised =
                         serde_json::to_string(&message).expect("serialisation failed");
                     serialised += "\n";
@@ -320,7 +254,6 @@ fn collector_main(
             CollectorMessage::ExecutorStatistics(evals_per_sec) => {
                 if evals_start_time.elapsed() >= Duration::from_secs(1) {
                     let evals_per_second: f32 = evals_vec.iter().sum();
-                    // println!("{} evals/s", evals_per_second);
                     evals_start_time = Instant::now();
                     evals_vec = Vec::new();
                     let message = MessageServer {
