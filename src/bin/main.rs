@@ -48,10 +48,10 @@ fn main() {
         .expect("Failed to send data");
     println!("Connected to server!");
 
-    let mut num_executors = 2;
+    let mut num_executors = 1;
     // num_executors = max(min(tch::Cuda::device_count() as usize, num_executors), 1);
-    let batch_size = 1024;
-    let num_generators = num_executors * batch_size * 32;
+    let batch_size = 256;
+    let num_generators = 131072;
 
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(num_generators);
 
@@ -275,6 +275,13 @@ fn collector_main(
     }
 }
 
+fn directory_exists<P: AsRef<Path>>(path: P) -> bool {
+    match fs::metadata(path) {
+        Ok(metadata) => metadata.is_dir(),
+        Err(_) => false,
+    }
+}
+
 fn commander_main(
     vec_exe_sender: Vec<Sender<String>>,
     server_handle: &mut TcpStream,
@@ -288,6 +295,9 @@ fn commander_main(
     let mut net_path_counter = 0;
     let mut generator_id: usize = 0;
     loop {
+        if !directory_exists("nets") {
+            fs::create_dir("nets").unwrap();
+        }
         let mut recv_msg = String::new();
         if let Err(_) = reader.read_line(&mut recv_msg) {
             return;
