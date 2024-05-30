@@ -85,7 +85,7 @@ fn handle_requests(
         output_senders.push_back(job.resender);
         id_vec.push_back(job.id);
 
-        if input_vec.len() >= max_batch_size || eval_limit.elapsed() > Duration::from_millis(100) {
+        if input_vec.len() >= max_batch_size || (eval_limit.elapsed() > Duration::from_micros(100) && input_vec.len() > 0) {
             let now_end = SystemTime::now();
             let since_epoch_end = now_end
                 .duration_since(UNIX_EPOCH)
