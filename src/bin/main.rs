@@ -1,401 +1,393 @@
-use crate::{
-    decoder::eval_state,
-    mcts_trainer::Net,
-    selfplay::CollectorMessage,
-    superluminal::{CL_BLUE, CL_ORANGE, CL_RED},
-};
 use crossbeam::thread;
-use flume::{Receiver, RecvError, Selector, Sender};
+use flume::{Receiver, Sender};
+use futures::executor::ThreadPool;
+use rand::prelude::*;
 use std::{
-    cmp::min,
-    collections::VecDeque,
-    process,
+    cmp::{max, min},
+    env,
+    fs::{self, File},
+    io::{self, BufRead, BufReader, Read, Write},
+    net::TcpStream,
+    panic,
+    path::Path,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-use superluminal_perf::{begin_event_with_color, end_event};
-use tch::{Cuda, Tensor};
+use tz_rust::{
+    dummyreq::{send_request, send_request_async},
+    executor::{executor_main, Packet},
+    fileformat::BinaryOutput,
+    mcts_trainer::TypeRequest::TrainerSearch,
+    message_types::{DataFileType, Entity, MessageServer, MessageType, Statistics},
+    selfplay::{CollectorMessage, DataGen},
+    settings::SearchSettings,
+};
 
-pub struct Packet {
-    pub job: Tensor,
-    pub resender: Sender<ReturnMessage>,
-    pub id: String,
-}
+fn main() {
+    let pool = ThreadPool::new().expect("Failed to build pool");
+    env::set_var("RUST_BACKTRACE", "2");
 
-struct ExecutorPacket {
-    pub job: VecDeque<Tensor>,
-    pub resenders: VecDeque<Sender<ReturnMessage>>,
-    pub id: VecDeque<String>,
-}
+    panic::set_hook(Box::new(|panic_info| {
+        eprintln!("Panic occurred: {:?}", panic_info);
+        std::process::exit(1);
+    }));
 
-pub struct ReturnPacket {
-    pub packet: (Tensor, Tensor),
-    pub id: String,
-}
-
-pub enum Message {
-    NewNetwork(Result<String, RecvError>),
-    JobTensor(Result<Packet, RecvError>), // (converted) tensor from mcts search that needs NN evaluation
-    JobTensorExecutor(Result<ExecutorPacket, RecvError>), // (converted) tensor from mcts search that needs NN evaluation
-
-    StopServer, // end the executor process
-}
-
-pub enum ReturnMessage {
-    ReturnMessage(Result<ReturnPacket, RecvError>),
-}
-
-pub fn handle_new_graph(
-    network: &mut Option<Net>,
-    graph: Option<String>,
-    thread_name: &str,
-    id: usize,
-) {
-    // drop previous network if any to save GPU memory
-    if let Some(network) = network.take() {
-        // // // println!("{} dropping network", thread_name);
-        drop(network);
-    }
-
-    // load the new network if any
-    *network = graph.map(|graph| Net::new_with_device_id(&graph[..], id));
-}
-
-fn handle_requests(
-    handler_send: Sender<ExecutorPacket>,
-    tensor_receiver: Receiver<Packet>,
-    max_batch_size: usize,
-) {
-    let thread_name = std::thread::current()
-        .name()
-        .unwrap_or("unnamed-executor")
-        .to_owned();
-    let mut input_vec: VecDeque<Tensor> = VecDeque::new();
-    let mut output_senders: VecDeque<Sender<ReturnMessage>> = VecDeque::new();
-    let mut id_vec: VecDeque<String> = VecDeque::new();
-    let mut now_start = SystemTime::now(); // batch timer
-    let since_epoch = now_start
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards");
-    let mut epoch_seconds_start = since_epoch.as_nanos(); // batch
-    let mut eval_limit = Instant::now();
-    loop {
-        let job = tensor_receiver.recv().unwrap();
-        input_vec.push_back(job.job);
-        output_senders.push_back(job.resender);
-        id_vec.push_back(job.id);
-
-        if input_vec.len() >= max_batch_size || eval_limit.elapsed() > Duration::from_micros(1) {
-            let now_end = SystemTime::now();
-            let since_epoch_end = now_end
-                .duration_since(UNIX_EPOCH)
-                .expect("Time went backwards");
-            let epoch_seconds_end = since_epoch_end.as_nanos();
-            // println!(
-            //     "{} {} {} waiting_for_batch",
-            //     epoch_seconds_start, epoch_seconds_end, thread_name
-            // );
-
-            let pack = ExecutorPacket {
-                job: std::mem::take(&mut input_vec),
-                resenders: std::mem::take(&mut output_senders),
-                id: std::mem::take(&mut id_vec),
-            };
-            handler_send.send(pack).unwrap();
-
-            now_start = SystemTime::now();
-            let since_epoch_start = now_start
-                .duration_since(UNIX_EPOCH)
-                .expect("Time went backwards");
-            epoch_seconds_start = since_epoch_start.as_nanos();
-            eval_limit = Instant::now();
+    let mut stream = loop {
+        match TcpStream::connect("127.0.0.1:38475") {
+            Ok(s) => break s,
+            Err(_) => continue,
         }
-    }
-}
+    };
 
-pub fn executor_main(
-    net_receiver: Receiver<String>,
-    tensor_receiver: Receiver<Packet>, // receive tensors from mcts
-    max_batch_size: usize,
-    evals_per_sec_sender: Sender<CollectorMessage>,
-    executor_id: usize,
-) {
-    let mut graph_disconnected = false;
-    let mut network: Option<Net> = None;
-    let thread_name = std::thread::current()
-        .name()
-        .unwrap_or("unnamed-executor")
-        .to_owned();
-    let mut input_vec: VecDeque<Tensor> = VecDeque::new();
-    let mut debug_counter = 0;
-    // // println!("num_threads (generator): {}", num_threads);
+    let message = MessageServer {
+        purpose: MessageType::Initialise(Entity::RustDataGen),
+    };
+    let serialised = serde_json::to_string(&message).expect("serialization failed");
+    let mut serialised = serialised + "\n";
+    stream
+        .write_all(serialised.as_bytes())
+        .expect("Failed to send data");
+    println!("Connected to server!");
 
-    let mut waiting_batch: Instant = Instant::now(); // time spent idling (total for each batch)
-    let mut waiting_job = Instant::now(); // job timer
-    let mut now_start = SystemTime::now(); // batch timer
-    let since_epoch = now_start
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards");
-    let mut epoch_seconds_start = since_epoch.as_nanos(); // batch
-    let mut prev_count = max_batch_size;
-    let (handler_send, handler_recv) = flume::bounded::<ExecutorPacket>(1); // from handler to exec
+    let mut num_executors = 2;
+    // num_executors = max(min(tch::Cuda::device_count() as usize, num_executors), 1);
+    let batch_size = 8192;
+    let num_generators = num_executors * batch_size * 8;
+
+    let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(num_generators);
+    
     thread::scope(|s| {
+        let mut vec_communicate_exe_send: Vec<Sender<String>> = Vec::new();
+        let mut vec_communicate_exe_recv: Vec<Receiver<String>> = Vec::new();
+
+        for _ in 0..num_executors {
+            let (communicate_exe_send, communicate_exe_recv) =
+                flume::bounded::<String>(num_generators);
+            vec_communicate_exe_send.push(communicate_exe_send);
+            vec_communicate_exe_recv.push(communicate_exe_recv);
+        }
+
+        let (id_send, id_recv) = flume::bounded::<usize>(1);
+
         let _ = s
             .builder()
-            .name(format!("executor-wait-{}", executor_id).to_string())
-            .spawn(move |_| {
-                handle_requests(handler_send, tensor_receiver, max_batch_size);
+            .name("commander".to_string())
+            .spawn(|_| {
+                commander_main(
+                    vec_communicate_exe_send,
+                    &mut stream.try_clone().expect("clone failed"),
+                    id_send,
+                )
             })
             .unwrap();
 
-        loop {
-            let mut selector = Selector::new();
-            begin_event_with_color("waiting_for_job", CL_ORANGE);
-            let sw = Instant::now();
-            // // println!("thread {} loop {}:", thread_name, debug_counter);
-            // // println!("    thread {} number of requests made from mcts: {}, {}", thread_name, output_senders.len(), num_threads);
-            // // println!("    thread {} graph_disconnected: {}", thread_name, graph_disconnected);
-            assert!(network.is_some() || !graph_disconnected);
+        // selfplay threads
+        let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(num_generators); // mcts to executor
 
-            if !graph_disconnected {
-                selector = selector.recv(&net_receiver, |res| Message::NewNetwork(res));
-            }
-
-            // register all tensor receivers in the selector
-            // println!("{}, {} {}, {}", input_vec.len(), thread_name, max_batch_size, has_started);
-            // println!("{}",((input_vec.len() == max_batch_size) || (has_started == false)) || ((input_vec.len() < max_batch_size )));
-
-            match network {
-                Some(_) => {
-                    // selector = selector.recv(&tensor_receiver, |res| Message::JobTensor(res));
-                    selector = selector.recv(&handler_recv, |res| Message::JobTensorExecutor(res));
-                }
-                None => (),
-            }
-            let now_end = SystemTime::now();
-            let since_epoch = now_end
-                .duration_since(UNIX_EPOCH)
-                .expect("Time went backwards");
-            let epoch_seconds_start_job = since_epoch.as_nanos();
-            let message = selector.wait();
-
-            end_event();
-
-            // println!("RECV SIZE {} NUM SENDERS {} RECV {}", tensor_receiver.len(), tensor_receiver.sender_count(), tensor_receiver.receiver_count());
-            match message {
-                Message::StopServer => break,
-                Message::NewNetwork(Ok(graph)) => {
-                    // // println!("    NEW NET!");
-                    handle_new_graph(&mut network, Some(graph), &thread_name, executor_id);
-                }
-                Message::JobTensor(_) => {}
-                Message::JobTensorExecutor(job) => {
-                    // println!("EXEC ID {} CHANNEL_LEN {}", thread_name, tensor_receiver.len());
-                    let now_end = SystemTime::now();
-                    let since_epoch = now_end
-                        .duration_since(UNIX_EPOCH)
-                        .expect("Time went backwards");
-                    let epoch_seconds_end = since_epoch.as_nanos();
-                    // println!("{} {} {} waiting_for_job", epoch_seconds_start_job, epoch_seconds_end, thread_name);
-                    let job = job.expect("JobTensor should be available");
-                    let mut input_vec = job.job;
-                    let mut id_vec = job.id;
-                    let mut output_senders = job.resenders;
-                    // evaluate batches
-                    waiting_job = Instant::now();
-                    while input_vec.len() >= max_batch_size {
-                        // println!("{} {}", thread_name, tensor_receiver.len());
-                        let now_end = SystemTime::now();
-                        let since_epoch = now_end
-                            .duration_since(UNIX_EPOCH)
-                            .expect("Time went backwards");
-                        let epoch_seconds_end = since_epoch.as_nanos();
-                        let network = network.as_mut().expect("Network should be available");
-                        let elapsed = waiting_batch.elapsed().as_nanos() as f32 / 1e6;
-
-                        // println!("loop {} time taken for buffer to fill: {}ms", debug_counter, elapsed);
-                        let sw_tensor_prep = Instant::now();
-                        let batch_size = min(max_batch_size, input_vec.len());
-                        let i_v = input_vec.make_contiguous();
-                        let input_tensors = Tensor::cat(&i_v[..batch_size], 0);
-                        let elapsed = sw_tensor_prep.elapsed().as_nanos() as f32 / 1e6;
-
-                        // println!("loop {} prepping tensors: {}ms", debug_counter, elapsed);
-                        // // println!("        thread {}: preparing tensors", thread_name);
-                        // // println!("            thread {}: eval input tensors: {:?}", thread_name, input_tensors);
-                        // // println!("        thread {}: NN evaluation:", thread_name);
-
-                        let now_start_evals = SystemTime::now();
-                        let since_epoch_evals = now_start_evals
-                            .duration_since(UNIX_EPOCH)
-                            .expect("Time went backwards");
-                        let epoch_seconds_start_evals = since_epoch_evals.as_nanos();
-
-                        begin_event_with_color("eval", CL_BLUE);
-                        let start = Instant::now();
-                        let (board_eval, policy) =
-                            eval_state(input_tensors, network).expect("Evaluation failed");
-                        let delta = start.elapsed().as_secs_f32();
-                        // println!("Eval took {}, tp {}, batch_size {}, max_batch_size {}",delta, batch_size as f32 / delta, batch_size, max_batch_size);
-                        end_event();
-                        let now_end_evals = SystemTime::now();
-                        let since_epoch_evals = now_end_evals
-                            .duration_since(UNIX_EPOCH)
-                            .expect("Time went backwards");
-                        let epoch_seconds_end_evals = since_epoch_evals.as_nanos();
-                        println!(
-                            "{} {} {} evaluation_time_taken",
-                            epoch_seconds_start_evals, epoch_seconds_end_evals, thread_name
-                        );
-                        let sw_inference = Instant::now();
-                        let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
-                        // let evals_per_sec = batch_size as f32 / elapsed;
-
-                        let _ = evals_per_sec_sender
-                            .send(CollectorMessage::ExecutorStatistics(batch_size as f32));
-                        // println!("inference_time {}s", elapsed);
-                        // // println!("        thread {}: processing outputs:",thread_name);
-                        // // println!("            thread {}: output tensors: {:?}, {:?}", thread_name, board_eval, policy);
-                        // distribute results to the output senders
-                        // // println!("        thread {}: sending tensors back to mcts:", thread_name);
-                        let packing_time = Instant::now();
-                        let now_start_packing = SystemTime::now();
-                        let since_epoch_packing = now_start_packing
-                            .duration_since(UNIX_EPOCH)
-                            .expect("Time went backwards");
-                        let epoch_seconds_start_packing = since_epoch_packing.as_nanos();
-                        begin_event_with_color("packing", CL_RED);
-                        for i in 0..batch_size {
-                            let sender: Sender<ReturnMessage> = output_senders
-                                .pop_front()
-                                .expect("There should be a sender for each job");
-                            let id = id_vec
-                                .pop_front()
-                                .expect("There should be an ID for each job");
-                            let result = (board_eval.get(i as i64), policy.get(i as i64));
-                            // // println!("            thread {}, SENT! {:?}", i, &result);
-                            let return_pack = ReturnPacket { packet: result, id };
-                            sender
-                                .send(ReturnMessage::ReturnMessage(Ok(return_pack)))
-                                .expect("Should be able to send the result");
-                            // let _ = sender.send(ReturnMessage::ReturnMessage(Ok(return_pack)));
-                        }
-                        end_event();
-                        let now_end_packing = SystemTime::now();
-                        let since_epoch_packing = now_end_packing
-                            .duration_since(UNIX_EPOCH)
-                            .expect("Time went backwards");
-                        let epoch_seconds_end_packing = since_epoch_packing.as_nanos();
-
-                        println!(
-                            "{} {} {} packing_time",
-                            epoch_seconds_start_packing, epoch_seconds_end_packing, thread_name
-                        );
-
-                        let packing_elapsed = packing_time.elapsed().as_nanos() as f32 / 1e6;
-                        // println!("loop {} packing time {}ms", debug_counter, packing_elapsed);
-                        drop(input_vec.drain(0..batch_size));
-                        waiting_batch = Instant::now();
-                        now_start = SystemTime::now();
-                        let since_epoch = now_start
-                            .duration_since(UNIX_EPOCH)
-                            .expect("Time went backwards");
-                        epoch_seconds_start = since_epoch.as_nanos();
-                        // begin_event_with_color("waiting_for_batch", CL_ORANGE);
-                    }
-                }
-                Message::NewNetwork(Err(RecvError::Disconnected)) => {
-                    // // println!("DISCONNECTED NET!");
-                    graph_disconnected = true;
-                    if network.is_none() && input_vec.is_empty() {
-                        break; // exit if no network and no ongoing jobs
-                    }
-                }
-            }
-            let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
-            // println!("loop {}, elapsed time: {}s", debug_counter, elapsed);
-            prev_count = 0;
-            debug_counter += 1;
+        for (exec_id, communicate_exe_recv) in vec_communicate_exe_recv.into_iter().enumerate() {
+            let eval_per_sec_sender = game_sender.clone();
+            let tensor_exe_recv_clone = tensor_exe_recv.clone();
+            let _ = s
+                .builder()
+                .name(format!("executor-{}", exec_id).to_string())
+                .spawn(move |_| {
+                    executor_main(
+                        communicate_exe_recv,
+                        tensor_exe_recv_clone,
+                        batch_size,
+                        eval_per_sec_sender,
+                        exec_id,
+                    )
+                })
+                .unwrap();
         }
-        // Return the senders to avoid them being dropped and disconnected
-        process::exit(0)
+
+        for n in 0..num_generators {
+            let sender_clone = game_sender.clone();
+            let mut selfplay_master = DataGen { iterations: 1 };
+            let tensor_exe_send_clone = tensor_exe_send.clone();
+            let fut_generator = async move {
+                generator_main(sender_clone, selfplay_master, tensor_exe_send_clone, n).await;
+            };
+            pool.spawn_ok(fut_generator);
+        }
+
+        let _ = s
+            .builder()
+            .name("collector".to_string())
+            .spawn(|_| {
+                collector_main(
+                    &game_receiver,
+                    &mut stream.try_clone().expect("clone failed"),
+                    id_recv,
+                )
+            })
+            .unwrap();
     })
     .unwrap();
 }
 
-pub fn executor_static(
-    net_path: String,
-    tensor_receiver: Receiver<Packet>, // receive tensors from mcts
-    ctrl_receiver: Receiver<Message>,  // receive control messages
-    num_threads: usize,
+async fn generator_main(
+    sender_collector: Sender<CollectorMessage>,
+    datagen: DataGen,
+    tensor_exe_send: Sender<Packet>,
+    id: usize,
 ) {
-    let max_batch_size = min(1024, num_threads);
-    let mut network: Option<Net> = None;
+    let settings: SearchSettings = SearchSettings {
+        fpu: 0.0,
+        wdl: None,
+        moves_left: None,
+        c_puct: 3.0,
+        max_nodes: 400,
+        alpha: 0.3,
+        eps: 0.3,
+        search_type: TrainerSearch(None),
+        pst: 1.25,
+    };
+    let nps_sender = sender_collector.clone();
+    loop {
+        let sim = datagen
+            .play_game(&tensor_exe_send, &nps_sender, &settings, id)
+            .await;
+        sender_collector
+            .send_async(CollectorMessage::FinishedGame(sim))
+            .await
+            .unwrap();
+    }
+}
+
+fn serialise_file_to_bytes(file_path: &str) -> io::Result<Vec<u8>> {
+    let mut file = File::open(file_path)?;
+    let metadata = file.metadata()?;
+    let file_size = metadata.len() as usize;
+    let mut buffer = Vec::with_capacity(file_size);
+    file.read_to_end(&mut buffer)?;
+    Ok(buffer)
+}
+
+fn collector_main(
+    receiver: &Receiver<CollectorMessage>,
+    server_handle: &mut TcpStream,
+    id_recv: Receiver<usize>,
+) {
     let thread_name = std::thread::current()
         .name()
-        .unwrap_or("unnamed-executor")
+        .unwrap_or("unnamed")
         .to_owned();
-    let mut input_vec: VecDeque<Tensor> = VecDeque::new();
-    let mut debug_counter = 0;
-    let mut output_senders: VecDeque<Sender<ReturnMessage>> = VecDeque::new();
-    let mut id_vec: VecDeque<String> = VecDeque::new();
-
-    handle_new_graph(&mut network, Some(net_path), thread_name.as_str(), 0); // TODO maybe pass an option to use either/both GPUs? and not hardcode static GPU to 1 GPU only?
-
+    let folder_name = "games";
+    if let Err(e) = fs::create_dir(folder_name) {
+        if e.kind() != std::io::ErrorKind::AlreadyExists {
+            println!("Error creating folder: {}", e);
+        }
+    } else {
+        println!("created {}", folder_name);
+    }
+    let id = id_recv.recv().unwrap();
+    let file_save_time = SystemTime::now();
+    let file_save_time_duration = file_save_time
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
+    let file_save_time_num = file_save_time_duration.as_nanos();
+    let mut path = format!("games/gen_{}_games_{}", id, file_save_time_num);
+    let mut bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
+    let mut nps_start_time = Instant::now();
+    let mut nps_vec: Vec<f32> = Vec::new();
+    let mut evals_start_time = Instant::now();
+    let mut evals_vec: Vec<f32> = Vec::new();
+    let files = [".bin", ".off", ".json"];
     loop {
-        let sw = Instant::now();
-
-        let mut selector = Selector::new();
-
-        // Register all receivers in the selector
-        selector = selector.recv(&tensor_receiver, |res| Message::JobTensor(res));
-        selector = selector.recv(&ctrl_receiver, |_| Message::StopServer);
-        let message = selector.wait();
-
-        match message {
-            Message::StopServer => {
-                break;
-            }
-            Message::NewNetwork(_) => {
-                unreachable!(); // Handle new network message if needed
-            }
-            Message::JobTensor(job) => {
-                let job = job.expect("JobTensor should be available");
-                let network = network.as_mut().expect("Network should be available");
-
-                input_vec.push_back(job.job);
-                output_senders.push_back(job.resender);
-                id_vec.push_back(job.id);
-
-                while input_vec.len() >= max_batch_size {
-                    let batch_size = min(max_batch_size, input_vec.len());
-                    let i_v = input_vec.make_contiguous();
-                    let input_tensors = Tensor::cat(&i_v[..batch_size], 0);
-
-                    let sw_inference = Instant::now();
-                    let (board_eval, policy) =
-                        eval_state(input_tensors, network).expect("Evaluation failed");
-                    let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
-
-                    for i in 0..batch_size {
-                        let sender = output_senders
-                            .pop_front()
-                            .expect("There should be a sender for each job");
-                        let id = id_vec
-                            .pop_front()
-                            .expect("There should be an ID for each job");
-                        let result = (board_eval.get(i as i64), policy.get(i as i64));
-                        let return_pack = ReturnPacket { packet: result, id };
-                        sender
-                            .send(ReturnMessage::ReturnMessage(Ok(return_pack)))
-                            .expect("Should be able to send the result");
+        let msg = receiver.recv().unwrap();
+        match msg {
+            CollectorMessage::FinishedGame(sim) => {
+                bin_output.append(&sim).unwrap();
+                if bin_output.game_count() >= 100 {
+                    bin_output.finish().unwrap();
+                    let mut file_data: Vec<Vec<u8>> = Vec::new(); // Clear file_data vector
+                    for file in files {
+                        let file_path = format!("{}{}", path, file);
+                        let data = serialise_file_to_bytes(&file_path).unwrap();
+                        file_data.push(data);
                     }
-                    drop(input_vec.drain(0..batch_size));
+
+                    let (bin_file, off_file, metadata) = (
+                        file_data[0].clone(),
+                        file_data[1].clone(),
+                        file_data[2].clone(),
+                    );
+
+                    let message = MessageServer {
+                        purpose: MessageType::JobSendData(vec![
+                            DataFileType::BinFile(bin_file),
+                            DataFileType::OffFile(off_file),
+                            DataFileType::MetaDataFile(metadata),
+                        ]),
+                    };
+                    let mut serialised =
+                        serde_json::to_string(&message).expect("serialisation failed");
+                    serialised += "\n";
+                    server_handle.write_all(serialised.as_bytes()).unwrap();
+
+                    let file_save_time = SystemTime::now();
+                    let file_save_time_duration = file_save_time
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Time went backwards");
+                    let file_save_time_num = file_save_time_duration.as_nanos();
+                    path = format!("games/gen_{}_games_{}", id, file_save_time_num);
+                    bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
                 }
             }
-            Message::JobTensorExecutor(_) => {}
+            CollectorMessage::GeneratorStatistics(nps) => {
+                if nps_start_time.elapsed() >= Duration::from_secs(1) {
+                    let nps: f32 = nps_vec.iter().sum();
+                    nps_start_time = Instant::now();
+                    nps_vec = Vec::new();
+                    let message = MessageServer {
+                        purpose: MessageType::StatisticsSend(Statistics::NodesPerSecond(nps)),
+                    };
+                    let mut serialised =
+                        serde_json::to_string(&message).expect("serialisation failed");
+                    serialised += "\n";
+                    server_handle.write_all(serialised.as_bytes()).unwrap();
+                } else {
+                    nps_vec.push(nps);
+                }
+            }
+            CollectorMessage::ExecutorStatistics(evals_per_sec) => {
+                if evals_start_time.elapsed() >= Duration::from_secs(1) {
+                    let evals_per_second: f32 = evals_vec.iter().sum();
+                    evals_start_time = Instant::now();
+                    evals_vec = Vec::new();
+                    let message = MessageServer {
+                        purpose: MessageType::StatisticsSend(Statistics::EvalsPerSecond(
+                            evals_per_second,
+                        )),
+                    };
+                    let mut serialised =
+                        serde_json::to_string(&message).expect("serialisation failed");
+                    serialised += "\n";
+                    server_handle.write_all(serialised.as_bytes()).unwrap();
+                } else {
+                    evals_vec.push(evals_per_sec);
+                }
+            }
+            CollectorMessage::GameResult(_) => {}
+            CollectorMessage::TestingResult(_) => {}
         }
-        let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
-        debug_counter += 1;
     }
-    // Return the senders to avoid them being dropped and disconnected
+}
+
+fn commander_main(
+    vec_exe_sender: Vec<Sender<String>>,
+    server_handle: &mut TcpStream,
+    id_sender: Sender<usize>,
+) {
+    let mut curr_net = String::new();
+    let mut is_initialised = false;
+    let mut net_path = String::new(); // initialize net_path with an empty string
+    let mut cloned_handle = server_handle.try_clone().unwrap();
+    let mut reader = BufReader::new(server_handle);
+    let mut net_path_counter = 0;
+    let mut generator_id: usize = 0;
+    loop {
+        let mut recv_msg = String::new();
+        if let Err(_) = reader.read_line(&mut recv_msg) {
+            return;
+        }
+        // deserialise data
+        // println!("RAW message: {:?}", recv_msg);
+        let message = match serde_json::from_str::<MessageServer>(&recv_msg) {
+            Ok(message) => {
+                message
+                // process the received JSON data
+            }
+            Err(err) => {
+                // println!("error deserialising message! {}, {}", recv_msg, err);
+                recv_msg.clear();
+                continue;
+            }
+        };
+
+        if is_initialised {
+            match message.purpose {
+                MessageType::Initialise(_) => {}
+                MessageType::JobSendPath(_) => {}
+                MessageType::StatisticsSend(_) => {}
+                MessageType::RequestingNet => {}
+                MessageType::NewNetworkPath(path) => {}
+                MessageType::IdentityConfirmation(_) => {}
+                MessageType::JobSendData(_) => {}
+                MessageType::NewNetworkData(data) => {
+                    println!("new net path");
+                    net_path = format!("nets/tz_temp_net_{}_{}.pt", generator_id, net_path_counter);
+                    let mut file = File::create(net_path.clone()).expect("Unable to create file");
+                    file.write_all(&data).expect("Unable to write data");
+                    net_path_counter += 1;
+                }
+                MessageType::TBLink(_) => {}
+                MessageType::CreateTB => {}
+                MessageType::RequestingTBLink => {}
+            }
+        } else {
+            match message.purpose {
+                MessageType::Initialise(_) => {}
+                MessageType::JobSendPath(_) => {}
+                MessageType::StatisticsSend(_) => {}
+                MessageType::RequestingNet => {}
+                MessageType::NewNetworkPath(_) => {}
+                MessageType::IdentityConfirmation((entity, id)) => match entity {
+                    Entity::RustDataGen => {
+                        generator_id = id;
+                        id_sender.send(id).unwrap();
+                        is_initialised = true;
+                    }
+                    Entity::PythonTraining => {
+                        println!("[Warning] Wrong entity, got {:?}", entity)
+                    }
+                    Entity::GUIMonitor => {
+                        println!("[Warning] Wrong entity, got {:?}", entity)
+                    }
+                    Entity::TBHost => {
+                        println!("[Warning] Wrong entity, got {:?}", entity)
+                    }
+                },
+                MessageType::JobSendData(_) => {}
+                MessageType::NewNetworkData(_) => {}
+                MessageType::TBLink(_) => {}
+                MessageType::CreateTB => {}
+                MessageType::RequestingTBLink => {}
+            }
+        }
+
+        if curr_net != net_path {
+            if !net_path.is_empty() {
+                println!("updating net to: {}", net_path.clone());
+                let exists_file = Path::new(&curr_net).is_file();
+                if exists_file {
+                    match fs::remove_file(curr_net.clone()) {
+                        Ok(_) => {
+                            println!("Deleted net {}", curr_net);
+                        }
+                        Err(e) => eprintln!("Error deleting the file: {}", e),
+                    }
+                }
+                for exe_sender in &vec_exe_sender {
+                    exe_sender.send(net_path.clone()).unwrap();
+                    // println!("SENT!");
+                }
+                curr_net = net_path.clone();
+            }
+        }
+        if net_path.is_empty() {
+            // println!("no net yet");
+            // actively request for net path
+
+            let message = MessageServer {
+                purpose: MessageType::RequestingNet,
+            };
+            let mut serialised = serde_json::to_string(&message).expect("serialisation failed");
+            serialised += "\n";
+            // println!("serialised {:?}", serialised);
+            cloned_handle.write_all(serialised.as_bytes()).unwrap();
+        }
+        recv_msg.clear();
+    }
 }
