@@ -77,20 +77,20 @@ fn handle_requests(
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards");
     let mut epoch_seconds_start = since_epoch.as_nanos(); // batch
-
+    let mut eval_limit = Instant::now();
     loop {
         let job = tensor_receiver.recv().unwrap();
         input_vec.push_back(job.job);
         output_senders.push_back(job.resender);
         id_vec.push_back(job.id);
 
-        if input_vec.len() >= max_batch_size {
+        if input_vec.len() >= max_batch_size || eval_limit.elapsed() > Duration::from_micros(10) {
             let now_end = SystemTime::now();
             let since_epoch_end = now_end
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards");
             let epoch_seconds_end = since_epoch_end.as_nanos();
-
+            eval_limit = Instant::now();
             // println!(
             //     "{} {} {} waiting_for_batch",
             //     epoch_seconds_start, epoch_seconds_end, thread_name
