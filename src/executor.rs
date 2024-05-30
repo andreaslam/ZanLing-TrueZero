@@ -72,12 +72,13 @@ fn handle_requests(
     let mut input_vec: VecDeque<Tensor> = VecDeque::new();
     let mut output_senders: VecDeque<Sender<ReturnMessage>> = VecDeque::new();
     let mut id_vec: VecDeque<String> = VecDeque::new();
-    let mut now_start = SystemTime::now(); // batch timer
+    let mut now_start = SystemTime::now();
     let since_epoch = now_start
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards");
-    let mut epoch_seconds_start = since_epoch.as_nanos(); // batch
+    let mut epoch_seconds_start = since_epoch.as_nanos();
     let mut eval_limit = Instant::now();
+
     loop {
         let job = tensor_receiver.recv().unwrap();
         input_vec.push_back(job.job);
@@ -91,10 +92,6 @@ fn handle_requests(
                 .expect("Time went backwards");
             let epoch_seconds_end = since_epoch_end.as_nanos();
             eval_limit = Instant::now();
-            // println!(
-            //     "{} {} {} waiting_for_batch",
-            //     epoch_seconds_start, epoch_seconds_end, thread_name
-            // );
 
             let pack = ExecutorPacket {
                 job: std::mem::take(&mut input_vec),
@@ -111,7 +108,6 @@ fn handle_requests(
         }
     }
 }
-
 pub fn executor_main(
     net_receiver: Receiver<String>,
     tensor_receiver: Receiver<Packet>, // receive tensors from mcts
@@ -202,106 +198,104 @@ pub fn executor_main(
                     let mut output_senders = job.resenders;
                     // evaluate batches
                     waiting_job = Instant::now();
-                    while input_vec.len() >= max_batch_size {
-                        // println!("{} {}", thread_name, tensor_receiver.len());
-                        let now_end = SystemTime::now();
-                        let since_epoch = now_end
-                            .duration_since(UNIX_EPOCH)
-                            .expect("Time went backwards");
-                        let epoch_seconds_end = since_epoch.as_nanos();
-                        let network = network.as_mut().expect("Network should be available");
-                        let elapsed = waiting_batch.elapsed().as_nanos() as f32 / 1e6;
+                    // println!("{} {}", thread_name, tensor_receiver.len());
+                    let now_end = SystemTime::now();
+                    let since_epoch = now_end
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Time went backwards");
+                    let epoch_seconds_end = since_epoch.as_nanos();
+                    let network = network.as_mut().expect("Network should be available");
+                    let elapsed = waiting_batch.elapsed().as_nanos() as f32 / 1e6;
 
-                        // println!("loop {} time taken for buffer to fill: {}ms", debug_counter, elapsed);
-                        let sw_tensor_prep = Instant::now();
-                        let batch_size = min(max_batch_size, input_vec.len());
-                        let i_v = input_vec.make_contiguous();
-                        let input_tensors = Tensor::cat(&i_v[..batch_size], 0);
-                        let elapsed = sw_tensor_prep.elapsed().as_nanos() as f32 / 1e6;
+                    // println!("loop {} time taken for buffer to fill: {}ms", debug_counter, elapsed);
+                    let sw_tensor_prep = Instant::now();
+                    let batch_size = min(max_batch_size, input_vec.len());
+                    let i_v = input_vec.make_contiguous();
+                    let input_tensors = Tensor::cat(&i_v[..batch_size], 0);
+                    let elapsed = sw_tensor_prep.elapsed().as_nanos() as f32 / 1e6;
 
-                        // println!("loop {} prepping tensors: {}ms", debug_counter, elapsed);
-                        // // println!("        thread {}: preparing tensors", thread_name);
-                        // // println!("            thread {}: eval input tensors: {:?}", thread_name, input_tensors);
-                        // // println!("        thread {}: NN evaluation:", thread_name);
+                    // println!("loop {} prepping tensors: {}ms", debug_counter, elapsed);
+                    // // println!("        thread {}: preparing tensors", thread_name);
+                    // // println!("            thread {}: eval input tensors: {:?}", thread_name, input_tensors);
+                    // // println!("        thread {}: NN evaluation:", thread_name);
 
-                        let now_start_evals = SystemTime::now();
-                        let since_epoch_evals = now_start_evals
-                            .duration_since(UNIX_EPOCH)
-                            .expect("Time went backwards");
-                        let epoch_seconds_start_evals = since_epoch_evals.as_nanos();
+                    let now_start_evals = SystemTime::now();
+                    let since_epoch_evals = now_start_evals
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Time went backwards");
+                    let epoch_seconds_start_evals = since_epoch_evals.as_nanos();
 
-                        begin_event_with_color("eval", CL_BLUE);
-                        let start = Instant::now();
-                        let (board_eval, policy) =
-                            eval_state(input_tensors, network).expect("Evaluation failed");
-                        let delta = start.elapsed().as_secs_f32();
-                        // println!("Eval took {}, tp {}, batch_size {}, max_batch_size {}",delta, batch_size as f32 / delta, batch_size, max_batch_size);
-                        end_event();
-                        let now_end_evals = SystemTime::now();
-                        let since_epoch_evals = now_end_evals
-                            .duration_since(UNIX_EPOCH)
-                            .expect("Time went backwards");
-                        let epoch_seconds_end_evals = since_epoch_evals.as_nanos();
-                        println!(
-                            "{} {} {} evaluation_time_taken",
-                            epoch_seconds_start_evals, epoch_seconds_end_evals, thread_name
-                        );
-                        let sw_inference = Instant::now();
-                        let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
-                        // let evals_per_sec = batch_size as f32 / elapsed;
+                    begin_event_with_color("eval", CL_BLUE);
+                    let start = Instant::now();
+                    let (board_eval, policy) =
+                        eval_state(input_tensors, network).expect("Evaluation failed");
+                    let delta = start.elapsed().as_secs_f32();
+                    // println!("Eval took {}, tp {}, batch_size {}, max_batch_size {}",delta, batch_size as f32 / delta, batch_size, max_batch_size);
+                    end_event();
+                    let now_end_evals = SystemTime::now();
+                    let since_epoch_evals = now_end_evals
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Time went backwards");
+                    let epoch_seconds_end_evals = since_epoch_evals.as_nanos();
+                    println!(
+                        "{} {} {} evaluation_time_taken",
+                        epoch_seconds_start_evals, epoch_seconds_end_evals, thread_name
+                    );
+                    let sw_inference = Instant::now();
+                    let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
+                    // let evals_per_sec = batch_size as f32 / elapsed;
 
-                        let _ = evals_per_sec_sender
-                            .send(CollectorMessage::ExecutorStatistics(batch_size as f32));
-                        // println!("inference_time {}s", elapsed);
-                        // // println!("        thread {}: processing outputs:",thread_name);
-                        // // println!("            thread {}: output tensors: {:?}, {:?}", thread_name, board_eval, policy);
-                        // distribute results to the output senders
-                        // // println!("        thread {}: sending tensors back to mcts:", thread_name);
-                        let packing_time = Instant::now();
-                        let now_start_packing = SystemTime::now();
-                        let since_epoch_packing = now_start_packing
-                            .duration_since(UNIX_EPOCH)
-                            .expect("Time went backwards");
-                        let epoch_seconds_start_packing = since_epoch_packing.as_nanos();
-                        begin_event_with_color("packing", CL_RED);
-                        for i in 0..batch_size {
-                            let sender: Sender<ReturnMessage> = output_senders
-                                .pop_front()
-                                .expect("There should be a sender for each job");
-                            let id = id_vec
-                                .pop_front()
-                                .expect("There should be an ID for each job");
-                            let result = (board_eval.get(i as i64), policy.get(i as i64));
-                            // // println!("            thread {}, SENT! {:?}", i, &result);
-                            let return_pack = ReturnPacket { packet: result, id };
-                            sender
-                                .send(ReturnMessage::ReturnMessage(Ok(return_pack)))
-                                .expect("Should be able to send the result");
-                            // let _ = sender.send(ReturnMessage::ReturnMessage(Ok(return_pack)));
-                        }
-                        end_event();
-                        let now_end_packing = SystemTime::now();
-                        let since_epoch_packing = now_end_packing
-                            .duration_since(UNIX_EPOCH)
-                            .expect("Time went backwards");
-                        let epoch_seconds_end_packing = since_epoch_packing.as_nanos();
-
-                        println!(
-                            "{} {} {} packing_time",
-                            epoch_seconds_start_packing, epoch_seconds_end_packing, thread_name
-                        );
-
-                        let packing_elapsed = packing_time.elapsed().as_nanos() as f32 / 1e6;
-                        // println!("loop {} packing time {}ms", debug_counter, packing_elapsed);
-                        drop(input_vec.drain(0..batch_size));
-                        waiting_batch = Instant::now();
-                        now_start = SystemTime::now();
-                        let since_epoch = now_start
-                            .duration_since(UNIX_EPOCH)
-                            .expect("Time went backwards");
-                        epoch_seconds_start = since_epoch.as_nanos();
-                        // begin_event_with_color("waiting_for_batch", CL_ORANGE);
+                    let _ = evals_per_sec_sender
+                        .send(CollectorMessage::ExecutorStatistics(batch_size as f32));
+                    // println!("inference_time {}s", elapsed);
+                    // // println!("        thread {}: processing outputs:",thread_name);
+                    // // println!("            thread {}: output tensors: {:?}, {:?}", thread_name, board_eval, policy);
+                    // distribute results to the output senders
+                    // // println!("        thread {}: sending tensors back to mcts:", thread_name);
+                    let packing_time = Instant::now();
+                    let now_start_packing = SystemTime::now();
+                    let since_epoch_packing = now_start_packing
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Time went backwards");
+                    let epoch_seconds_start_packing = since_epoch_packing.as_nanos();
+                    begin_event_with_color("packing", CL_RED);
+                    for i in 0..batch_size {
+                        let sender: Sender<ReturnMessage> = output_senders
+                            .pop_front()
+                            .expect("There should be a sender for each job");
+                        let id = id_vec
+                            .pop_front()
+                            .expect("There should be an ID for each job");
+                        let result = (board_eval.get(i as i64), policy.get(i as i64));
+                        // // println!("            thread {}, SENT! {:?}", i, &result);
+                        let return_pack = ReturnPacket { packet: result, id };
+                        sender
+                            .send(ReturnMessage::ReturnMessage(Ok(return_pack)))
+                            .expect("Should be able to send the result");
+                        // let _ = sender.send(ReturnMessage::ReturnMessage(Ok(return_pack)));
                     }
+                    end_event();
+                    let now_end_packing = SystemTime::now();
+                    let since_epoch_packing = now_end_packing
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Time went backwards");
+                    let epoch_seconds_end_packing = since_epoch_packing.as_nanos();
+
+                    println!(
+                        "{} {} {} packing_time",
+                        epoch_seconds_start_packing, epoch_seconds_end_packing, thread_name
+                    );
+
+                    let packing_elapsed = packing_time.elapsed().as_nanos() as f32 / 1e6;
+                    // println!("loop {} packing time {}ms", debug_counter, packing_elapsed);
+                    drop(input_vec.drain(0..batch_size));
+                    waiting_batch = Instant::now();
+                    now_start = SystemTime::now();
+                    let since_epoch = now_start
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Time went backwards");
+                    epoch_seconds_start = since_epoch.as_nanos();
+                    // begin_event_with_color("waiting_for_batch", CL_ORANGE);
                 }
                 Message::NewNetwork(Err(RecvError::Disconnected)) => {
                     // // println!("DISCONNECTED NET!");
