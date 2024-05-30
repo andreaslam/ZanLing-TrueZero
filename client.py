@@ -112,15 +112,17 @@ def main():
 
         if "JobSendPath" in received_data:
             data = extract_incoming_data_given_path(loopbuf, log, raw_data)
-            full_train_and_send(
-                model, starting_gen, server, loopbuf, train_settings, op, log, data
-            )
+            if loopbuf.position_count >= BUFFER_SIZE:
+                full_train_and_send(
+                    model, starting_gen, server, loopbuf, train_settings, op, log, data
+                )
 
         if "JobSendData" in received_data:
             data = extract_incoming_data_given_bytes(loopbuf, log, raw_data)
-            full_train_and_send(
-                model, starting_gen, server, loopbuf, train_settings, op, log, data
-            )
+            if loopbuf.position_count >= BUFFER_SIZE:
+                full_train_and_send(
+                    model, starting_gen, server, loopbuf, train_settings, op, log, data
+                )
 
         if "StopServer" in received_data:
             server.close()
