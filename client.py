@@ -4,7 +4,6 @@ import os
 import re
 import socket
 import time
-from datetime import datetime
 
 import torch
 import torch.optim as optim
@@ -175,7 +174,6 @@ def extract_incoming_data_given_bytes(loopbuf, log, raw_data):
 def full_train_and_send(
     model, starting_gen, server, loopbuf, train_settings, op, log, data
 ):
-    print("[loaded files] buffer size:", loopbuf.position_count)
     if loopbuf.position_count >= BUFFER_SIZE:
         train_sampler, test_sampler, last_gen_test_sampler = initialise_samplers(
             loopbuf
