@@ -151,10 +151,10 @@ pub fn executor_main(
                     .duration_since(UNIX_EPOCH)
                     .expect("Time went backwards");
                 let epoch_seconds_end = since_epoch_end.as_nanos();
-                println!(
-                    "{} {} {} waiting_for_batch",
-                    epoch_seconds_start, epoch_seconds_end, thread_name
-                );
+                // println!(
+                //     "{} {} {} waiting_for_batch",
+                //     epoch_seconds_start, epoch_seconds_end, thread_name
+                // );
             }
 
             // register all tensor receivers in the selector
@@ -233,18 +233,18 @@ pub fn executor_main(
                     let (board_eval, policy) =
                         eval_state(input_tensors, network).expect("Evaluation failed");
                     let delta = start.elapsed().as_nanos() as f32 / 1e9;
-                    println!("{}s", delta);
+                    // println!("{}s", delta);
                     if one_sec_timer.elapsed() < Duration::from_secs(1) {
                         one_second_accumulated += delta;
                         eval_counter += 1;
                     } else {
-                        println!(
-                            "EVALED {} times {}% usage",
-                            eval_counter,
-                            (eval_counter as f32
-                                * (one_second_accumulated / (eval_counter as f32)))
-                                * 100.0
-                        );
+                        // println!(
+                        //     "EVALED {} times {}% usage",
+                        //     eval_counter,
+                        //     (eval_counter as f32
+                        //         * (one_second_accumulated / (eval_counter as f32)))
+                        //         * 100.0
+                        // );
                         eval_counter = 0;
                         one_second_accumulated = 0.0;
                         one_sec_timer = Instant::now();
@@ -256,10 +256,10 @@ pub fn executor_main(
                         .duration_since(UNIX_EPOCH)
                         .expect("Time went backwards");
                     let epoch_seconds_end_evals = since_epoch_evals.as_nanos();
-                    println!(
-                        "{} {} {} evaluation_time_taken",
-                        epoch_seconds_start_evals, epoch_seconds_end_evals, thread_name
-                    );
+                    // println!(
+                    //     "{} {} {} evaluation_time_taken",
+                    //     epoch_seconds_start_evals, epoch_seconds_end_evals, thread_name
+                    // );
                     let sw_inference = Instant::now();
                     let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
                     let evals_per_sec = batch_size as f32 / elapsed;
@@ -299,10 +299,10 @@ pub fn executor_main(
                         .expect("Time went backwards");
                     let epoch_seconds_end_packing = since_epoch_packing.as_nanos();
 
-                    println!(
-                        "{} {} {} packing_time",
-                        epoch_seconds_start_packing, epoch_seconds_end_packing, thread_name
-                    );
+                    // println!(
+                    //     "{} {} {} packing_time",
+                    //     epoch_seconds_start_packing, epoch_seconds_end_packing, thread_name
+                    // );
 
                     let packing_elapsed = packing_time.elapsed().as_nanos() as f32 / 1e6;
                     // println!("loop {} packing time {}ms", debug_counter, packing_elapsed);
