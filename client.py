@@ -143,10 +143,10 @@ def extract_incoming_data_given_bytes(loopbuf, log, raw_data):
         bytes(dict(meta_data)["MetaDataFile"]),
     )
 
-    if not os.path.exists("./python_client_games"):
-        os.makedirs("./python_client_games")
+    if not os.path.exists("python_client_games"):
+        os.makedirs("python_client_games")
 
-    path = f"./python_client_games/temp_games_{int(time.time())}"
+    path = f"python_client_games/temp_games_{int(time.time())}"
     with open(path + ".bin", "wb") as file:
         file.write(bin_data)
 
@@ -380,7 +380,7 @@ def check_net_exists(device, pattern):
         match = re.match(pattern, net)
         if match:
             group = int(match.groups()[0])
-            net_id[f"./nets/{net}"] = group
+            net_id[f"nets/{net}"] = group
             training_nets.append(net)
 
     net_id = dict(sorted(net_id.items(), key=lambda x: x[1]))
