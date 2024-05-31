@@ -98,7 +98,7 @@ def main():
         clip_norm=5.0,
         mask_policy=True,
     )
-    op = optim.AdamW(params=model.parameters(), lr=1e-3)
+    op = optim.AdamW(params=model.parameters(), lr=1e-4)
     log = load_previous_data(data_paths, loopbuf)
 
     while True:
@@ -113,18 +113,18 @@ def main():
         if "JobSendPath" in received_data:
             data = extract_incoming_data_given_path(loopbuf, log, raw_data)
             if loopbuf.position_count >= BUFFER_SIZE:
+                starting_gen += 1
                 full_train_and_send(
                     model, starting_gen, server, loopbuf, train_settings, op, log, data
                 )
-                starting_gen += 1
 
         if "JobSendData" in received_data:
             data = extract_incoming_data_given_bytes(loopbuf, log, raw_data)
             if loopbuf.position_count >= BUFFER_SIZE:
+                starting_gen += 1
                 full_train_and_send(
                     model, starting_gen, server, loopbuf, train_settings, op, log, data
                 )
-                starting_gen += 1
 
         if "StopServer" in received_data:
             server.close()
