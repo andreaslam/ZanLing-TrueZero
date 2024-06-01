@@ -230,7 +230,7 @@ def main():
         default=(2000, 600),
         help="Video frame size",
     )
-    parser.add_argument("--video_fps", type=float, default=30, help="Video FPS")
+    parser.add_argument("--video_fps", type=float, default=10, help="Video FPS")
 
     args = parser.parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
@@ -277,7 +277,7 @@ def main():
             visualiser.generate_evolution(max_pol, args.fen)
 
         visualiser.make_gif(
-            [os.path.join(args.output_dir, x) for x in os.listdir(args.output_dir)]
+            all_nets
         )
 
     elif args.mode == "play":
