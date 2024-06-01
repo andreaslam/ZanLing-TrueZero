@@ -213,7 +213,7 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
     }
 
     let settings = SearchSettings {
-        fpu: 0.0,
+        fpu: 0.1,
         wdl: None,
         moves_left: None,
         c_puct: 2.0,
@@ -221,7 +221,7 @@ pub fn handle_go(commands: &[&str], bs: &BoardStack, net_path: &str) {
         alpha: 0.0,
         eps: 0.0,
         search_type: UCISearch,
-        pst: 1.5,
+        pst: 1.0,
     };
 
     let rt = Runtime::new().unwrap();
@@ -267,6 +267,8 @@ fn listen_stop(stop_signal_clone: Arc<AtomicBool>) {
             if line.trim() == "stop" {
                 stop_signal_clone.store(true, Ordering::SeqCst);
                 break;
+            } else if line.trim() == "quit" {
+                process::exit(0)
             }
         }
     }
