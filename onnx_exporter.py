@@ -24,7 +24,9 @@ def main():
         device = torch.device(
             args.device
             if args.device
-            else "cuda" if torch.cuda.is_available() else "cpu"
+            else "cuda"
+            if torch.cuda.is_available()
+            else "cpu"
         )
         print(f"Using device: {device}")
 
@@ -40,7 +42,7 @@ def main():
         torch_model.load_state_dict(torch.jit.load(args.model_path).state_dict())
 
         # Create a dummy input tensor
-        torch_input = torch.randn(1, 21, 8, 8).to(device)
+        torch_input = torch.randn(16384, 21, 8, 8).to(device)
 
         # Set the model to inference mode
         torch_model.eval()
