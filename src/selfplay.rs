@@ -14,8 +14,8 @@ use std::time::Instant;
 #[derive(Clone, Debug)]
 pub enum CollectorMessage {
     FinishedGame(Simulation),
-    GeneratorStatistics(f32),
-    ExecutorStatistics(f32),
+    GeneratorStatistics(usize),
+    ExecutorStatistics(usize),
     GameResult(Option<Color>),
     TestingResult(Option<bool>), // engine_0 win = true, engine_0 loss = false
 }
@@ -78,7 +78,7 @@ impl DataGen {
             // println!("{:#}", final_mv);
             nps_sender
                 .send_async(CollectorMessage::GeneratorStatistics(
-                    settings.max_nodes as f32,
+                    settings.max_nodes as usize,
                 ))
                 .await
                 .unwrap();
