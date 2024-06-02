@@ -1,3 +1,4 @@
+
 use crate::{
     decoder::eval_state,
     mcts_trainer::Net,
@@ -233,18 +234,19 @@ pub fn executor_main(
                     let (board_eval, policy) =
                         eval_state(input_tensors, network).expect("Evaluation failed");
                     let delta = start.elapsed().as_nanos() as f32 / 1e9;
-                    // println!("{}s", delta);
+                    println!("{}s", delta);
                     if one_sec_timer.elapsed() < Duration::from_secs(1) {
                         one_second_accumulated += delta;
                         eval_counter += 1;
                     } else {
-                        // println!(
-                        //     "EVALED {} times {}% usage",
-                        //     eval_counter,
-                        //     (eval_counter as f32
-                        //         * (one_second_accumulated / (eval_counter as f32)))
-                        //         * 100.0
-                        // );
+                        println!(
+                            "EVALED {} times {}% usage {}s",
+                            eval_counter,
+                            (eval_counter as f32
+                                * (one_second_accumulated / (eval_counter as f32)))
+                                * 100.0,
+                            one_second_accumulated /eval_counter as f32
+                        );
                         eval_counter = 0;
                         one_second_accumulated = 0.0;
                         one_sec_timer = Instant::now();
@@ -264,7 +266,7 @@ pub fn executor_main(
                     let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
                     let evals_per_sec = batch_size as f32 / elapsed;
                     let _ = evals_per_sec_sender
-                        .send(CollectorMessage::ExecutorStatistics(batch_size as f32));
+                        .send(CollectorMessage::ExecutorStatistics(batch_size));
                     // println!("inference_time {}s", elapsed);
                     // // println!("        thread {}: processing outputs:",thread_name);
                     // // println!("            thread {}: output tensors: {:?}, {:?}", thread_name, board_eval, policy);
