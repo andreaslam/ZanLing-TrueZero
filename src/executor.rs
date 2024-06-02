@@ -106,7 +106,7 @@ pub fn executor_main(
         .name()
         .unwrap_or("unnamed-executor")
         .to_owned();
-    let mut input_vec: VecDeque<Tensor> = VecDeque::new();
+    let input_vec: VecDeque<Tensor> = VecDeque::new();
     let mut debug_counter = 0;
     // // println!("num_threads (generator): {}", num_threads);
 
@@ -213,9 +213,9 @@ pub fn executor_main(
 
                     // println!("loop {} time taken for buffer to fill: {}ms", debug_counter, elapsed);
                     let sw_tensor_prep = Instant::now();
-                    let batch_size = min(max_batch_size, input_vec.len());
+                    let batch_size = input_vec.len();
                     let i_v = input_vec.make_contiguous();
-                    let input_tensors = Tensor::cat(&i_v[..batch_size], 0);
+                    let input_tensors = Tensor::cat(&i_v, 0);
                     let elapsed = sw_tensor_prep.elapsed().as_nanos() as f32 / 1e6;
 
                     // println!("loop {} prepping tensors: {}ms", debug_counter, elapsed);
