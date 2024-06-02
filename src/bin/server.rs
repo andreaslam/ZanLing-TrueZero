@@ -12,7 +12,7 @@ fn handle_client(
     stream: TcpStream,
     clients: Arc<Mutex<Vec<TcpStream>>>,
     messages: Arc<Mutex<Vec<MessageServer>>>,
-    stats_counters: Arc<Mutex<(f32, f32)>>,
+    stats_counters: Arc<Mutex<(usize, usize)>>,
     start_time: Arc<Mutex<Instant>>,
     net_path: Arc<Mutex<Option<String>>>,
     net_data: Arc<Mutex<Option<Vec<u8>>>>,
@@ -174,7 +174,7 @@ fn handle_client(
                 MessageType::StatisticsSend(statistics) => {
                     let mut stats = stats_counters.lock().unwrap_or_else(|e| e.into_inner());
                     let mut start_time = start_time.lock().unwrap_or_else(|e| e.into_inner());
-                    let elapsed = start_time.elapsed().as_secs_f32();
+                    let elapsed = start_time.elapsed().as_secs_f32() as usize;
                     match statistics {
                         tz_rust::message_types::Statistics::NodesPerSecond(nps) => {
                             stats.0 += nps;
@@ -183,10 +183,10 @@ fn handle_client(
                             stats.1 += evals_per_sec;
                         }
                     }
-                    if elapsed >= 1.0 {
+                    if elapsed >= 1 {
                         println!("[Statistics-nps] {}", stats.0);
                         println!("[Statistics-evals] {}", stats.1);
-                        *stats = (0.0, 0.0);
+                        *stats = (0, 0);
                         *start_time = Instant::now();
                     }
                     recv_msg.clear();
@@ -288,7 +288,7 @@ fn handle_client(
                             needs_tb_link = true;
                         }
                     }
-                }
+                } // MessageType::EvalJob(_) => todo!(),
             }
             // println!("[Message] {:?}", message);
             let all_clients = clients.lock().unwrap();
@@ -316,7 +316,7 @@ fn main() {
     let net_path: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let net_data: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
     let tb_link: Arc<Mutex<Option<(String, String)>>> = Arc::new(Mutex::new(None));
-    let stats_counters: Arc<Mutex<(f32, f32)>> = Arc::new(Mutex::new((0.0, 0.0)));
+    let stats_counters: Arc<Mutex<(usize, usize)>> = Arc::new(Mutex::new((0, 0)));
     let start_time: Arc<Mutex<Instant>> = Arc::new(Mutex::new(Instant::now()));
 
     for stream in listener.incoming() {
