@@ -77,7 +77,7 @@ On Windows, it's
 ```
 $env:LIBTORCH_USE_PYTORCH=1
 $PYTORCH_PATH = python -c "import torch; print(torch.__path__[0])"
-$env:PATH = "$PYTORCH_PATH\lib;$env:LD_LIBRARY_PATH"
+$env:PATH = "$PYTORCH_PATH\lib;$env:PATH"
 ```
 
 ## Running Data Generation and Training
