@@ -50,7 +50,7 @@ fn main() {
 
     let mut num_executors = 2;
     // num_executors = max(min(tch::Cuda::device_count() as usize, num_executors), 1);
-    let batch_size = 64;
+    let batch_size = 1024;
     let num_generators = num_executors * batch_size * 2;
 
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(num_generators);
@@ -190,9 +190,9 @@ fn collector_main(
     let mut path = format!("games/gen_{}_games_{}", id, file_save_time_num);
     let mut bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
     let mut nps_start_time = Instant::now();
-    let mut nps_vec: Vec<f32> = Vec::new();
+    let mut nps_vec: Vec<usize> = Vec::new();
     let mut evals_start_time = Instant::now();
-    let mut evals_vec: Vec<f32> = Vec::new();
+    let mut evals_vec: Vec<usize> = Vec::new();
     let files = [".bin", ".off", ".json"];
     loop {
         let msg = receiver.recv().unwrap();
@@ -237,7 +237,7 @@ fn collector_main(
             }
             CollectorMessage::GeneratorStatistics(nps) => {
                 if nps_start_time.elapsed() >= Duration::from_secs(1) {
-                    let nps: f32 = nps_vec.iter().sum();
+                    let nps: usize = nps_vec.iter().sum();
                     nps_start_time = Instant::now();
                     nps_vec = Vec::new();
                     let message = MessageServer {
@@ -253,7 +253,7 @@ fn collector_main(
             }
             CollectorMessage::ExecutorStatistics(evals_per_sec) => {
                 if evals_start_time.elapsed() >= Duration::from_secs(1) {
-                    let evals_per_second: f32 = evals_vec.iter().sum();
+                    let evals_per_second: usize = evals_vec.iter().sum();
                     evals_start_time = Instant::now();
                     evals_vec = Vec::new();
                     let message = MessageServer {
