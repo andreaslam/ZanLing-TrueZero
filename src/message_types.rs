@@ -1,6 +1,8 @@
 use pyo3::{exceptions::PyValueError, prelude::*};
 use serde::{Deserialize, Serialize};
 
+// use crate::executor::FullPacket;
+
 #[pyclass]
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct MessageServer {
@@ -41,6 +43,7 @@ pub enum MessageType {
     TBLink((String, String)),
     CreateTB,
     RequestingTBLink,
+    // EvalJob(FullPacket),
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -60,13 +63,13 @@ pub enum Entity {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub enum Statistics {
-    NodesPerSecond(f32),
-    EvalsPerSecond(f32),
+    NodesPerSecond(usize),
+    EvalsPerSecond(usize),
 }
 
 #[pymodule]
 #[pyo3(name = "tz_rust")]
-fn message_types(_py: Python, m: &PyModule) -> PyResult<()> {
+fn tz_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<MessageServer>()?;
     Ok(())
 }
