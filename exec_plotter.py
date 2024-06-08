@@ -1,40 +1,42 @@
 import matplotlib.pyplot as plt
 import io
 import re
-
+from concurrent.futures import ProcessPoolExecutor
+import functools
 
 def extract_data_fmt(input_string):
     # example entry
     # 1710608194100142900 1710608194400395200 executor_0 waiting_for_batch
-
     return re.findall(r"\d+\s\d+\s\S+\s\S+\s", input_string)
-
 
 def read_tasks_from_file(file_path):
     with io.open(file_path, "r", encoding="utf-16le") as f:
         tasks_data = f.read()
     return extract_data_fmt(tasks_data)
 
+def process_single_task(task, init_time):
+    return [
+        (int(task[0]) - init_time) / 1e9,
+        (int(task[1]) - init_time) / 1e9,
+        task[2],
+        task[3],
+    ]
 
 def process_tasks(tasks):
-    tasks = [t.replace("\n", "") for t in tasks]
-    tasks = [t.split(" ") for t in tasks]
+    tasks = [t.replace("\n", "").split(" ") for t in tasks]
     list_of_times = [t[0] for t in tasks]
     list_of_times.sort()
     init_time = int(list_of_times[0])
-    return [
-        [
-            (int(sublist[0]) - init_time) / 1e9,
-            (int(sublist[1]) - init_time) / 1e9,
-            sublist[2],
-            sublist[3],
-        ]
-        for sublist in tasks
-    ]
-
+    
+    partial_process_single_task = functools.partial(process_single_task, init_time=init_time)
+    
+    with ProcessPoolExecutor() as executor:
+        results = list(executor.map(partial_process_single_task, tasks))
+    
+    return results
 
 def plot_schedule(tasks):
-    task_desc_colors = {}  # Store colours for each task description
+    task_desc_colors = {}  # store colours for each task description
     threads = sorted(set(task[2] for task in tasks))
     thread_positions = {thread: index for index, thread in enumerate(threads)}
 
@@ -103,7 +105,6 @@ def plot_schedule(tasks):
     plt.savefig("plt.png")
     # plt.show()
 
-
-# Example usage:
-tasks = process_tasks(read_tasks_from_file("logs.txt"))
-plot_schedule(tasks)
+if __name__ == "__main__":
+    tasks = process_tasks(read_tasks_from_file("logs.txt"))
+    plot_schedule(tasks)
