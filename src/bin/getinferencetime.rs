@@ -5,32 +5,32 @@ use tz_rust::{decoder::eval_state, mcts_trainer::Net};
 
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
-    const BATCH_SIZE: usize = 1024;
+    const BATCH_SIZE: usize = 512;
     const NUM_THREADS: usize = 1; // Number of threads to spawn
     const NUM_LOOPS: usize = 100;
     const NUM_WARMUPS: usize = 100;
     let entire_benchmark_timer = Instant::now();
-
+    
     crossbeam::scope(|s| {
         for i in 0..NUM_THREADS {
             let _ = s
-                .builder()
-                .name(format!("thread-{}", i + 1))
-                .spawn(move |_| {
-                    let net = Net::new("tz_6515.pt"); // Create a new instance of Net within the thread
+            .builder()
+            .name(format!("thread-{}", i + 1))
+            .spawn(move |_| {
+                let net = Net::new("tz_6515.pt"); // Create a new instance of Net within the thread
+                let data = random_tensor(1344 * BATCH_SIZE); // 8*8*21 = 1344
+                
 
                     // Warmup loop
                     for _ in 0..NUM_WARMUPS {
-                        let data = random_tensor(1344 * BATCH_SIZE); // 8*8*21 = 1344
-                        let _ = eval_state(data, &net).expect("Error");
+                        let _ = eval_state(data.shallow_clone(), &net).expect("Error");
                     }
 
                     // Timed, benchmarked loop
                     let full_run = Instant::now();
                     for _ in 0..NUM_LOOPS {
-                        let data = random_tensor(1344 * BATCH_SIZE); // 8*8*21 = 1344
                         let now = Instant::now();
-                        let _ = eval_state(data, &net).expect("Error");
+                        let _ = eval_state(data.shallow_clone(), &net).expect("Error");
                         let elapsed = (now.elapsed().as_nanos() as f32) / (1e9 as f32);
                         println!("{}s", elapsed);
                     }
