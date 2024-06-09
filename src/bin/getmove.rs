@@ -52,9 +52,9 @@ fn main() {
             .name("executor".to_string())
             .spawn(move |_| {
                 executor_static(
-                    r"C:\Users\andre\RemoteFolder\ZanLing-TrueZero\nets\tz_42.pt".to_string(),
+                    r"nets/tz_162.pt".to_string(),
                     // r"C:\Users\andre\RemoteFolder\ZanLing-TrueZero\chess_16x128_gen3634.pt"
-                    // .to_string(),
+                    //     .to_string(),
                     tensor_exe_recv,
                     ctrl_recv,
                     1,
@@ -70,15 +70,16 @@ fn main() {
             wdl: None,
             moves_left: None,
             c_puct: 2.0,
-            max_nodes: 1,
+            max_nodes: 10,
             alpha: 0.0,
             eps: 0.0,
             search_type: NonTrainerSearch,
-            pst: 0.0,
+            pst: 1.05,
         };
         let rt = Runtime::new().unwrap();
-        let (best_move, nn_data, _, _, _) =
-            rt.block_on(async { get_move(bs, tensor_exe_send.clone(), settings.clone(), None).await });
+        let (best_move, nn_data, _, _, _) = rt.block_on(async {
+            get_move(bs, tensor_exe_send.clone(), settings.clone(), None).await
+        });
         for (mv, score) in move_list.iter().zip(nn_data.policy.iter()) {
             println!("{:#}, {}", mv, score);
         }
