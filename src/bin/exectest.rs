@@ -1,7 +1,7 @@
 use flume::Sender;
 use futures::executor::ThreadPool;
 use rand::Rng;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 use std::{collections::VecDeque, env, thread};
 use tch::Tensor;
 use tz_rust::{decoder::eval_state, executor::ExecutorDebugger, mcts_trainer::Net};
@@ -10,9 +10,9 @@ fn main() {
     env::set_var("RUST_BACKTRACE", "1");
     let pool = ThreadPool::new().expect("Failed to build pool");
 
-    let batch_size: usize = 256;
-    let num_executors: usize = 2;
-    let num_generators: usize = batch_size * num_executors * 4;
+    let batch_size: usize = 1024;
+    let num_executors: usize = 1;
+    let num_generators: usize = batch_size * num_executors * 2;
 
     crossbeam::scope(|s| {
         let (tensor_sender, tensor_receiver) = flume::bounded::<Tensor>(num_generators);
@@ -45,13 +45,13 @@ fn main() {
                         let data = tensor_receiver_clone.recv().unwrap();
                         input_vec.push_back(data);
                         if input_vec.len() == batch_size {
-                            debugger.record("waiting_for_batch", &thread_name);
+                            // debugger.record("waiting_for_batch", &thread_name);
 
                             let input_tensors = Tensor::cat(&input_vec.make_contiguous(), 0);
 
                             let eval_debugger = ExecutorDebugger::create_debug();
                             let _ = eval_state(input_tensors, &net).expect("Error");
-                            eval_debugger.record("evaluation_time_taken", &thread_name);
+                            // eval_debugger.record("evaluation_time_taken", &thread_name);
 
                             input_vec.clear();
 
@@ -59,6 +59,7 @@ fn main() {
                             debugger.reset();
                         }
                         if one_sec_timer.elapsed() > Duration::from_secs(1) {
+                            println!("{}: {}evals/s", thread_name, eval_counter * batch_size);
                             eval_counter = 0;
                             one_sec_timer = Instant::now();
                         }
