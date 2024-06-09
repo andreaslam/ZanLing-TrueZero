@@ -64,7 +64,7 @@ cd app
 ## Setting environment variables
 
 
-Set the following environment variables to configure `tch-rs` before running anything. This assumes you use PyTorch version 2.1 to use and set up. Use a virtual environment if neeeded. 
+Set the following environment variables to configure `tch-rs` before running anything. This assumes you use PyTorch version 2.1 to use and set up. Use a [virtual environment if neeeded](https://docs.python.org/3/library/venv.html). 
 
 ```
 export LIBTORCH_USE_PYTORCH=1
