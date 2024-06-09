@@ -1,11 +1,11 @@
-use std::{env, time::Instant};
 use rand::Rng;
+use std::{env, time::Instant};
 use tch::Tensor;
 use tz_rust::{decoder::eval_state, mcts_trainer::Net};
 
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
-    const BATCH_SIZE: usize = 2048;
+    const BATCH_SIZE: usize = 1024;
     const NUM_THREADS: usize = 1; // Number of threads to spawn
     const NUM_LOOPS: usize = 100;
     const NUM_WARMUPS: usize = 100;
@@ -29,7 +29,10 @@ fn main() {
                     let full_run = Instant::now();
                     for _ in 0..NUM_LOOPS {
                         let data = random_tensor(1344 * BATCH_SIZE); // 8*8*21 = 1344
+                        let now = Instant::now();
                         let _ = eval_state(data, &net).expect("Error");
+                        let elapsed = (now.elapsed().as_nanos() as f32) / (1e9 as f32);
+                        println!("{}s", elapsed);
                     }
 
                     let total_time_secs = full_run.elapsed().as_nanos() as f32 / 1e9;
