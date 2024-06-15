@@ -159,7 +159,7 @@ pub fn executor_main(
 
             if !graph_disconnected {
                 selector = selector.recv(&net_receiver, |res| Message::NewNetwork(res));
-                waiting_for_batch_debugger.record("waiting_for_batch", &thread_name);
+                // waiting_for_batch_debugger.record("waiting_for_batch", &thread_name);
             }
 
              match network {
@@ -200,8 +200,8 @@ pub fn executor_main(
                     let (board_eval, policy) =
                         eval_state(input_tensors, network).expect("Evaluation failed");
                     end_event();
-                    evaluation_time_taken_debugger
-                        .record("evaluation_time_taken", &thread_name);
+                    // evaluation_time_taken_debugger
+                    //     .record("evaluation_time_taken", &thread_name);
                     evaluation_time_taken_debugger.reset();
                     let sw_inference = Instant::now();
                     let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
@@ -231,7 +231,7 @@ pub fn executor_main(
                         .duration_since(UNIX_EPOCH)
                         .expect("Time went backwards");
                     let epoch_seconds_end_packing = since_epoch_packing.as_nanos();
-                    packing_time_debugger.record("packing_time", &thread_name);
+                    // packing_time_debugger.record("packing_time", &thread_name);
 
                     drop(input_vec.drain(0..batch_size));
                     waiting_for_batch_debugger.reset();
