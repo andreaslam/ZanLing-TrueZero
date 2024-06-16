@@ -8,10 +8,15 @@ import re
 import argparse
 from decoder import convert_board, decode_nn_output
 from network import TrueNet
+from multiprocessing import Pool
 
 
-def extract_number(filename):
+def extract_number_tz(filename):
     return int(filename.split("tz_")[1].split(".")[0])
+
+
+def extract_number_frame(filename):
+    return int(filename.split("temp_frame")[1].split(".")[0])
 
 
 class ChessVisualiser:
@@ -57,20 +62,17 @@ class ChessVisualiser:
                 input_data, bigl = convert_board(board, bigl)
                 input_data = input_data.unsqueeze(0).to(self.device)
                 self._reset_activations()
-
                 self._register_hooks()
                 self.architecture(input_data)
                 self._remove_hooks()
-
                 fig = self._create_figure()
                 board.push(self._process_activations(board, fig))
                 self._save_frame(fig)
                 self.frames.append(
                     cv2.cvtColor(cv2.imread("temp_frame.png"), cv2.COLOR_BGR2RGB)
                 )
-
-            imageio.mimsave(self.gif_name, self.frames, duration=1 / self.video_fps)
-            cv2.destroyAllWindows()
+        imageio.mimsave(self.gif_name, self.frames, duration=1 / self.video_fps)
+        cv2.destroyAllWindows()
 
     def generate_video(self):
         video_writer = cv2.VideoWriter(
@@ -79,13 +81,11 @@ class ChessVisualiser:
             self.video_fps,
             self.video_frame_size,
         )
-
         for frame in self.frames:
             resized_frame = cv2.resize(
                 cv2.cvtColor(frame, cv2.COLOR_RGB2BGR), self.video_frame_size
             )
             video_writer.write(resized_frame)
-
         video_writer.release()
         cv2.destroyAllWindows()
 
@@ -95,18 +95,16 @@ class ChessVisualiser:
             input_data, _ = convert_board(board, torch.tensor([]))
             input_data = input_data.unsqueeze(0).to(self.device)
             self._reset_activations()
-
             self._register_hooks()
             self.architecture(input_data)
             self._remove_hooks()
-
             fig = self._create_figure(title=f"TrueZero visualisation: {self.i_d}")
             self._process_activations(board, fig, max_pol)
             plt.savefig(f"frames/temp_frame{self.i_d}.png")
             plt.close()
 
     def make_gif(self, paths):
-        paths = sorted(paths, key=extract_number)
+        paths = sorted(paths, key=extract_number_frame)
         images = [cv2.cvtColor(cv2.imread(file), cv2.COLOR_BGR2RGB) for file in paths]
         imageio.mimsave("evostartpos.gif", images, duration=1 / self.video_fps)
         cv2.destroyAllWindows()
@@ -149,7 +147,6 @@ class ChessVisualiser:
 
     def _process_activations(self, board, fig, max_pol=None):
         n_width = 1 + len(self.hook_handles) - 2
-
         plt.subplot(2, n_width, 1)
         plt.imshow(
             self.activations_startblock[0][0].cpu().numpy().reshape(64, 64),
@@ -157,13 +154,11 @@ class ChessVisualiser:
         )
         plt.axis("off")
         plt.title("Start Block")
-
         for i, activation in enumerate(self.activations_backbone):
             plt.subplot(2, n_width, i + 2)
             plt.imshow(activation[0, 0].cpu().numpy(), cmap="plasma")
             plt.axis("off")
             plt.title(f"Backbone {i}")
-
         for i, value in enumerate(self.activations_value):
             plt.subplot(2, n_width, i + 10)
             value, _, _, _, _, _, best_move = decode_nn_output(
@@ -177,7 +172,6 @@ class ChessVisualiser:
             )
             plt.axis("off")
             plt.title("Value: " + str(round(value.item(), 5)))
-
         for i in range(len(self.activations_policy)):
             plt.subplot(2, 1, 2)
             if max_pol:
@@ -190,12 +184,35 @@ class ChessVisualiser:
             plt.bar(range(len(labels)), vals.cpu().numpy())
             plt.xticks(range(len(labels)), labels, rotation=45)
             plt.title("Policy")
-
         return chess.Move.from_uci(best_move)
 
     def _save_frame(self, fig):
         fig.savefig("temp_frame.png")
         plt.close(fig)
+
+
+def process_net(args):
+    (
+        net,
+        max_pol,
+        fen,
+        output_dir,
+        video_name,
+        gif_name,
+        video_frame_size,
+        video_fps,
+        i_d,
+    ) = args
+    visualiser = ChessVisualiser(
+        model_path=net,
+        video_name=video_name,
+        gif_name=gif_name,
+        video_frame_size=video_frame_size,
+        video_fps=video_fps,
+        i_d=i_d,
+    )
+    visualiser.generate_evolution(max_pol, fen)
+    return [os.path.join(output_dir, f"temp_frame{i_d}.png")]
 
 
 def main():
@@ -231,56 +248,69 @@ def main():
         help="Video frame size",
     )
     parser.add_argument("--video_fps", type=float, default=10, help="Video FPS")
-
     args = parser.parse_args()
-    os.makedirs(args.output_dir, exist_ok=True)
 
+    os.makedirs(args.output_dir, exist_ok=True)
     all_nets = sorted(
         [
             os.path.join(args.nets_dir, net)
             for net in os.listdir(args.nets_dir)
             if re.match(r"tz_\d+\.pt", net)
         ],
-        key=extract_number,
-    )
-    visualiser = ChessVisualiser(
-        model_path=all_nets[-1],
-        video_name=args.video_name,
-        gif_name=args.gif_name,
-        video_frame_size=args.video_frame_size,
-        video_fps=args.video_fps,
-        i_d=0,
+        key=extract_number_tz,
     )
 
     if args.mode == "evolution":
         max_pol = 0
-        for counter, net in enumerate(all_nets):
+        for net in all_nets:
             visualiser = ChessVisualiser(
                 model_path=net,
                 video_name=args.video_name,
                 gif_name=args.gif_name,
                 video_frame_size=args.video_frame_size,
                 video_fps=args.video_fps,
-                i_d=counter,
+                i_d=0,
             )
             max_pol = visualiser.get_max_policy(max_pol, args.fen)
 
-        for counter, net in enumerate(all_nets):
-            visualiser = ChessVisualiser(
-                model_path=net,
-                video_name=args.video_name,
-                gif_name=args.gif_name,
-                video_frame_size=args.video_frame_size,
-                video_fps=args.video_fps,
-                i_d=counter,
+        pool_args = [
+            (
+                net,
+                max_pol,
+                args.fen,
+                args.output_dir,
+                args.video_name,
+                args.gif_name,
+                args.video_frame_size,
+                args.video_fps,
+                i,
             )
-            visualiser.generate_evolution(max_pol, args.fen)
+            for i, net in enumerate(all_nets)
+        ]
 
-        visualiser.make_gif(
-            all_nets
+        with Pool() as pool:
+            results = pool.map(process_net, pool_args)
+
+        all_frames = [frame for result in results for frame in result]
+        visualiser = ChessVisualiser(
+            model_path=all_nets[0],
+            video_name=args.video_name,
+            gif_name=args.gif_name,
+            video_frame_size=args.video_frame_size,
+            video_fps=args.video_fps,
+            i_d=0,
         )
+        visualiser.make_gif(all_frames)
 
     elif args.mode == "play":
+        visualiser = ChessVisualiser(
+            model_path=all_nets[-1],
+            video_name=args.video_name,
+            gif_name=args.gif_name,
+            video_frame_size=args.video_frame_size,
+            video_fps=args.video_fps,
+            i_d=0,
+        )
         visualiser.generate_gif()
         visualiser.generate_video()
 
