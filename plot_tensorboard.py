@@ -3,7 +3,7 @@ import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 import multiprocessing
 import time
-import shutil  # Added for directory operations
+import shutil 
 
 
 class TensorBoardManager:
@@ -75,7 +75,7 @@ def lazy_data_loader():
         data = {tuple(k): v for k, v in zip(data["keys"], data["values"])}
         data = {"-".join(key): value for key, value in data.items()}
         replace_nan_with_previous_or_zero(data)
-        return data.items()  # Return an iterator of key-value pairs
+        return data.items() 
     except Exception as e:
         print(f"Error in lazy_data_loader: {e}")
 
@@ -91,14 +91,13 @@ def lazy_plot(log_path, timestamp):
 
 
 def plot_loop(log_path):
-    last_mtime = 0  # Initial last modification time
+    last_mtime = 0 
     prev_instance = ""
     while True:
         try:
             current_mtime = os.path.getmtime(log_path)
 
             if current_mtime > last_mtime:
-                # Delete previous TensorBoard instance
                 delete_previous_tensorboard_instance(prev_instance)
                 timestamp = int(time.time())
                 print(f"{log_path} has been modified. Updating plots...")
@@ -106,10 +105,10 @@ def plot_loop(log_path):
                 last_mtime = current_mtime
                 prev_instance = "runs/experiment_" + str(timestamp)
 
-            time.sleep(30)
+            time.sleep(60)
         except Exception as e:
             print(f"Error in plot_loop: {e}")
-            time.sleep(60)
+            time.sleep(120)
 
 
 def run_tensorboard():
@@ -121,12 +120,9 @@ def run_tensorboard():
 if __name__ == "__main__":
     log_path = "log.npz"
 
-    # Start the TensorBoard server in a separate process
     tensorboard_process = multiprocessing.Process(target=run_tensorboard)
     tensorboard_process.start()
 
-    # Initial plot
     plot_loop(log_path)
 
-    # Ensure the TensorBoard process is terminated before exiting
     tensorboard_process.terminate()
