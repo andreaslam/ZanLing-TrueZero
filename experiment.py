@@ -17,7 +17,9 @@ def run_tensorboard(port_number):
                 "--logdir",
                 "runs",
                 "--bind_all",
-            ]
+            ],
+            stdin=subprocess.PIPE,
+            shell=True,
         )
         username = os.getlogin()
         remote_ip = requests.get("https://api.ipify.org").text
