@@ -19,6 +19,7 @@ def run_tensorboard(port_number):
                 "--bind_all",
             ],
             stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
             shell=True,
         )
         username = os.getlogin()
