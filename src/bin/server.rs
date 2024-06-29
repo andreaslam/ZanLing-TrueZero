@@ -293,8 +293,7 @@ fn handle_client(
             // println!("[Message] {:?}", message);
             let all_clients = clients.lock().unwrap();
             for mut client in all_clients.iter() {
-                if let Err(msg) = client.write_all(recv_msg.as_bytes()) {
-                    // eprintln!("Error sending message to client! {}", msg);
+                if let Err(_) = client.write_all(recv_msg.as_bytes()) {
                     continue;
                 }
                 let mut disp_msg = recv_msg.clone();
