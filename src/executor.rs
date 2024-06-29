@@ -45,6 +45,7 @@ impl ExecutorDebugger {
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards");
         let epoch_seconds_end = since_epoch_end.as_nanos();
+        #[cfg(debug_assertions)]
         println!(
             "{} {} {} {}",
             self.epoch_seconds_start, epoch_seconds_end, thread_name, message
