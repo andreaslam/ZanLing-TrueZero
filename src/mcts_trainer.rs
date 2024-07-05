@@ -1,21 +1,25 @@
 use crate::{
     boardmanager::BoardStack,
+    cache::{CacheEntryKey, CacheEntryValue},
     dataformat::ZeroEvaluation,
-    decoder::{convert_board, process_board_output},
+    decoder::{convert_board, extract_policy, process_board_output},
     dirichlet::StableDirichlet,
     executor::{Packet, ReturnMessage},
+    mvs::get_contents,
     settings::SearchSettings,
     superluminal::{CL_GREEN, CL_PINK},
     uci::eval_in_cp,
+    utils::{debug_print, TimeStampDebugger},
 };
 use cozy_chess::{Color, GameStatus, Move};
 use flume::Sender;
+use lru::LruCache;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::{
     cmp::{max, min},
     fmt,
     ops::Range,
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    time::Instant,
 };
 use superluminal_perf::{begin_event_with_color, end_event};
 use tch::{
@@ -32,6 +36,7 @@ pub enum TypeRequest {
     SyntheticSearch,
 
     UCISearch,
+    VisualiserMode,
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ExpansionType {
@@ -39,11 +44,11 @@ pub enum ExpansionType {
     RandomExpansion,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 
 pub enum EvalMode {
-    WdlMode,   // use wdl
-    ValueMode, // use value itself (1 value)
+    Wdl,   // use wdl
+    Value, // use value itself (1 value)
 }
 
 pub struct Net {
@@ -53,8 +58,7 @@ pub struct Net {
 
 impl Net {
     pub fn new(path: &str) -> Self {
-        // let path = "tz.pt";
-        // // println!("{}", path);
+        debug_print(&format!("{}", path));
         maybe_init_cuda();
         let device = if has_cuda() {
             if Cuda::cudnn_is_available() {
@@ -67,8 +71,6 @@ impl Net {
             Device::Cpu
         };
 
-        // let device = Device::Cpu;
-
         let mut net = tch::CModule::load_on_device(path, device).expect("ERROR");
         net.set_eval();
 
@@ -79,7 +81,6 @@ impl Net {
     }
 
     pub fn new_with_device_id(path: &str, id: usize) -> Self {
-        maybe_init_cuda();
         let device = if has_cuda() {
             if Cuda::cudnn_is_available() {
                 Cuda::cudnn_set_benchmark(true);
@@ -113,7 +114,7 @@ pub struct Tree {
     pub board: BoardStack,
     pub nodes: Vec<Node>,
     pub settings: SearchSettings,
-    pub pv: String, // Some() when it is UCI code only
+    pub pv: String,
 }
 
 impl Tree {
@@ -130,40 +131,75 @@ impl Tree {
         }
     }
 
-    pub async fn step(&mut self, tensor_exe_send: &Sender<Packet>, sw: Instant, id: usize) {
-        // let sw = Instant::now();
+    pub async fn step(
+        &mut self,
+        tensor_exe_send: &Sender<Packet>,
+        sw: Instant,
+        id: usize,
+        mut cache: &mut LruCache<CacheEntryKey, CacheEntryValue>,
+    ) {
+        let thread_name = format!("mcts-{}", id);
+
+        let step_debugger = TimeStampDebugger::create_debug();
+
         let display_str = self.display_node(0);
-        // // println!("root node: {}", &display_str);
-        // const EPS: f32 = 0.3; // 0.3 for chess
-        let now_start_proc = SystemTime::now();
-        let since_epoch_proc = now_start_proc
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-
-        let epoch_seconds_start_proc = since_epoch_proc.as_nanos();
+        debug_print(&format!("root node: {}", &display_str));
         let (selected_node, input_b, (min_depth, max_depth)) = self.select();
-        let now_end_proc = SystemTime::now();
-        let since_epoch_proc = now_end_proc
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-        let epoch_seconds_end_proc = since_epoch_proc.as_nanos();
-        //     if id % 512 == 0 {
-        //     println!(
-        //         "{} {} {} select",
-        //         epoch_seconds_start_proc, epoch_seconds_end_proc, id
-        //     );
-        // }
+        if id % 512 == 0 {
+            step_debugger.record("mcts select", &thread_name);
+        }
 
-        // self.nodes[0].display_full_tree(self);
+        self.nodes[0].display_full_tree(self);
 
-        let mut selected_node = selected_node;
+        let selected_node = selected_node;
         let idx_li: Vec<usize>;
 
         // check for terminal state
         if !input_b.is_terminal() {
-            (selected_node, idx_li) = self
-                .eval_and_expand(selected_node, &input_b, &tensor_exe_send, id)
-                .await;
+            // check whether board position is in cache
+
+            let cache_key = CacheEntryKey {
+                hash: input_b.board().hash(),
+                halfmove_clock: input_b.board().halfmove_clock(),
+            };
+
+            idx_li = match cache.get(&cache_key) {
+                Some(packet) => {
+                    // handle non-policy data first
+                    let ct = self.nodes.len();
+
+                    self.nodes[selected_node].value = packet.eval_score;
+                    self.nodes[selected_node].wdl = packet.wdl;
+                    self.nodes[selected_node].moves_left = packet.moves_left;
+
+                    // handling policy
+                    let contents = get_contents();
+                    let (_, idx_li) = extract_policy(&input_b, contents);
+                    let mut legal_moves: Vec<Move> = Vec::new();
+                    input_b.board().generate_moves(|moves| {
+                        // Unpack dense move set into move list
+                        legal_moves.extend(moves);
+                        false
+                    });
+
+                    let mut counter = 0;
+
+                    for mv in legal_moves {
+                        let pol = packet.policy[counter];
+                        let new_child = Node::new(pol, Some(selected_node), Some(mv));
+                        self.nodes.push(new_child); // push child to the tree Vec<Node>
+                        counter += 1;
+                    }
+                    self.nodes[selected_node].children = ct..ct + counter; // push numbers
+                                                                           // handling idx_li, which is used for indexing legal moves
+
+                    idx_li
+                }
+                None => {
+                    self.eval_and_expand(&selected_node, &input_b, &tensor_exe_send, id, cache)
+                        .await
+                }
+            };
 
             self.nodes[selected_node].move_idx = Some(idx_li);
             let mut legal_moves: Vec<Move>;
@@ -192,7 +228,7 @@ impl Tree {
                         let distr = StableDirichlet::new(self.settings.alpha, legal_moves.len())
                             .expect("wrong params");
                         let sample = std_rng.sample(distr);
-                        // // println!("noise: {:?}", sample);
+                        debug_print(&format!("noise: {:?}", sample));
                         for child in self.nodes[0].children.clone() {
                             self.nodes[child].policy = (1.0 - self.settings.eps)
                                 * self.nodes[child].policy
@@ -202,49 +238,53 @@ impl Tree {
                     TypeRequest::NonTrainerSearch => {}
                     TypeRequest::SyntheticSearch => {}
                     TypeRequest::UCISearch => {}
+                    TypeRequest::VisualiserMode => {}
                 }
-                // self.nodes[0].display_full_tree(self);
+                self.nodes[0].display_full_tree(self);
             }
         } else {
-            self.nodes[selected_node].eval_score = match input_b.status() {
-                GameStatus::Drawn => 0.0,
+            let wdl = match input_b.status() {
+                GameStatus::Drawn => Wdl {
+                    w: 0.0,
+                    d: 1.0,
+                    l: 0.0,
+                },
                 GameStatus::Won => match !input_b.board().side_to_move() {
-                    Color::White => 1.0,
-                    Color::Black => -1.0,
+                    Color::White => Wdl {
+                        w: 1.0,
+                        d: 0.0,
+                        l: 0.0,
+                    },
+                    Color::Black => Wdl {
+                        w: 0.0,
+                        d: 0.0,
+                        l: 1.0,
+                    },
                 },
                 GameStatus::Ongoing => {
                     unreachable!()
                 }
-            }
+            };
+            self.nodes[selected_node].value = wdl.w - wdl.l;
+            self.nodes[selected_node].wdl = wdl;
         }
-        let now_start_proc = SystemTime::now();
-        let since_epoch_proc = now_start_proc
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
 
-        let epoch_seconds_start_proc = since_epoch_proc.as_nanos();
         self.backpropagate(selected_node);
-        let now_end_proc = SystemTime::now();
-        let since_epoch_proc = now_end_proc
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-        let epoch_seconds_end_proc = since_epoch_proc.as_nanos();
-        // if id % 512 == 0 {
-        //     println!(
-        //         "{} {} {} backprop_tree",
-        //         epoch_seconds_start_proc, epoch_seconds_end_proc, id
-        //     );
-        // }
-        // for child in &self.nodes[0].children {
-        //     let display_str = self.display_node(*child);
-        //     // // println!("children: {}", &display_str);
-        // }
-        // self.nodes[0].display_full_tree(self);
+        let backprop_debug = TimeStampDebugger::create_debug();
+        if id % 512 == 0 {
+            backprop_debug.record("backpropagation", &thread_name);
+        }
+        for child in self.nodes[0].children.clone() {
+            let display_str = self.display_node(child);
+            debug_print(&format!("children: {}", &display_str));
+        }
+        self.nodes[0].display_full_tree(self);
         match self.settings.search_type {
             TypeRequest::UCISearch => {
-                let cp_eval = eval_in_cp(self.nodes[selected_node].eval_score);
+                let cp_eval = eval_in_cp(self.nodes[selected_node].value);
                 let elapsed_ms = sw.elapsed().as_nanos() as f32 / 1e6;
-                let nps = self.nodes[0].visits as f32 / (sw.elapsed().as_nanos() as f32 / 1e9 as f32);
+                let nps =
+                    self.nodes[0].visits as f32 / (sw.elapsed().as_nanos() as f32 / 1e9 as f32);
                 let (pv, mate) = self.get_pv();
                 let eval_string = {
                     if mate {
@@ -326,11 +366,11 @@ impl Tree {
     }
     fn select(&mut self) -> (usize, BoardStack, (usize, usize)) {
         let mut curr: usize = 0;
-        // println!("    selection:");
+        debug_print(&format!("    selection:"));
         let mut input_b: BoardStack;
         input_b = self.board.clone();
         let fenstr = format!("{}", &input_b.board());
-        // // println!("    board FEN: {}", fenstr);
+        debug_print(&format!("    board FEN: {}", fenstr));
         let mut depth = 1;
         let mut max_depth: usize = 1;
         loop {
@@ -364,9 +404,13 @@ impl Tree {
                         input_b.board().side_to_move(),
                         self.settings,
                     );
-                    // // println!("{}, {}", self.display_node(**a), self.display_node(**b));
-                    // // println!("{}, {}", a_puct, b_puct);
-                    // // println!("    CURRENT {:?}, {:?}", &a_node, &b_node);
+                    debug_print(&format!(
+                        "{}, {}",
+                        self.display_node(*a),
+                        self.display_node(*b)
+                    ));
+                    debug_print(&format!("{}, {}", a_puct, b_puct));
+                    debug_print(&format!("    CURRENT {:?}, {:?}", &a_node, &b_node));
                     if a_puct == b_puct || curr_node.visits == 0 {
                         // if PUCT values are equal or parent visits == 0, use largest policy as tiebreaker
                         let a_policy = a_node.policy;
@@ -377,37 +421,31 @@ impl Tree {
                     }
                 })
                 .expect("Error");
-            // // println!("{}, {}", total_visits + 1, curr_node.visits);
+            debug_print(&format!("{}, {}", total_visits + 1, curr_node.visits));
             assert!(total_visits + 1 == curr_node.visits);
-            // let display_str = self.display_node(curr);
-            // // println!("        selected: {}", display_str);
+            let display_str = self.display_node(curr);
+            debug_print(&format!("        selected: {}", display_str));
             input_b.play(self.nodes[curr].mv.expect("Error"));
             depth += 1;
         }
-        // let display_str = self.display_node(curr);
-        // // println!("    {}", display_str);
-        // // println!("        children:");
+        let display_str = self.display_node(curr);
+        debug_print(&format!("    {}", display_str));
+        debug_print(&format!("        children:"));
 
         (curr, input_b, (depth, max_depth))
     }
 
     async fn eval_and_expand(
         &mut self,
-        selected_node_idx: usize,
+        selected_node_idx: &usize,
         bs: &BoardStack,
         tensor_exe_send: &Sender<Packet>,
         id: usize,
-    ) -> (usize, Vec<usize>) {
-        let sw = Instant::now();
-        let fenstr = format!("{}", bs.board());
-        // // println!("    board FEN: {}", fenstr);P
-        // // println!("    ran NN:");
-
+        mut cache: &mut LruCache<CacheEntryKey, CacheEntryValue>,
+    ) -> Vec<usize> {
         let input_tensor = convert_board(&bs);
 
-        // creating a send/recv pair for executor
-
-        let (resender_send, resender_recv) = flume::unbounded::<ReturnMessage>(); // mcts to executor
+        let (resender_send, resender_recv) = flume::bounded::<ReturnMessage>(1); // mcts to executor
         let thread_name = std::thread::current()
             .name()
             .unwrap_or("unnamed-generator")
@@ -417,100 +455,59 @@ impl Tree {
             resender: resender_send,
             id: thread_name.clone(),
         };
-        // println!("pre-requesting eval {}", id);
-        let sw = Instant::now();
-        let now_start_send = SystemTime::now();
-        let since_epoch_send = now_start_send
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
 
-        let epoch_seconds_start_send = since_epoch_send.as_nanos();
-        begin_event_with_color("send_req", CL_GREEN);
+        begin_event_with_color("send_request", CL_GREEN);
+        let send_logger = TimeStampDebugger::create_debug();
         tensor_exe_send.send_async(pack).await.unwrap();
+        if id % 512 == 0 {
+            send_logger.record("send_request", thread_name.as_str());
+        }
         end_event();
-        let now_end_send = SystemTime::now();
-        let since_epoch_send = now_end_send
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-        let epoch_seconds_end_send = since_epoch_send.as_nanos();
 
-        // if id % 512 == 0 {
-        //     println!(
-        //         "{} {} {} send_request",
-        //         epoch_seconds_start_send, epoch_seconds_end_send, id
-        //     );
-        // }
-
-        let now_start_recv = SystemTime::now();
-        let since_epoch_recv = now_start_recv
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-
-        let epoch_seconds_start_recv = since_epoch_recv.as_nanos();
         begin_event_with_color("recv_request", CL_PINK);
         let output = resender_recv.recv_async().await.unwrap();
         end_event();
-        // println!("total_waiting_for_gpu_eval {}s", sw.elapsed().as_nanos() as f32 / 1e9);
-        let now_end_recv = SystemTime::now();
-        let since_epoch_recv = now_end_recv
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-        let epoch_seconds_end_recv = since_epoch_recv.as_nanos();
-        // if id % 512 == 0 {
-        //     println!(
-        //         "{} {} {} recv_request",
-        //         epoch_seconds_start_recv, epoch_seconds_end_recv, id
-        //     );
-
-        //     // println!("THREAD ID {} CHANNEL_LEN {}", id, tensor_exe_send.len());
-        // }
+        let recv_logger = TimeStampDebugger::create_debug();
+        if id % 512 == 0 {
+            recv_logger.record("recv_request", thread_name.as_str());
+        }
         let output = match output {
             ReturnMessage::ReturnMessage(Ok(output)) => output,
             ReturnMessage::ReturnMessage(Err(_)) => panic!("error in returning!"),
         };
-        // // println!("{},{}", thread_name,output.id);
-        assert!(thread_name == output.id);
-        let now_start_proc = SystemTime::now();
-        let since_epoch_proc = now_start_proc
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
 
-        let epoch_seconds_start_proc = since_epoch_proc.as_nanos();
-        let idx_li = process_board_output(output.packet, &selected_node_idx, self, &bs);
-        let now_end_proc = SystemTime::now();
-        let since_epoch_proc = now_end_proc
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-        let epoch_seconds_end_proc = since_epoch_proc.as_nanos();
-        // if id % 512 == 0 {
-        //     println!(
-        //         "{} {} {} proc",
-        //         epoch_seconds_start_proc, epoch_seconds_end_proc, id
-        //     );
-        // }
-        // let idx_li = eval_board(&bs, &net, self, &selected_node_idx);
-        (selected_node_idx, idx_li)
+        assert!(thread_name == output.id);
+        let idx_li = process_board_output(
+            (&output.packet.0, &output.packet.1),
+            &selected_node_idx,
+            self,
+            &bs,
+            cache,
+        );
+
+        idx_li
     }
 
     fn backpropagate(&mut self, node: usize) {
-        // println!("    backup:");
-        let n: f32 = match self.settings.wdl {
-            Some(_) => {
-                1.0 * self.nodes[node].wdl.w
-                    + (-1.0 * self.nodes[node].wdl.l)
-                    + (self.nodes[node].wdl.d)
-            }
-            None => self.nodes[node].eval_score,
-        };
+        // debug_print(&format!("    backup:");
         let mut curr: Option<usize> = Some(node); // used to index parent
-                                                  // // println!("    curr: {:?}", curr);
+        debug_print(&format!("    curr: {:?}", curr));
+        let wdl = self.nodes[node].wdl;
+        let value = self.nodes[node].value;
+        let mut moves_left = self.nodes[node].moves_left;
         while let Some(current) = curr {
             self.nodes[current].visits += 1;
-            self.nodes[current].total_action_value += n;
-            // // println!("    updated total action value: {}", self.nodes[current].total_action_value);
+            self.nodes[current].total_action_value += value;
+            self.nodes[current].total_wdl += wdl;
+            self.nodes[current].moves_left_total += moves_left;
+            moves_left += 1.0;
+            debug_print(&format!(
+                "    updated total action value: {}",
+                self.nodes[current].total_action_value
+            ));
             curr = self.nodes[current].parent;
-            // let display_str = self.display_node(current);
-            // // println!("        updated node to {}", display_str);
+            let display_str = self.display_node(current);
+            debug_print(&format!("        updated node to {}", display_str));
         }
     }
 
@@ -551,7 +548,7 @@ impl Tree {
         format!(
             "Node(action= {}, V= {}, N={}, W={}, P={}, Q={}, U={}, PUCT={}, len_children={}, wdl={}, w={}, d={}, l={})",
             mv_n,
-            self.nodes[id].eval_score,
+            self.nodes[id].value,
             self.nodes[id].visits,
             self.nodes[id].total_action_value,
             self.nodes[id].policy,
@@ -559,9 +556,7 @@ impl Tree {
             u,
             puct,
             self.nodes[id].children.len(),
-            1.0 * self.nodes[id].wdl.w
-                    + (-1.0 * self.nodes[id].wdl.l)
-            ,
+            self.nodes[id].wdl.w - self.nodes[id].wdl.l,
             self.nodes[id].wdl.w,
             self.nodes[id].wdl.d,
             self.nodes[id].wdl.l,
@@ -592,10 +587,10 @@ pub struct Node {
     pub children: Range<usize>,
     pub policy: f32,
     pub visits: u32,
-    pub eval_score: f32, // -1 for black and 1 for white
+    pub value: f32, // -1 for black and 1 for white
+    pub total_action_value: f32,
     pub wdl: Wdl,
     pub total_wdl: Wdl,
-    pub total_action_value: f32,
     pub mv: Option<Move>,
     pub moves_left: f32,
     pub moves_left_total: f32,
@@ -608,11 +603,33 @@ pub struct Wdl {
     pub l: f32,
 }
 
+impl Wdl {
+    pub fn flip(self) -> Self {
+        Wdl {
+            w: self.l,
+            d: self.d,
+            l: self.w,
+        }
+    }
+}
+
+impl std::ops::AddAssign for Wdl {
+    fn add_assign(&mut self, rhs: Self) {
+        self.w += rhs.w;
+        self.d += rhs.d;
+        self.l += rhs.l;
+    }
+}
+
 impl Node {
     pub fn get_q_val(&self, settings: SearchSettings) -> f32 {
         let fpu = settings.fpu; // First Player Urgency
         if self.visits > 0 {
-            self.total_action_value / (self.visits as f32)
+            let total = match settings.wdl {
+                EvalMode::Wdl => self.total_wdl.w - self.total_wdl.l,
+                EvalMode::Value => self.total_action_value,
+            };
+            total / (self.visits as f32)
         } else {
             fpu
         }
@@ -644,11 +661,9 @@ impl Node {
                 let m_unit = if weights.moves_left_weight == 0.0 {
                     0.0
                 } else {
-                    let m_clipped = self
-                        .moves_left
-                        .clamp(-weights.moves_left_clip, weights.moves_left_clip);
+                    let m_clipped = m.clamp(-weights.moves_left_clip, weights.moves_left_clip);
                     (weights.moves_left_sharpness * m_clipped * -q).clamp(-1.0, 1.0)
-                };
+                }; // tries to speed up the game if winning and vice versa
 
                 q + settings.c_puct * u + weights.moves_left_weight * m_unit
             }
@@ -666,7 +681,7 @@ impl Node {
             children: 0..0,
             policy,
             visits: 0,
-            eval_score: f32::NAN,
+            value: f32::NAN,
             total_action_value: 0.0,
             mv,
             move_idx: None,
@@ -691,7 +706,8 @@ impl Node {
             if !self.children.is_empty() {
                 for c in self.children.clone() {
                     let display_str = tree.display_node(c);
-                    // println!("{}{}", indent, display_str);
+
+                    debug_print(&format!("{}{}", indent, display_str));
                     tree.nodes[c].layer_p(depth + 1, max_tree_print_depth, tree);
                 }
             }
@@ -699,12 +715,12 @@ impl Node {
     }
 
     pub fn display_full_tree(&self, tree: &Tree) {
-        // // println!("        root node:");
+        debug_print(&format!("        root node:"));
         let display_str = tree.display_node(0);
-        // // println!("            {}", display_str);
-        // // println!("        children:");
+        debug_print(&format!("            {}", display_str));
+        debug_print(&format!("        children:"));
         let max_tree_print_depth: u8 = 3;
-        // // println!("    {}", display_str);
+        debug_print(&format!("    {}", display_str));
         self.layer_p(0, max_tree_print_depth, tree);
     }
 }
@@ -714,6 +730,7 @@ pub async fn get_move(
     tensor_exe_send: &Sender<Packet>,
     settings: SearchSettings,
     id: usize,
+    mut cache: &mut LruCache<CacheEntryKey, CacheEntryValue>,
 ) -> (
     Move,
     ZeroEvaluation,
@@ -721,46 +738,29 @@ pub async fn get_move(
     ZeroEvaluation,
     u32,
 ) {
-    // equiv to move() in mcts_trainer.py
-
-    // load nn and pass to eval if needed
-
-    // let mut net = Net::new("chess_16x128_gen3634.pt");
-    // net.net.set_eval();
-    // net.net.to(net.device, Kind::Float, true);
-    // // println!("{:?}", &bs);
+    let sw_uci = Instant::now(); // timer for uci
+    let thread_name = format!("mcts-{}", id);
+    debug_print(&format!("{:?}", &bs));
     let mut tree = Tree::new(bs, settings);
     if tree.board.is_terminal() {
         panic!("No valid move!/Board is already game over!");
     }
 
-    let search_type = TypeRequest::TrainerSearch;
-    let sw = Instant::now();
+    // let search_type = TypeRequest::TrainerSearch;
     while tree.nodes[0].visits < settings.max_nodes as u32 {
-        let thread_name = std::thread::current()
-            .name()
-            .unwrap_or("unnamed")
-            .to_owned();
-        // println!("step {}", tree.nodes[0].visits);
-        // println!("thread {}, step {}", thread_name, tree.nodes[0].visits);
-        let now_start_proc = SystemTime::now();
-        let since_epoch_proc = now_start_proc
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
+        debug_print(&format!("step {}", tree.nodes[0].visits));
+        debug_print(&format!(
+            "thread {}, step {}",
+            thread_name, tree.nodes[0].visits
+        ));
 
-        let epoch_seconds_start_proc = since_epoch_proc.as_nanos();
-        tree.step(&tensor_exe_send, sw, id).await;
-        let now_end_proc = SystemTime::now();
-        let since_epoch_proc = now_end_proc
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-        let epoch_seconds_end_proc = since_epoch_proc.as_nanos();
-        //     if id % 512 == 0 {
-        //     println!(
-        //         "{} {} {} step",
-        //         epoch_seconds_start_proc, epoch_seconds_end_proc, id
-        //     );
-        // }
+        let get_move_debugger = TimeStampDebugger::create_debug();
+
+        tree.step(&tensor_exe_send, sw_uci, id, cache).await;
+
+        if id % 512 == 0 {
+            get_move_debugger.record("mcts_step", &thread_name);
+        }
     }
 
     let mut child_visits: Vec<u32> = Vec::new();
@@ -793,33 +793,36 @@ pub async fn get_move(
     };
     let best_move = tree.nodes[best_move_node].mv;
     let mut total_visits_list = Vec::new();
-    // // println!("{:#}", best_move.unwrap());
+    debug_print(&format!("{:#}", best_move.unwrap()));
     for child in tree.nodes[0].children.clone() {
         total_visits_list.push(tree.nodes[child].visits);
     }
 
-    // let display_str = tree.display_node(0); // print root node
-    // // println!("{}", display_str);
+    let display_str = tree.display_node(0); // print root node
+    debug_print(&format!("{}", display_str));
     let total_visits: u32 = total_visits_list.iter().sum();
 
     let mut pi: Vec<f32> = Vec::new();
 
-    // // println!("{:?}", &total_visits_list);
+    debug_print(&format!("{:?}", &total_visits_list));
 
     for &t in &total_visits_list {
         let prob = t as f32 / total_visits as f32;
         pi.push(prob);
     }
 
-    // // println!("{:?}", &pi);
-    // // println!("{}", best_move.expect("Error").to_string());
-    // // println!("best move: {}", best_move.expect("Error").to_string());
+    debug_print(&format!("{:?}", &pi));
+    debug_print(&format!("{}", best_move.expect("Error").to_string()));
+    debug_print(&format!(
+        "best move: {}",
+        best_move.expect("Error").to_string()
+    ));
 
-    // for child in tree.nodes[0].children.clone() {
-    //     let display_str = tree.display_node(child);
-    //     // println!("{}", display_str);
-    // }
-    // tree.nodes[0].display_full_tree(&tree);
+    for child in tree.nodes[0].children.clone() {
+        let display_str = tree.display_node(child);
+        debug_print(&format!("{}", display_str));
+    }
+    tree.nodes[0].display_full_tree(&tree);
 
     let mut all_pol = Vec::new();
 
@@ -829,7 +832,7 @@ pub async fn get_move(
 
     let v_p = ZeroEvaluation {
         // network evaluation, NOT search/empirical data
-        values: tree.nodes[0].eval_score,
+        values: tree.nodes[0].value,
         policy: all_pol,
     };
 
