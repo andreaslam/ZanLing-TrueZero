@@ -324,7 +324,6 @@ fn commander_main(
                 MessageType::TBLink(_) => {}
                 MessageType::CreateTB => {}
                 MessageType::RequestingTBLink => {}
-                MessageType::PurgeCache => {} // MessageType::EvalJob(_) => todo!(),
             }
         } else {
             match message.purpose {
@@ -354,7 +353,6 @@ fn commander_main(
                 MessageType::TBLink(_) => {}
                 MessageType::CreateTB => {}
                 MessageType::RequestingTBLink => {}
-                MessageType::PurgeCache => {} // MessageType::EvalJob(_) => todo!(),
             }
         }
 
