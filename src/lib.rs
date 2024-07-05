@@ -1,4 +1,5 @@
 pub mod boardmanager;
+pub mod cache;
 pub mod dataformat;
 pub mod decoder;
 pub mod dirichlet;
@@ -12,8 +13,11 @@ pub mod message_types;
 pub mod mvs;
 pub mod selfplay;
 pub mod settings;
-pub mod uci;
 pub mod superluminal;
+pub mod uci;
+pub mod utils;
+
+extern crate flume;
 #[cfg(test)]
 
 mod tests {
