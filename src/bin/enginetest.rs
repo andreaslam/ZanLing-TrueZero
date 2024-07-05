@@ -1,24 +1,27 @@
 use cozy_chess::{Board, Color, GameStatus, Move};
 use crossbeam::thread;
 use flume::{Receiver, Sender};
+use lru::LruCache;
 use rand::seq::SliceRandom;
 use std::{
     env,
     fs::File,
     io::{self, BufRead},
+    num::NonZeroUsize,
     panic, process,
 };
 use tokio::runtime::Runtime;
 use tz_rust::{
     boardmanager::BoardStack,
+    cache::{CacheEntryKey, CacheEntryValue},
     elo::elo_wld,
     executor::{executor_static, Message, Packet},
     mcts::get_move,
-    mcts_trainer::TypeRequest::NonTrainerSearch,
+    mcts_trainer::{EvalMode, TypeRequest::NonTrainerSearch},
     selfplay::CollectorMessage,
     settings::SearchSettings,
+    utils::{debug_print, TimeStampDebugger},
 };
-
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
     panic::set_hook(Box::new(|panic_info| {
@@ -29,9 +32,9 @@ fn main() {
     }));
 
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
-    let num_games = 10000;
+    let num_games = 1000000;
     let num_threads = 1024;
-    let engine_0: String = "./tz_6515.pt".to_string(); // new engine
+    let engine_0: String = "tz_6515.pt".to_string(); // new engine
     let engine_1: String = "./chess_16x128_gen3634.pt".to_string(); // old engine
     let num_executors = 2; // always be 2, 2 players, one each (one for each neural net)
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
@@ -46,8 +49,8 @@ fn main() {
             vec_communicate_exe_recv.push(communicate_exe_recv);
         }
 
-        let (tensor_exe_send_0, tensor_exe_recv_0) = flume::bounded::<Packet>(1);
-        let (tensor_exe_send_1, tensor_exe_recv_1) = flume::bounded::<Packet>(1);
+        let (tensor_exe_send_0, tensor_exe_recv_0) = flume::bounded::<Packet>(num_threads);
+        let (tensor_exe_send_1, tensor_exe_recv_1) = flume::bounded::<Packet>(num_threads);
         for n in 0..num_threads {
             let sender_clone = game_sender.clone();
             let tensor_exe_send_clone_0 = tensor_exe_send_0.clone();
@@ -123,10 +126,10 @@ fn generator_main(
 ) {
     let settings: SearchSettings = SearchSettings {
         fpu: 0.0,
-        wdl: None,
+        wdl: EvalMode::Value,
         moves_left: None,
         c_puct: 2.0,
-        max_nodes: 1,
+        max_nodes: 400,
         alpha: 0.0,
         eps: 0.0,
         search_type: NonTrainerSearch,
@@ -147,10 +150,20 @@ fn generator_main(
         let mut bs = BoardStack::new(board);
         let rt = Runtime::new().unwrap();
         let mut move_counter = swap_count % 2;
+        let mut cache: LruCache<CacheEntryKey, CacheEntryValue> =
+            LruCache::new(NonZeroUsize::new(100000).unwrap());
         while bs.status() == GameStatus::Ongoing {
             let engine = &engines[move_counter % 2];
-            let (mv, _, _, _, _) =
-                rt.block_on(async { get_move(bs.clone(), engine.clone(), settings.clone(), None).await });
+            let (mv, _, _, _, _) = rt.block_on(async {
+                get_move(
+                    bs.clone(),
+                    engine.clone(),
+                    settings.clone(),
+                    None,
+                    &mut cache,
+                )
+                .await
+            });
             bs.play(mv);
             moves_list.push(format!("{:#}", mv));
             move_counter += 1;
@@ -161,12 +174,12 @@ fn generator_main(
             GameStatus::Ongoing => panic!("Game is still ongoing!"),
         };
         let moves_list_str = moves_list.join(" ");
-        println!(
+        debug_print(&format!(
             "first move engine_{} opening {}, moves {}",
             swap_count % 2,
             fen,
             moves_list_str
-        );
+        ));
         swap_count += 1;
         sender_collector
             .send(CollectorMessage::TestingResult(outcome))
