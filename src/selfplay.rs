@@ -1,5 +1,6 @@
 use crate::{
     boardmanager::BoardStack,
+    cache::{CacheEntryKey, CacheEntryValue},
     dataformat::{Position, Simulation},
     executor::{Packet, ReturnMessage},
     mcts_trainer::{get_move, ExpansionType, TypeRequest},
@@ -7,6 +8,7 @@ use crate::{
 };
 use cozy_chess::{Board, Color, GameStatus, Move};
 use flume::Sender;
+use lru::LruCache;
 use rand::prelude::*;
 use rand_distr::WeightedIndex;
 use std::time::Instant;
@@ -33,6 +35,7 @@ impl DataGen {
         nps_sender: &Sender<CollectorMessage>,
         settings: &SearchSettings,
         id: usize,
+        mut cache: &mut LruCache<CacheEntryKey, CacheEntryValue>,
     ) -> Simulation {
         let sw = Instant::now();
         let mut bs = BoardStack::new(Board::default());
@@ -44,8 +47,14 @@ impl DataGen {
             .to_owned();
         while bs.status() == GameStatus::Ongoing {
             let sw = Instant::now();
-            let (mv, v_p, move_idx_piece, search_data, visits) =
-                get_move(bs.clone(), &tensor_exe_send, settings.clone(), id).await;
+            let (mv, v_p, move_idx_piece, search_data, visits) = get_move(
+                bs.clone(),
+                &tensor_exe_send,
+                settings.clone(),
+                id,
+                &mut cache,
+            )
+            .await;
             let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
             let final_mv = if positions.len() > 30 {
                 // when tau is "infinitesimally small", pick the best move
@@ -53,7 +62,7 @@ impl DataGen {
             } else {
                 let weighted_index = WeightedIndex::new(&search_data.policy).unwrap();
                 let mut rng = rand::thread_rng();
-                // println!("{}, {:?}, {:?}", thread_name, weighted_index, rng);
+                // debug_print(&format!("{}, {:?}, {:?}", thread_name, weighted_index, rng);
                 let sampled_idx = weighted_index.sample(&mut rng);
                 let mut legal_moves: Vec<Move> = Vec::new();
                 bs.board().generate_moves(|moves| {
@@ -74,8 +83,8 @@ impl DataGen {
             };
             let nps = settings.max_nodes as f32 / elapsed;
 
-            // println!("thread {}, {:#}, {}nps", thread_name, final_mv, nps);
-            // println!("{:#}", final_mv);
+            // debug_print(&format!("thread {}, {:#}, {}nps", thread_name, final_mv, nps);
+            // debug_print(&format!("{:#}", final_mv);
             nps_sender
                 .send_async(CollectorMessage::GeneratorStatistics(
                     settings.max_nodes as usize,
@@ -85,14 +94,13 @@ impl DataGen {
             bs.play(final_mv);
             positions.push(pos);
         }
-
         let tz = Simulation {
             positions,
             final_board: bs,
         };
         let elapsed_ms = sw.elapsed().as_nanos() as f32 / 1e9;
-        // println!("one done {}s", elapsed_ms);
-        // println!("one done!");
+        // debug_print(&format!("one done {}s", elapsed_ms);
+        // debug_print(&format!("one done!");
         tz
     }
 }
