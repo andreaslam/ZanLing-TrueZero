@@ -148,7 +148,7 @@ async fn generator_main(
     // implement caching
 
     let mut cache: LruCache<CacheEntryKey, CacheEntryValue> =
-        LruCache::new(NonZeroUsize::new(100000).unwrap());
+        LruCache::new(NonZeroUsize::new(settings.max_nodes as usize).unwrap());
 
     loop {
         let sim = datagen
@@ -389,7 +389,6 @@ fn commander_main(
                     exe_sender.send(net_path.clone()).unwrap();
                     // println!("SENT!");
                 }
-                // send to generators to purge cache
 
                 curr_net = net_path.clone();
             }
