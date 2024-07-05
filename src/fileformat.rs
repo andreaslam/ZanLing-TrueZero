@@ -12,6 +12,7 @@ use crate::{
     boardmanager::BoardStack,
     dataformat::{Position, Simulation},
     decoder::{board_data, convert_board},
+    mcts_trainer::Wdl,
     mvs::get_contents,
 };
 
@@ -177,16 +178,29 @@ impl BinaryOutput {
             let kdl_policy = f32::NAN;
             let moves_left = game_length + 1 - pos_index;
             let stored_policy = &zero_evaluation.policy;
-            let final_values = match outcome {
+            let final_wdl = match outcome {
                 Some(outcome) => {
                     if outcome == board.board().side_to_move() {
-                        1.0
+                        Wdl {
+                            w: 1.0,
+                            d: 0.0,
+                            l: 0.0,
+                        }
                     } else {
-                        -1.0
+                        Wdl {
+                            w: 0.0,
+                            d: 0.0,
+                            l: 1.0,
+                        }
                     }
                 }
-                None => 0.0,
+                None => Wdl {
+                    w: 0.0,
+                    d: 1.0,
+                    l: 0.0,
+                },
             };
+            let final_values = final_wdl.w - final_wdl.l;
             let scalars = Scalars {
                 game_id,
                 pos_index,
@@ -344,6 +358,9 @@ impl BinaryOutput {
 
     pub fn game_count(&self) -> usize {
         self.game_count
+    }
+    pub fn position_count(&self) -> usize {
+        self.position_count
     }
 }
 
