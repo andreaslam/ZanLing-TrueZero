@@ -43,7 +43,6 @@ pub enum MessageType {
     TBLink((String, String)),
     CreateTB,
     RequestingTBLink,
-    PurgeCache,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
