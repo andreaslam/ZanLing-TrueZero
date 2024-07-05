@@ -1,16 +1,24 @@
 use crate::{
+    boardmanager::BoardStack,
     decoder::eval_state,
-    mcts_trainer::Net,
+    mcts_trainer::{Net, Wdl},
     selfplay::CollectorMessage,
     superluminal::{CL_BLUE, CL_ORANGE, CL_RED},
-    utils::{debug_print, TimeStampDebugger},
+    utils::TimeStampDebugger,
 };
+use cozy_chess::Move;
 use crossbeam::thread;
-
+use crossfire::{channel::MPMCShared, mpmc::RxBlocking, mpsc::TryRecvError};
 use flume::{Receiver, RecvError, Selector, Sender};
-use std::{cmp::min, collections::VecDeque, process};
+use std::{
+    cmp::min,
+    collections::VecDeque,
+    ops::Range,
+    process,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+};
 use superluminal_perf::{begin_event_with_color, end_event};
-use tch::Tensor;
+use tch::{data, Cuda, Tensor};
 
 pub struct Packet {
     pub job: Tensor,
@@ -50,7 +58,6 @@ fn handle_new_graph(
     if let Some(network) = network.take() {
         drop(network);
     }
-    debug_print(&format!("{}: processessing new net", &thread_name));
     *network = graph.map(|graph| Net::new_with_device_id(&graph[..], id));
 }
 
@@ -62,6 +69,7 @@ fn handle_requests(
     let mut input_vec: VecDeque<Tensor> = VecDeque::new();
     let mut output_senders: VecDeque<Sender<ReturnMessage>> = VecDeque::new();
     let mut id_vec: VecDeque<String> = VecDeque::new();
+    let mut board_vec: VecDeque<BoardStack> = VecDeque::new();
     loop {
         let job = tensor_receiver.recv().unwrap();
         input_vec.push_back(job.job);
@@ -111,6 +119,7 @@ pub fn executor_main(
         loop {
             let mut selector = Selector::new();
             begin_event_with_color("waiting_for_job", CL_ORANGE);
+            let sw = Instant::now();
             assert!(network.is_some() || !graph_disconnected);
 
             if !graph_disconnected {
@@ -185,6 +194,7 @@ pub fn executor_main(
                     }
                 }
             }
+
         }
 
         process::exit(0)
