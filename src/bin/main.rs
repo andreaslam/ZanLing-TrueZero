@@ -68,14 +68,6 @@ fn main() {
         }
 
         let (id_send, id_recv) = flume::bounded::<usize>(1);
-        let mut vec_cache_purge_send: Vec<Sender<MessageType>> = Vec::new();
-        let mut vec_cache_purge_recv: Vec<Receiver<MessageType>> = Vec::new();
-
-        for _ in 0..num_generators {
-            let (cache_purge_send, cache_purge_recv) = flume::bounded::<MessageType>(1);
-            vec_cache_purge_send.push(cache_purge_send);
-            vec_cache_purge_recv.push(cache_purge_recv);
-        }
 
         let _ = s
             .builder()
@@ -85,7 +77,6 @@ fn main() {
                     vec_communicate_exe_send,
                     &mut stream.try_clone().expect("clone failed"),
                     id_send,
-                    vec_cache_purge_send,
                 )
             })
             .unwrap();
@@ -111,25 +102,14 @@ fn main() {
                 .unwrap();
         }
 
-        let mut n = 0;
-
-        for cache_purge_recv in vec_cache_purge_recv {
+        for n in 0..num_generators {
             let sender_clone = game_sender.clone();
-            let mut selfplay_master = DataGen { iterations: 1 };
+            let selfplay_master = DataGen { iterations: 1 };
             let tensor_exe_send_clone = tensor_exe_send.clone();
-            let cache_purge_recv_clone = cache_purge_recv.clone();
             let fut_generator = async move {
-                generator_main(
-                    sender_clone,
-                    selfplay_master,
-                    tensor_exe_send_clone,
-                    n,
-                    cache_purge_recv_clone,
-                )
-                .await;
+                generator_main(sender_clone, selfplay_master, tensor_exe_send_clone, n).await;
             };
             pool.spawn_ok(fut_generator);
-            n += 1;
         }
 
         let _ = s
@@ -152,7 +132,6 @@ async fn generator_main(
     datagen: DataGen,
     tensor_exe_send: Sender<Packet>,
     id: usize,
-    cache_purge_recv: Receiver<MessageType>,
 ) {
     let settings: SearchSettings = SearchSettings {
         fpu: 0.0,
@@ -172,14 +151,6 @@ async fn generator_main(
         LruCache::new(NonZeroUsize::new(100000).unwrap());
 
     loop {
-        match cache_purge_recv.try_recv() {
-            Ok(_) => cache.clear(),
-            Err(flume::TryRecvError::Empty) => {}
-            Err(flume::TryRecvError::Disconnected) => {
-                std::process::exit(0);
-            }
-        }
-
         let sim = datagen
             .play_game(&tensor_exe_send, &nps_sender, &settings, id, &mut cache)
             .await;
@@ -321,7 +292,6 @@ fn commander_main(
     vec_exe_sender: Vec<Sender<String>>,
     server_handle: &mut TcpStream,
     id_sender: Sender<usize>,
-    vec_cache_purge_sender: Vec<Sender<MessageType>>,
 ) {
     let mut curr_net = String::new();
     let mut is_initialised = false;
@@ -371,7 +341,6 @@ fn commander_main(
                 MessageType::TBLink(_) => {}
                 MessageType::CreateTB => {}
                 MessageType::RequestingTBLink => {}
-                MessageType::PurgeCache => {}
             }
         } else {
             match message.purpose {
@@ -401,7 +370,6 @@ fn commander_main(
                 MessageType::TBLink(_) => {}
                 MessageType::CreateTB => {}
                 MessageType::RequestingTBLink => {}
-                MessageType::PurgeCache => {}
             }
         }
 
@@ -422,9 +390,6 @@ fn commander_main(
                     // println!("SENT!");
                 }
                 // send to generators to purge cache
-                for cache_purge_send in &vec_cache_purge_sender {
-                    cache_purge_send.send(MessageType::PurgeCache).unwrap();
-                }
 
                 curr_net = net_path.clone();
             }
