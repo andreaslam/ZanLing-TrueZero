@@ -1,5 +1,5 @@
+use crate::debug_print;
 use std::time::{SystemTime, UNIX_EPOCH};
-
 pub struct TimeStampDebugger {
     epoch_seconds_start: u128,
 }
@@ -37,22 +37,17 @@ impl TimeStampDebugger {
                 "{} {} {} {}",
                 self.epoch_seconds_start, epoch_seconds_end, thread_name, message
             );
-            debug_print(&msg);
+            debug_print!("{}", &msg);
         }
     }
 }
-
-macro_rules! debug_only {
-    ($($body:tt)*) => {
-        #[cfg(debug_assertions)]
-        {
-            $($body)*
-        }
-    };
+#[cfg(debug_assertions)]
+#[macro_export]
+macro_rules! debug_print {
+    ($($x:tt)*) => { println!($($x)*) }
 }
-
-pub fn debug_print(msg: &str) {
-    if cfg!(debug_assertions) {
-        debug_only!(println!("{}", msg));
-    }
+#[cfg(not(debug_assertions))]
+#[macro_export]
+macro_rules! debug_print {
+    ($($x:tt)*) => {{}};
 }
