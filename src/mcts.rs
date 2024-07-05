@@ -1,20 +1,21 @@
-use std::time::Instant;
-
 use crate::{
-    boardmanager::BoardStack, dataformat::ZeroEvaluation, executor::Packet, mcts_trainer::Tree,
+    boardmanager::BoardStack,
+    cache::{CacheEntryKey, CacheEntryValue},
+    dataformat::ZeroEvaluation,
+    executor::Packet,
+    mcts_trainer::Tree,
     settings::SearchSettings,
 };
 use cozy_chess::Move;
-
-use flume::Sender;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-
+use flume::{Receiver, Sender};
+use lru::LruCache;
+use std::time::Instant;
 pub async fn get_move(
     bs: BoardStack,
     tensor_exe_send: Sender<Packet>,
     settings: SearchSettings,
-    stop_signal: Option<Arc<AtomicBool>>,
+    stop_signal: Option<Receiver<&str>>,
+    mut cache: &mut LruCache<CacheEntryKey, CacheEntryValue>,
 ) -> (
     Move,
     ZeroEvaluation,
@@ -30,16 +31,7 @@ pub async fn get_move(
     }
 
     while tree.nodes[0].visits < settings.max_nodes as u32 {
-        match stop_signal {
-            Some(ref signal) => {
-                if signal.load(Ordering::SeqCst) {
-                    break;
-                }
-            }
-            None => {}
-        }
-
-        tree.step(&tensor_exe_send, sw, 0).await;
+        tree.step(&tensor_exe_send, sw, 0, cache).await;
     }
 
     let mut child_visits: Vec<u32> = Vec::new();
@@ -62,7 +54,9 @@ pub async fn get_move(
             .max_by(|a, b| {
                 let a_node = &tree.nodes[*a];
                 let b_node = &tree.nodes[*b];
-                a_node.policy.partial_cmp(&b_node.policy).unwrap()
+                let a_policy = a_node.policy;
+                let b_policy = b_node.policy;
+                a_policy.partial_cmp(&b_policy).unwrap()
             })
             .expect("Error")
     };
@@ -87,7 +81,7 @@ pub async fn get_move(
     }
 
     let v_p = ZeroEvaluation {
-        values: tree.nodes[0].eval_score,
+        values: tree.nodes[0].value,
         policy: all_pol,
     };
 
