@@ -1,4 +1,3 @@
-use async_std::task::yield_now;
 use crossfire::{
     channel::MPMCShared,
     mpmc,
@@ -12,12 +11,8 @@ use std::{
     time::{Duration, Instant},
 };
 use tch::Tensor;
-use tz_rust::{
-    decoder::eval_state,
-    mcts_trainer::Net,
-    utils::{debug_print, TimeStampDebugger},
-};
-
+use tz_rust::debug_print;
+use tz_rust::{decoder::eval_state, mcts_trainer::Net, utils::TimeStampDebugger};
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
     const BATCH_SIZE: usize = 512;
@@ -80,12 +75,15 @@ fn main() {
                         let elapsed = (now.elapsed().as_nanos() as f32) / (1e9 as f32);
                         input_vec.clear();
                         if one_sec_timer.elapsed() > Duration::from_secs(1) {
-                            debug_print(&format!(
-                                "{}: {}evals/s",
-                                thread_name,
-                                (eval_counter * BATCH_SIZE) as f32
-                                    / one_sec_timer.elapsed().as_secs_f32()
-                            ));
+                            debug_print!(
+                                "{}",
+                                &format!(
+                                    "{}: {}evals/s",
+                                    thread_name,
+                                    (eval_counter * BATCH_SIZE) as f32
+                                        / one_sec_timer.elapsed().as_secs_f32()
+                                )
+                            );
                             eval_counter = 0;
                             one_sec_timer = Instant::now();
                         }
@@ -99,7 +97,7 @@ fn main() {
     .unwrap();
 
     let total_time_secs = entire_benchmark_timer.elapsed().as_nanos() as f32 / 1e9;
-    debug_print(&format!("Benchmark ran for {}s", total_time_secs));
+    debug_print!("{}", &format!("Benchmark ran for {}s", total_time_secs));
 }
 
 fn random_tensor(size: usize) -> Vec<f32> {
@@ -116,18 +114,12 @@ async fn dummy_generator<S: MPMCShared>(tensor_sender: TxFuture<Vec<f32>, S>, id
         tensor_sender.send(data_sample.clone()).await.unwrap();
         if id % 1 == 0 {
             if one_sec_timer.elapsed() > Duration::from_secs(1) {
-                // debug_print(&format!("{}: {} req", thread_name, loop_sender);
+                debug_print!("{}", &format!("{}: {} req", thread_name, loop_sender);
                 loop_sender = 0;
                 one_sec_timer = Instant::now();
             }
         }
         loop_sender += 1;
         // thread::sleep(Duration::from_nanos(600)); // simulate mcts
-        // do_non_blocking_work();
     }
-}
-
-async fn do_non_blocking_work() {
-    // Perform some non-blocking work
-    yield_now().await;
 }
