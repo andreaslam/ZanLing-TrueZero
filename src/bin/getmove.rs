@@ -1,19 +1,22 @@
 use cozy_chess::Board;
 use crossbeam::thread;
+use lru::LruCache;
 use std::{env, panic, time::Instant};
+use std::{num::NonZeroUsize, process};
 use tokio::runtime::Runtime;
 use tz_rust::{
     boardmanager::BoardStack,
+    cache::{CacheEntryKey, CacheEntryValue},
     executor::{
         executor_static,
         Message::{self, StopServer},
         Packet,
     },
     mcts::get_move,
-    mcts_trainer::TypeRequest::NonTrainerSearch,
+    mcts_trainer::{EvalMode, TypeRequest::NonTrainerSearch},
     settings::SearchSettings,
+    utils::{debug_print, TimeStampDebugger},
 };
-
 fn main() {
     // test MCTS move outputs
     panic::set_hook(Box::new(|panic_info| {
@@ -52,7 +55,7 @@ fn main() {
             .name("executor".to_string())
             .spawn(move |_| {
                 executor_static(
-                    r"nets/tz_162.pt".to_string(),
+                    r"nets/tz_1388.pt".to_string(),
                     // r"C:\Users\andre\RemoteFolder\ZanLing-TrueZero\chess_16x128_gen3634.pt"
                     //     .to_string(),
                     tensor_exe_recv,
@@ -62,23 +65,32 @@ fn main() {
             })
             .unwrap();
 
-        println!("Number of legal moves: {}", total_moves);
+        debug_print(&format!("Number of legal moves: {}", total_moves));
         let bs = BoardStack::new(board);
         let sw = Instant::now();
         let settings: SearchSettings = SearchSettings {
             fpu: 0.0,
-            wdl: None,
+            wdl: EvalMode::Value,
             moves_left: None,
             c_puct: 2.0,
-            max_nodes: 10,
+            max_nodes: 10000,
             alpha: 0.0,
             eps: 0.0,
             search_type: NonTrainerSearch,
             pst: 1.05,
         };
         let rt = Runtime::new().unwrap();
+        let mut cache: LruCache<CacheEntryKey, CacheEntryValue> =
+            LruCache::new(NonZeroUsize::new(10000).unwrap());
         let (best_move, nn_data, _, _, _) = rt.block_on(async {
-            get_move(bs, tensor_exe_send.clone(), settings.clone(), None).await
+            get_move(
+                bs,
+                tensor_exe_send.clone(),
+                settings.clone(),
+                None,
+                &mut cache,
+            )
+            .await
         });
         for (mv, score) in move_list.iter().zip(nn_data.policy.iter()) {
             println!("{:#}, {}", mv, score);
@@ -87,8 +99,9 @@ fn main() {
         println!("{:?}", nn_data);
         println!("Elapsed time: {}ms", sw.elapsed().as_nanos() as f32 / 1e6);
         let nps = settings.max_nodes as f32 / (sw.elapsed().as_nanos() as f32 / 1e9);
-        println!("Nodes per second: {}nps", nps);
+        debug_print(&format!("Nodes per second: {}nps", nps));
         ctrl_sender.send(StopServer).unwrap();
+        process::exit(0);
     })
     .unwrap();
 }
