@@ -289,7 +289,6 @@ fn handle_client(
                         }
                     }
                 }
-                MessageType::PurgeCache => {} // MessageType::EvalJob(_) => todo!(),
             }
             // println!("[Message] {:?}", message);
             let all_clients = clients.lock().unwrap();
