@@ -6,7 +6,6 @@ use crate::{
     mcts::get_move,
     mcts_trainer::{EvalMode, Net, TypeRequest::UCISearch},
     settings::SearchSettings,
-    utils::debug_print,
 };
 use cozy_chess::{Board, Color, Move, Piece, Square};
 use crossbeam::thread;
@@ -58,7 +57,7 @@ pub fn run_uci(net_path: &str) {
         match *commands.first().unwrap_or(&"oops") {
             "stop" => {
                 let _ = cmd_sender.send("stop");
-                debug_print(&format!("Debug: Sent 'stop' command"));
+                // debug_print(&format!("Debug: Sent 'stop' command"));
             }
             "quit" => {
                 process::exit(0);
@@ -84,16 +83,16 @@ pub fn run_uci(net_path: &str) {
 
         match *commands.first().unwrap_or(&"oops") {
             "uci" => {
-                debug_print(&format!("Debug: Received 'uci' command"));
+                // debug_print(&format!("Debug: Received 'uci' command"));
                 preamble();
             }
             "isready" => {
-                debug_print(&format!("Debug: Received 'isready' command"));
+                // debug_print(&format!("Debug: Received 'isready' command"));
                 println!("readyok");
             }
             "ucinewgame" => {}
             "go" => {
-                debug_print(&format!("Debug: Received 'go' command"));
+                // debug_print(&format!("Debug: Received 'go' command"));
                 handle_go(
                     &commands,
                     &bs,
@@ -104,11 +103,11 @@ pub fn run_uci(net_path: &str) {
                 );
             }
             "position" => {
-                debug_print(&format!("Debug: Received 'position' command"));
+                // debug_print(&format!("Debug: Received 'position' command"));
                 set_position(commands, &mut bs, &mut stack);
             }
             "eval" => {
-                debug_print(&format!("Debug: Received 'eval' command"));
+                // debug_print(&format!("Debug: Received 'eval' command"));
                 let (value, _) = eval_state(convert_board(&bs), &net).unwrap();
                 let value = value.squeeze();
                 let value_raw: Vec<f32> = Vec::try_from(value).expect("Error");
@@ -131,7 +130,7 @@ fn preamble() {
 }
 
 fn check_castling_move(bs: &BoardStack, mut mv: Move) -> Move {
-    debug_print(&format!("Debug: Checking castling move"));
+    // debug_print(&format!("Debug: Checking castling move"));
     if bs.board().piece_on(mv.from) == Some(Piece::King) {
         mv.to = match (mv.from, mv.to) {
             (Square::E1, Square::G1) => Square::H1,
@@ -145,7 +144,7 @@ fn check_castling_move(bs: &BoardStack, mut mv: Move) -> Move {
 }
 
 fn set_position(commands: Vec<&str>, bs: &mut BoardStack, stack: &mut Vec<u64>) {
-    debug_print(&format!("Debug: Setting position"));
+    // debug_print(&format!("Debug: Setting position"));
     let mut fen = String::new();
     let mut move_list = Vec::new();
     let mut moves = false;
@@ -197,7 +196,7 @@ pub fn handle_go(
     cmd_receiver: &Receiver<&str>,
     ctrl_sender: &Sender<Message>,
 ) {
-    debug_print(&format!("Debug: Handling 'go' command"));
+    // debug_print(&format!("Debug: Handling 'go' command"));
     let mut nodes = 1600;
     let mut max_time = None;
     let mut max_depth = 256;
@@ -222,35 +221,35 @@ pub fn handle_go(
             _ => match mode {
                 "nodes" => {
                     nodes = cmd.parse().unwrap_or(nodes);
-                    debug_print(&format!("Debug: Set 'nodes' to {}", nodes));
+                    // debug_print(&format!("Debug: Set 'nodes' to {}", nodes));
                 }
                 "movetime" => {
                     max_time = cmd.parse().ok();
-                    debug_print(&format!("Debug: Set 'max_time' to {:?}", max_time));
+                    // debug_print(&format!("Debug: Set 'max_time' to {:?}", max_time));
                 }
                 "depth" => {
                     max_depth = cmd.parse().unwrap_or(max_depth);
-                    debug_print(&format!("Debug: Set 'max_depth' to {}", max_depth));
+                    // debug_print(&format!("Debug: Set 'max_depth' to {}", max_depth));
                 }
                 "wtime" => {
                     times[0] = Some(cmd.parse().unwrap_or(0));
-                    debug_print(&format!("Debug: Set 'wtime' to {:?}", times[0]));
+                    // debug_print(&format!("Debug: Set 'wtime' to {:?}", times[0]));
                 }
                 "btime" => {
                     times[1] = Some(cmd.parse().unwrap_or(0));
-                    debug_print(&format!("Debug: Set 'btime' to {:?}", times[1]));
+                    // debug_print(&format!("Debug: Set 'btime' to {:?}", times[1]));
                 }
                 "winc" => {
                     incs[0] = Some(cmd.parse().unwrap_or(0));
-                    debug_print(&format!("Debug: Set 'winc' to {:?}", incs[0]));
+                    // debug_print(&format!("Debug: Set 'winc' to {:?}", incs[0]));
                 }
                 "binc" => {
                     incs[1] = Some(cmd.parse().unwrap_or(0));
-                    debug_print(&format!("Debug: Set 'binc' to {:?}", incs[1]));
+                    // debug_print(&format!("Debug: Set 'binc' to {:?}", incs[1]));
                 }
                 "movestogo" => {
                     movestogo = cmd.parse().unwrap_or(30);
-                    debug_print(&format!("Debug: Set 'movestogo' to {}", movestogo));
+                    // debug_print(&format!("Debug: Set 'movestogo' to {}", movestogo));
                 }
                 _ => mode = "none",
             },
@@ -317,8 +316,8 @@ pub fn handle_go(
 
         println!("bestmove {:#}", best_move);
         let _ = ctrl_sender.send(Message::StopServer);
-        debug_print(&format!("sent termination message"));
+        // debug_print(&format!("sent termination message"));
     })
     .unwrap();
-    debug_print(&format!("function done"));
+    // debug_print(&format!("function done"));
 }
