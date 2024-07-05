@@ -7,7 +7,7 @@ use crate::boardmanager::BoardStack;
 #[derive(Debug, Clone)]
 pub struct ZeroEvaluation {
     /// The (normalized) values.
-    pub values: f32, // stole it from https://github.com/KarelPeeters/kZero/blob/master/rust/kz-core/src/network/mod.rs#L23
+    pub values: f32,
 
     /// The (normalized) policy "vector", only containing the available moves in the order they are yielded by `available_moves`.
     pub policy: Vec<f32>,
