@@ -4,6 +4,7 @@ use lru::LruCache;
 use std::{env, panic, time::Instant};
 use std::{num::NonZeroUsize, process};
 use tokio::runtime::Runtime;
+use tz_rust::debug_print;
 use tz_rust::{
     boardmanager::BoardStack,
     cache::{CacheEntryKey, CacheEntryValue},
@@ -15,7 +16,6 @@ use tz_rust::{
     mcts::get_move,
     mcts_trainer::{EvalMode, TypeRequest::NonTrainerSearch},
     settings::SearchSettings,
-    utils::{debug_print, TimeStampDebugger},
 };
 fn main() {
     // test MCTS move outputs
@@ -65,7 +65,7 @@ fn main() {
             })
             .unwrap();
 
-        debug_print(&format!("Number of legal moves: {}", total_moves));
+        debug_print!("{}", &format!("Number of legal moves: {}", total_moves));
         let bs = BoardStack::new(board);
         let sw = Instant::now();
         let settings: SearchSettings = SearchSettings {
@@ -99,7 +99,7 @@ fn main() {
         println!("{:?}", nn_data);
         println!("Elapsed time: {}ms", sw.elapsed().as_nanos() as f32 / 1e6);
         let nps = settings.max_nodes as f32 / (sw.elapsed().as_nanos() as f32 / 1e9);
-        debug_print(&format!("Nodes per second: {}nps", nps));
+        debug_print!("{}", &format!("Nodes per second: {}nps", nps));
         ctrl_sender.send(StopServer).unwrap();
         process::exit(0);
     })
