@@ -2,6 +2,7 @@ use crate::{
     boardmanager::BoardStack,
     decoder::convert_board,
     executor::{Packet, ReturnMessage},
+    utils::debug_print,
 };
 use cozy_chess::Board;
 use flume::Sender;
@@ -22,7 +23,7 @@ pub fn send_request(sender: Sender<Packet>, id: usize) {
             resender: resender_send.clone(),
             id: "dummy-req".to_string(),
         };
-        // println!("HIIIIII");
+        // debug_print(&format!("HIIIIII");
         sender.send(pack).unwrap();
         let now_start_proc = SystemTime::now();
         let since_epoch_proc = now_start_proc
@@ -37,10 +38,10 @@ pub fn send_request(sender: Sender<Packet>, id: usize) {
             .expect("Time went backwards");
         let epoch_seconds_end_proc = since_epoch_proc.as_nanos();
         if id % 512 == 0 {
-            println!(
+            debug_print(&format!(
                 "{} {} {} waiting_response_dummy",
-                epoch_seconds_start_proc, epoch_seconds_end_proc, id
-            );
+                epoch_seconds_start_proc, epoch_seconds_end_proc, id,
+            ));
         }
     }
 }
@@ -59,7 +60,6 @@ pub async fn send_request_async(sender: Sender<Packet>, id: usize) {
             resender: resender_send.clone(),
             id: "dummy-req".to_string(),
         };
-        // println!("HIIIIII");
         sender.send_async(pack).await.unwrap();
 
         let now_start_proc = SystemTime::now();
@@ -75,7 +75,7 @@ pub async fn send_request_async(sender: Sender<Packet>, id: usize) {
             .expect("Time went backwards");
         let epoch_seconds_end_proc = since_epoch_proc.as_nanos();
         // if id % 512 == 0 {
-        //     println!(
+        //     debug_print(
         //         "{} {} {} waiting_response_dummy",
         //         epoch_seconds_start_proc, epoch_seconds_end_proc, id
         //     );
