@@ -302,7 +302,7 @@ pub fn handle_go(
             })
             .unwrap();
         let mut cache: LruCache<CacheEntryKey, CacheEntryValue> =
-            LruCache::new(NonZeroUsize::new(10000).unwrap());
+            LruCache::new(NonZeroUsize::new(1000000).unwrap());
         let (best_move, _, _, _, _) = rt.block_on(async {
             get_move(
                 bs.clone(),
