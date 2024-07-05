@@ -1,29 +1,31 @@
 use crossbeam::thread;
 use flume::{Receiver, Sender};
 use futures::executor::ThreadPool;
-use rand::prelude::*;
+use lru::LruCache;
 use std::{
     cmp::{max, min},
     env,
     fs::{self, File},
     io::{self, BufRead, BufReader, Read, Write},
     net::TcpStream,
+    num::NonZeroUsize,
     panic,
     path::Path,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tz_rust::{
+    cache::{CacheEntryKey, CacheEntryValue},
     dummyreq::{send_request, send_request_async},
     executor::{executor_main, Packet},
     fileformat::BinaryOutput,
-    mcts_trainer::TypeRequest::TrainerSearch,
+    mcts_trainer::{EvalMode, TypeRequest::TrainerSearch},
     message_types::{DataFileType, Entity, MessageServer, MessageType, Statistics},
     selfplay::{CollectorMessage, DataGen},
     settings::SearchSettings,
 };
 
 fn main() {
-    let pool = ThreadPool::new().expect("Failed to build pool");
+    let pool = ThreadPool::builder().pool_size(6).create().unwrap();
     env::set_var("RUST_BACKTRACE", "2");
 
     panic::set_hook(Box::new(|panic_info| {
@@ -54,7 +56,6 @@ fn main() {
     let num_generators = num_executors * batch_size * 2;
 
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(num_generators);
-
     thread::scope(|s| {
         let mut vec_communicate_exe_send: Vec<Sender<String>> = Vec::new();
         let mut vec_communicate_exe_recv: Vec<Receiver<String>> = Vec::new();
@@ -67,6 +68,14 @@ fn main() {
         }
 
         let (id_send, id_recv) = flume::bounded::<usize>(1);
+        let mut vec_cache_purge_send: Vec<Sender<MessageType>> = Vec::new();
+        let mut vec_cache_purge_recv: Vec<Receiver<MessageType>> = Vec::new();
+
+        for _ in 0..num_generators {
+            let (cache_purge_send, cache_purge_recv) = flume::bounded::<MessageType>(1);
+            vec_cache_purge_send.push(cache_purge_send);
+            vec_cache_purge_recv.push(cache_purge_recv);
+        }
 
         let _ = s
             .builder()
@@ -76,6 +85,7 @@ fn main() {
                     vec_communicate_exe_send,
                     &mut stream.try_clone().expect("clone failed"),
                     id_send,
+                    vec_cache_purge_send,
                 )
             })
             .unwrap();
@@ -101,14 +111,25 @@ fn main() {
                 .unwrap();
         }
 
-        for n in 0..num_generators {
+        let mut n = 0;
+
+        for cache_purge_recv in vec_cache_purge_recv {
             let sender_clone = game_sender.clone();
             let mut selfplay_master = DataGen { iterations: 1 };
             let tensor_exe_send_clone = tensor_exe_send.clone();
+            let cache_purge_recv_clone = cache_purge_recv.clone();
             let fut_generator = async move {
-                generator_main(sender_clone, selfplay_master, tensor_exe_send_clone, n).await;
+                generator_main(
+                    sender_clone,
+                    selfplay_master,
+                    tensor_exe_send_clone,
+                    n,
+                    cache_purge_recv_clone,
+                )
+                .await;
             };
             pool.spawn_ok(fut_generator);
+            n += 1;
         }
 
         let _ = s
@@ -131,22 +152,36 @@ async fn generator_main(
     datagen: DataGen,
     tensor_exe_send: Sender<Packet>,
     id: usize,
+    cache_purge_recv: Receiver<MessageType>,
 ) {
     let settings: SearchSettings = SearchSettings {
         fpu: 0.0,
-        wdl: None,
+        wdl: EvalMode::Value,
         moves_left: None,
         c_puct: 3.0,
         max_nodes: 400,
         alpha: 0.3,
         eps: 0.3,
         search_type: TrainerSearch(None),
-        pst: 1.25,
+        pst: 1.3,
     };
     let nps_sender = sender_collector.clone();
+    // implement caching
+
+    let mut cache: LruCache<CacheEntryKey, CacheEntryValue> =
+        LruCache::new(NonZeroUsize::new(100000).unwrap());
+
     loop {
+        match cache_purge_recv.try_recv() {
+            Ok(_) => cache.clear(),
+            Err(flume::TryRecvError::Empty) => {}
+            Err(flume::TryRecvError::Disconnected) => {
+                std::process::exit(0);
+            }
+        }
+
         let sim = datagen
-            .play_game(&tensor_exe_send, &nps_sender, &settings, id)
+            .play_game(&tensor_exe_send, &nps_sender, &settings, id, &mut cache)
             .await;
         sender_collector
             .send_async(CollectorMessage::FinishedGame(sim))
@@ -199,7 +234,7 @@ fn collector_main(
         match msg {
             CollectorMessage::FinishedGame(sim) => {
                 bin_output.append(&sim).unwrap();
-                if bin_output.game_count() >= 100 {
+                if bin_output.game_count() >= 100 && bin_output.position_count() >= 25000 {
                     bin_output.finish().unwrap();
                     let mut file_data: Vec<Vec<u8>> = Vec::new(); // Clear file_data vector
                     for file in files {
@@ -286,6 +321,7 @@ fn commander_main(
     vec_exe_sender: Vec<Sender<String>>,
     server_handle: &mut TcpStream,
     id_sender: Sender<usize>,
+    vec_cache_purge_sender: Vec<Sender<MessageType>>,
 ) {
     let mut curr_net = String::new();
     let mut is_initialised = false;
@@ -335,6 +371,7 @@ fn commander_main(
                 MessageType::TBLink(_) => {}
                 MessageType::CreateTB => {}
                 MessageType::RequestingTBLink => {}
+                MessageType::PurgeCache => {}
             }
         } else {
             match message.purpose {
@@ -364,6 +401,7 @@ fn commander_main(
                 MessageType::TBLink(_) => {}
                 MessageType::CreateTB => {}
                 MessageType::RequestingTBLink => {}
+                MessageType::PurgeCache => {}
             }
         }
 
@@ -383,6 +421,11 @@ fn commander_main(
                     exe_sender.send(net_path.clone()).unwrap();
                     // println!("SENT!");
                 }
+                // send to generators to purge cache
+                for cache_purge_send in &vec_cache_purge_sender {
+                    cache_purge_send.send(MessageType::PurgeCache).unwrap();
+                }
+
                 curr_net = net_path.clone();
             }
         }
