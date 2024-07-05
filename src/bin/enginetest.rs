@@ -11,6 +11,7 @@ use std::{
     panic, process,
 };
 use tokio::runtime::Runtime;
+use tz_rust::debug_print;
 use tz_rust::{
     boardmanager::BoardStack,
     cache::{CacheEntryKey, CacheEntryValue},
@@ -20,7 +21,7 @@ use tz_rust::{
     mcts_trainer::{EvalMode, TypeRequest::NonTrainerSearch},
     selfplay::CollectorMessage,
     settings::SearchSettings,
-    utils::{debug_print, TimeStampDebugger},
+    utils::TimeStampDebugger,
 };
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
@@ -174,12 +175,15 @@ fn generator_main(
             GameStatus::Ongoing => panic!("Game is still ongoing!"),
         };
         let moves_list_str = moves_list.join(" ");
-        debug_print(&format!(
-            "first move engine_{} opening {}, moves {}",
-            swap_count % 2,
-            fen,
-            moves_list_str
-        ));
+        debug_print!(
+            "{}",
+            &format!(
+                "first move engine_{} opening {}, moves {}",
+                swap_count % 2,
+                fen,
+                moves_list_str
+            )
+        );
         swap_count += 1;
         sender_collector
             .send(CollectorMessage::TestingResult(outcome))
