@@ -1,9 +1,10 @@
+use std::time::Instant;
+
 use crate::{
     boardmanager::BoardStack,
     cache::{CacheEntryKey, CacheEntryValue},
     mcts_trainer::{Net, Node, Tree, Wdl},
     mvs::get_contents,
-    utils::debug_print,
 };
 use cozy_chess::{Color, Move, Piece, Rank, Square};
 use lru::LruCache;
@@ -14,7 +15,9 @@ pub fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> 
     let b: Tensor = b.to(net.device);
     let board = IValue::Tensor(b);
 
+    let sw = Instant::now();
     let output = net.net.forward_is(&[board])?;
+    let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
 
     let output_tensor = match output {
         IValue::Tuple(b) => b,
@@ -90,9 +93,9 @@ pub fn board_data(bs: &BoardStack) -> (Vec<f32>, Vec<bool>) {
     }
 
     let is_ep = bs.board().en_passant();
-    let fenstr = format!("{}", bs.board());
-    debug_print(&format!("    board FEN: {}", fenstr));
-    debug_print(&format!("En passant status: {:?}", is_ep));
+    // let fenstr = format!("{}", bs.board());
+    // // println!("    board FEN: {}", fenstr);
+    // // println!("En passant status: {:?}", is_ep);
     let mut sq21: Vec<bool> = vec![false; 64];
     match is_ep {
         Some(is_ep) => {
@@ -197,7 +200,7 @@ pub fn process_board_output(
         pol_list.push(policy[*id]);
     }
 
-    debug_print(&format!("{:?}", pol_list));
+    // // println!("{:?}", pol_list);
 
     // step 3 - softmax
 
@@ -207,11 +210,11 @@ pub fn process_board_output(
 
     let pol_list: Vec<f32> = Vec::try_from(sm).expect("Error");
 
-    debug_print(&format!("{:?}", pol_list));
+    // // println!("{:?}", pol_list);
 
-    debug_print(&format!("        V={}", &value));
+    // // println!("        V={}", &value);
 
-    debug_print(&format!("        Value={}", &value));
+    // println!("        Value={}", &value);
 
     // step 4 - iteratively append nodes into class
     let mut counter = 0;
@@ -222,9 +225,10 @@ pub fn process_board_output(
 
     tree.nodes[*selected_node_idx].wdl = wdl;
 
+    // tree.nodes[*selected_node_idx].eval_score = 0.0;
     let ct = tree.nodes.len();
     for (mv, pol) in legal_moves.iter().zip(pol_list.iter()) {
-        debug_print(&format!("value {}", value));
+        // // println!("VAL {}", value);
         let fm: Move;
         if bs.board().side_to_move() == Color::Black {
             // flip move
@@ -236,13 +240,15 @@ pub fn process_board_output(
         } else {
             fm = *mv;
         }
+        // FLAT POLICY VER
+        // let child = Node::new(1.0/legal_moves.len() as f32, Some(*selected_node_idx), Some(fm));
         let child = Node::new(*pol, Some(*selected_node_idx), Some(fm));
-        debug_print(&format!("{:?}, {:?}, {:?}", mv, child.policy, child.value));
+        // // println!("{:?}, {:?}, {:?}", mv, child.policy, child.eval_score);
         tree.nodes.push(child); // push child to the tree Vec<Node>
         counter += 1
     }
     tree.nodes[*selected_node_idx].children = ct..ct + counter; // push numbers
-    debug_print(&format!("{:?}", tree.nodes.len()));
+                                                                // // println!("{:?}", tree.nodes.len());
 
     cache.put(
         CacheEntryKey {
@@ -288,6 +294,7 @@ pub fn extract_policy(bs: &BoardStack, contents: &'static [Move]) -> (Vec<Move>,
     let mut idx_li: Vec<usize> = Vec::new();
 
     for mov in &legal_moves {
+        // let mov = format!("{}", mov);
         if let Some(idx) = contents.iter().position(|x| mov == x) {
             idx_li.push(idx as usize);
         }
