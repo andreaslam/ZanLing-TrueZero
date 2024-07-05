@@ -3,55 +3,14 @@ use crate::{
     mcts_trainer::Net,
     selfplay::CollectorMessage,
     superluminal::{CL_BLUE, CL_ORANGE, CL_RED},
+    utils::{debug_print, TimeStampDebugger},
 };
 use crossbeam::thread;
+
 use flume::{Receiver, RecvError, Selector, Sender};
-use std::{
-    cmp::min,
-    collections::VecDeque,
-    process,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
-};
+use std::{cmp::min, collections::VecDeque, process};
 use superluminal_perf::{begin_event_with_color, end_event};
-use tch::{Cuda, Tensor};
-
-pub struct ExecutorDebugger {
-    epoch_seconds_start: u128,
-}
-
-impl ExecutorDebugger {
-    pub fn create_debug() -> Self {
-        let now_start = SystemTime::now();
-        let since_epoch = now_start
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-        let epoch_seconds_start = since_epoch.as_nanos();
-        ExecutorDebugger {
-            epoch_seconds_start,
-        }
-    }
-
-    pub fn reset(&mut self) {
-        let now_start = SystemTime::now();
-        let since_epoch = now_start
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-        self.epoch_seconds_start = since_epoch.as_nanos();
-    }
-
-    pub fn record(&self, message: &str, thread_name: &str) {
-        let now_end = SystemTime::now();
-        let since_epoch_end = now_end
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-        let epoch_seconds_end = since_epoch_end.as_nanos();
-        #[cfg(debug_assertions)]
-        println!(
-            "{} {} {} {}",
-            self.epoch_seconds_start, epoch_seconds_end, thread_name, message
-        );
-    }
-}
+use tch::Tensor;
 
 pub struct Packet {
     pub job: Tensor,
@@ -91,6 +50,7 @@ fn handle_new_graph(
     if let Some(network) = network.take() {
         drop(network);
     }
+    debug_print(&format!("{}: processessing new net", &thread_name));
     *network = graph.map(|graph| Net::new_with_device_id(&graph[..], id));
 }
 
@@ -99,10 +59,6 @@ fn handle_requests(
     tensor_receiver: Receiver<Packet>,
     max_batch_size: usize,
 ) {
-    let thread_name = std::thread::current()
-        .name()
-        .unwrap_or("unnamed-executor")
-        .to_owned();
     let mut input_vec: VecDeque<Tensor> = VecDeque::new();
     let mut output_senders: VecDeque<Sender<ReturnMessage>> = VecDeque::new();
     let mut id_vec: VecDeque<String> = VecDeque::new();
@@ -137,9 +93,9 @@ pub fn executor_main(
         .unwrap_or("unnamed-executor")
         .to_owned();
 
-    let mut waiting_for_batch_debugger = ExecutorDebugger::create_debug();
-    let mut packing_time_debugger = ExecutorDebugger::create_debug();
-    let mut evaluation_time_taken_debugger = ExecutorDebugger::create_debug();
+    let mut waiting_for_batch_debugger = TimeStampDebugger::create_debug();
+    let mut packing_time_debugger = TimeStampDebugger::create_debug();
+    let mut evaluation_time_taken_debugger = TimeStampDebugger::create_debug();
 
     let (handler_send, handler_recv) = flume::bounded::<ExecutorPacket>(1);
 
@@ -155,17 +111,15 @@ pub fn executor_main(
         loop {
             let mut selector = Selector::new();
             begin_event_with_color("waiting_for_job", CL_ORANGE);
-            let sw = Instant::now();
             assert!(network.is_some() || !graph_disconnected);
 
             if !graph_disconnected {
                 selector = selector.recv(&net_receiver, |res| Message::NewNetwork(res));
-                // waiting_for_batch_debugger.record("waiting_for_batch", &thread_name);
+                waiting_for_batch_debugger.record("waiting_for_batch", &thread_name);
             }
 
-             match network {
+            match network {
                 Some(_) => {
-
                     selector = selector.recv(&handler_recv, |res| Message::JobTensorExecutor(res));
                 }
                 None => (),
@@ -191,24 +145,15 @@ pub fn executor_main(
                     let i_v = input_vec.make_contiguous();
                     let input_tensors = Tensor::cat(&i_v, 0);
 
-                    let now_start_evals = SystemTime::now();
-                    let since_epoch_evals = now_start_evals
-                        .duration_since(UNIX_EPOCH)
-                        .expect("Time went backwards");
-                    let epoch_seconds_start_evals = since_epoch_evals.as_nanos();
                     begin_event_with_color("eval", CL_BLUE);
                     evaluation_time_taken_debugger.reset();
                     let (board_eval, policy) =
                         eval_state(input_tensors, network).expect("Evaluation failed");
                     end_event();
-                    // evaluation_time_taken_debugger
-                    //     .record("evaluation_time_taken", &thread_name);
+                    evaluation_time_taken_debugger.record("evaluation_time_taken", &thread_name);
                     evaluation_time_taken_debugger.reset();
-                    let sw_inference = Instant::now();
-                    let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
-                    let evals_per_sec = batch_size as f32 / elapsed;
-                    let _ = evals_per_sec_sender
-                        .send(CollectorMessage::ExecutorStatistics(batch_size));
+                    let _ =
+                        evals_per_sec_sender.send(CollectorMessage::ExecutorStatistics(batch_size));
 
                     begin_event_with_color("packing", CL_RED);
                     packing_time_debugger.reset();
@@ -227,12 +172,7 @@ pub fn executor_main(
                     }
                     end_event();
 
-                    let now_end_packing = SystemTime::now();
-                    let since_epoch_packing = now_end_packing
-                        .duration_since(UNIX_EPOCH)
-                        .expect("Time went backwards");
-                    let epoch_seconds_end_packing = since_epoch_packing.as_nanos();
-                    // packing_time_debugger.record("packing_time", &thread_name);
+                    packing_time_debugger.record("packing_time", &thread_name);
 
                     drop(input_vec.drain(0..batch_size));
                     waiting_for_batch_debugger.reset();
@@ -245,8 +185,6 @@ pub fn executor_main(
                     }
                 }
             }
-
-            let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
         }
 
         process::exit(0)
@@ -267,15 +205,12 @@ pub fn executor_static(
         .unwrap_or("unnamed-executor")
         .to_owned();
     let mut input_vec: VecDeque<Tensor> = VecDeque::new();
-    let mut debug_counter = 0;
     let mut output_senders: VecDeque<Sender<ReturnMessage>> = VecDeque::new();
     let mut id_vec: VecDeque<String> = VecDeque::new();
 
     handle_new_graph(&mut network, Some(net_path), thread_name.as_str(), 0); // TODO maybe pass an option to use either/both GPUs? and not hardcode static GPU to 1 GPU only?
 
     loop {
-        let sw = Instant::now();
-
         let mut selector = Selector::new();
 
         // Register all receivers in the selector
@@ -303,10 +238,8 @@ pub fn executor_static(
                     let i_v = input_vec.make_contiguous();
                     let input_tensors = Tensor::cat(&i_v[..batch_size], 0);
 
-                    let sw_inference = Instant::now();
                     let (board_eval, policy) =
                         eval_state(input_tensors, network).expect("Evaluation failed");
-                    let elapsed = sw_inference.elapsed().as_nanos() as f32 / 1e9;
                     for i in 0..batch_size {
                         let sender = output_senders
                             .pop_front()
@@ -325,8 +258,6 @@ pub fn executor_static(
             }
             Message::JobTensorExecutor(_) => {}
         }
-        let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
-        debug_counter += 1;
     }
     // Return the senders to avoid them being dropped and disconnected
 }
