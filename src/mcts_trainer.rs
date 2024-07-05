@@ -1,3 +1,4 @@
+use crate::debug_print;
 use crate::{
     boardmanager::BoardStack,
     cache::{CacheEntryKey, CacheEntryValue},
@@ -9,7 +10,7 @@ use crate::{
     settings::SearchSettings,
     superluminal::{CL_GREEN, CL_PINK},
     uci::eval_in_cp,
-    utils::{  debug_print, TimeStampDebugger},
+    utils::TimeStampDebugger,
 };
 use cozy_chess::{Color, GameStatus, Move};
 use crossfire::{channel::MPMCShared, mpmc::TxFuture};
@@ -559,8 +560,7 @@ impl Tree {
                 self.nodes[id].wdl.d,
                 self.nodes[id].wdl.l,
             )
-        }
-        else {
+        } else {
             String::new()
         }
     }
@@ -708,9 +708,9 @@ impl Node {
             if depth <= max_tree_print_depth {
                 if !self.children.is_empty() {
                     for c in self.children.clone() {
-                        // let display_str = tree.display_node(c);
+                        let display_str = tree.display_node(c);
 
-                        //  debug_print(&format!("{}{}", indent, display_str));
+                        debug_print!("{}", &format!("{}{}", indent, display_str));
                         tree.nodes[c].layer_p(depth + 1, max_tree_print_depth, tree);
                     }
                 }
@@ -721,12 +721,12 @@ impl Node {
     pub fn display_full_tree(&self, tree: &Tree) {
         if cfg!(debug_assertions) {
             println!("yoo");
-            //  debug_print(&format!("        root node:"));
-            // let display_str = tree.display_node(0);
-            //  debug_print(&format!("            {}", display_str));
-            //  debug_print(&format!("        children:"));
+            debug_print!("{}", &format!("        root node:"));
+            let display_str = tree.display_node(0);
+            debug_print!("{}", &format!("            {}", display_str));
+            debug_print!("{}", &format!("        children:"));
             let max_tree_print_depth: u8 = 3;
-            //  debug_print(&format!("    {}", display_str));
+            debug_print!("{}", &format!("    {}", display_str));
             self.layer_p(0, max_tree_print_depth, tree);
         }
     }
