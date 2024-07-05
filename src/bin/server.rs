@@ -32,7 +32,7 @@ fn handle_client(
         if !recv_msg.is_empty() {
             let message: MessageServer = match serde_json::from_str(&recv_msg) {
                 Ok(msg) => msg,
-                Err(err) => {
+                Err(_) => {
                     // eprintln!(
                     //     "[Error] Error deserialising message! {:?} {}",
                     //     recv_msg, err
@@ -288,7 +288,8 @@ fn handle_client(
                             needs_tb_link = true;
                         }
                     }
-                } // MessageType::EvalJob(_) => todo!(),
+                }
+                MessageType::PurgeCache => {} // MessageType::EvalJob(_) => todo!(),
             }
             // println!("[Message] {:?}", message);
             let all_clients = clients.lock().unwrap();
