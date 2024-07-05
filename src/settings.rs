@@ -1,10 +1,10 @@
-use crate::mcts_trainer::{TypeRequest, Wdl};
+use crate::mcts_trainer::{EvalMode, TypeRequest};
 
 #[derive(Clone, Debug, PartialEq, Copy)]
 
 pub struct SearchSettings {
     pub fpu: f32,
-    pub wdl: Option<Wdl>, // if WDL is None then automatically use value
+    pub wdl: EvalMode, // if WDL is None then automatically use value
     pub moves_left: Option<MovesLeftSettings>,
     pub c_puct: f32,
     pub max_nodes: u128,
