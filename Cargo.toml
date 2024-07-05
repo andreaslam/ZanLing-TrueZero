@@ -11,7 +11,14 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies.pyo3]
 version = "0.21.2"
-features = ["extension-module", "auto-initialize"]
+features = ["extension-module"]
+
+[tool.maturin]
+python-source = "python"
+
+[profile.release]
+debug = true
+
 
 [dependencies]
 anyhow = "1.0.72"
@@ -26,7 +33,11 @@ internal-iterator = "0.2.1"
 serde_json = "1.0.107"
 flume = "0.11.0"
 crossbeam = "0.8.2"
-futures = {version = "0.3.29", features=["thread-pool"]}
+futures = { version = "0.3.28", default-features = false, features = ["executor", "thread-pool"] }
 itertools = "0.13.0"
 tokio = { version = "1", features = ["full"] }
 superluminal-perf = "0.3.0"
+crossfire = "1.0.1"
+plotters = "0.3.6"
+async-std = "1.12.0"
+lru = "0.12.3"
