@@ -11,13 +11,14 @@ use std::{
     time::{Duration, Instant},
 };
 use tch::Tensor;
+use tz_rust::debug_print;
 use tz_rust::{
     boardmanager::BoardStack,
     decoder::eval_state,
     executor::{Packet, ReturnMessage, ReturnPacket},
     mcts_trainer::{get_move, EvalMode, Net, TypeRequest::TrainerSearch},
     settings::SearchSettings,
-    utils::{debug_print, TimeStampDebugger},
+    utils::TimeStampDebugger,
 };
 
 fn main() {
@@ -95,12 +96,15 @@ fn main() {
 
                         input_vec.clear();
                         if one_sec_timer.elapsed() > Duration::from_secs(1) {
-                            debug_print(&format!(
-                                "{}: {}evals/s",
-                                thread_name,
-                                (eval_counter * BATCH_SIZE) as f32
-                                    / one_sec_timer.elapsed().as_secs_f32()
-                            ));
+                            debug_print!(
+                                "{}",
+                                &format!(
+                                    "{}: {}evals/s",
+                                    thread_name,
+                                    (eval_counter * BATCH_SIZE) as f32
+                                        / one_sec_timer.elapsed().as_secs_f32()
+                                )
+                            );
                             eval_counter = 0;
                             one_sec_timer = Instant::now();
                         }
@@ -115,7 +119,7 @@ fn main() {
     .expect("Benchmark scope execution failed");
 
     let total_time_secs = entire_benchmark_timer.elapsed().as_nanos() as f32 / 1e9;
-    debug_print(&format!("Benchmark ran for {}s", total_time_secs));
+    debug_print!("{}", &format!("Benchmark ran for {}s", total_time_secs));
 }
 
 async fn dummy_generator(tensor_sender: Sender<Packet>, id: usize) {
