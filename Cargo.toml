@@ -37,5 +37,4 @@ futures = { version = "0.3.29", default-features = false, features = ["executor"
 itertools = "0.13.0"
 tokio = { version = "1", features = ["full"] }
 superluminal-perf = "0.3.0"
-async-std = {version="1.12.0", features=["unstable"]}
 lru = "0.12.3"
