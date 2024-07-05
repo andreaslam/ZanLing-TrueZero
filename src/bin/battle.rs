@@ -1,16 +1,18 @@
 use cozy_chess::{Board, GameStatus, Move};
 use crossbeam::thread;
-use std::{env, io, panic, str::FromStr};
+use lru::LruCache;
+use std::{env, io, num::NonZeroUsize, panic, str::FromStr};
 use tokio::runtime::Runtime;
 use tz_rust::{
     boardmanager::BoardStack,
+    cache::{CacheEntryKey, CacheEntryValue},
     executor::{
         executor_static,
         Message::{self, StopServer},
         Packet,
     },
     mcts::get_move,
-    mcts_trainer::TypeRequest::NonTrainerSearch,
+    mcts_trainer::{EvalMode, TypeRequest::NonTrainerSearch},
     settings::SearchSettings,
 };
 
@@ -77,7 +79,7 @@ fn main() {
     // set up executor and sender pairs
     let settings: SearchSettings = SearchSettings {
         fpu: 0.0,
-        wdl: None,
+        wdl: EvalMode::Value,
         moves_left: None,
         c_puct: 2.0,
         max_nodes: 400,
@@ -101,13 +103,22 @@ fn main() {
             .read_line(&mut input)
             .expect("Failed to read line");
         let input = input.replace("\r\n", "");
+        let mut cache: LruCache<CacheEntryKey, CacheEntryValue> =
+            LruCache::new(NonZeroUsize::new(10000).unwrap());
         if input == "p".to_string() {
             while bs.status() == GameStatus::Ongoing {
                 let mv = get_input(&bs);
                 bs.play(mv);
                 let rt = Runtime::new().unwrap();
                 let (mv, _, _, _, _) = rt.block_on(async {
-                    get_move(bs.clone(), tensor_exe_send.clone(), settings.clone(), None).await
+                    get_move(
+                        bs.clone(),
+                        tensor_exe_send.clone(),
+                        settings.clone(),
+                        None,
+                        &mut cache,
+                    )
+                    .await
                 });
                 println!("{:#}", mv);
                 bs.play(mv);
@@ -117,7 +128,14 @@ fn main() {
             while bs.status() == GameStatus::Ongoing {
                 let rt = Runtime::new().unwrap();
                 let (mv, _, _, _, _) = rt.block_on(async {
-                    get_move(bs.clone(), tensor_exe_send.clone(), settings.clone(), None).await
+                    get_move(
+                        bs.clone(),
+                        tensor_exe_send.clone(),
+                        settings.clone(),
+                        None,
+                        &mut cache,
+                    )
+                    .await
                 });
                 bs.play(mv);
                 println!("{:#}", mv);
