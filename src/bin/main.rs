@@ -51,7 +51,7 @@ fn main() {
     println!("Connected to server!");
 
     let mut num_executors = 2;
-    // num_executors = max(min(tch::Cuda::device_count() as usize, num_executors), 1);
+    num_executors = max(min(tch::Cuda::device_count() as usize, num_executors), 1);
     let batch_size = 1024;
     let num_generators = num_executors * batch_size * 2;
 
