@@ -752,11 +752,11 @@ pub async fn get_move(
 
     // let search_type = TypeRequest::TrainerSearch;
     while tree.nodes[0].visits < settings.max_nodes as u32 {
-        //  debug_print(&format!("step {}", tree.nodes[0].visits));
-        //  debug_print(&format!(
-        //     "thread {}, step {}",
-        //     thread_name, tree.nodes[0].visits
-        // ));
+         debug_print!("{}", &format!("step {}", tree.nodes[0].visits));
+         debug_print!("{}", &format!(
+            "thread {}, step {}",
+            thread_name, tree.nodes[0].visits
+        ));
 
         let get_move_debugger = TimeStampDebugger::create_debug();
 
