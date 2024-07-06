@@ -151,9 +151,9 @@ fn generator_main(
         let mut bs = BoardStack::new(board);
         let rt = Runtime::new().unwrap();
         let mut move_counter = swap_count % 2;
-        let mut cache_0: LruCache<CacheEntryKey, CacheEntryValue> =
+        let cache_0: LruCache<CacheEntryKey, CacheEntryValue> =
             LruCache::new(NonZeroUsize::new(settings.max_nodes as usize).unwrap());
-        let mut cache_1: LruCache<CacheEntryKey, CacheEntryValue> =
+        let cache_1: LruCache<CacheEntryKey, CacheEntryValue> =
             LruCache::new(NonZeroUsize::new(settings.max_nodes as usize).unwrap());
         
         let mut caches = vec![cache_0, cache_1];
