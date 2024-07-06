@@ -35,7 +35,7 @@ fn main() {
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
     let num_games = 1000000;
     let num_threads = 1024;
-    let engine_0: String = "nets/tz_1579.pt".to_string(); // new engine
+    let engine_0: String = "nets/tz_1848.pt".to_string(); // new engine
     let engine_1: String = "./chess_16x128_gen3634.pt".to_string(); // old engine
     let num_executors = 2; // always be 2, 2 players, one each (one for each neural net)
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
@@ -136,7 +136,6 @@ fn generator_main(
         search_type: NonTrainerSearch,
         pst: 0.0,
     };
-
     let openings = read_epd_file("./8moves_v3.epd").unwrap();
     let engines = vec![tensor_exe_send_0.clone(), tensor_exe_send_1.clone()];
     let mut swap_count = 0;
@@ -155,8 +154,8 @@ fn generator_main(
             LruCache::new(NonZeroUsize::new(settings.max_nodes as usize).unwrap());
         let cache_1: LruCache<CacheEntryKey, CacheEntryValue> =
             LruCache::new(NonZeroUsize::new(settings.max_nodes as usize).unwrap());
-        
         let mut caches = vec![cache_0, cache_1];
+
         while bs.status() == GameStatus::Ongoing {
             let engine = &engines[move_counter % 2];
             let (mv, _, _, _, _) = rt.block_on(async {
