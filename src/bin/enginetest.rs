@@ -152,7 +152,7 @@ fn generator_main(
         let rt = Runtime::new().unwrap();
         let mut move_counter = swap_count % 2;
         let mut cache: LruCache<CacheEntryKey, CacheEntryValue> =
-            LruCache::new(NonZeroUsize::new(100000).unwrap());
+            LruCache::new(NonZeroUsize::new(settings.max_nodes as usize).unwrap());
         while bs.status() == GameStatus::Ongoing {
             let engine = &engines[move_counter % 2];
             let (mv, _, _, _, _) = rt.block_on(async {
