@@ -13,7 +13,6 @@ use crate::{
     utils::TimeStampDebugger,
 };
 use cozy_chess::{Color, GameStatus, Move};
-use crossfire::{channel::MPMCShared, mpmc::TxFuture};
 use flume::Sender;
 use lru::LruCache;
 use rand::{rngs::StdRng, Rng, SeedableRng};
@@ -65,8 +64,6 @@ impl Net {
                 Cuda::cudnn_set_benchmark(true);
             }
             Device::Cuda(0)
-        } else if has_mps() {
-            Device::Mps
         } else {
             Device::Cpu
         };
@@ -147,7 +144,7 @@ impl Tree {
             step_debugger.record("mcts select", &thread_name);
         }
 
-        // self.nodes[0].display_full_tree(self);
+        self.nodes[0].display_full_tree(self);
 
         let selected_node = selected_node;
         let idx_li: Vec<usize>;
@@ -238,7 +235,7 @@ impl Tree {
                     TypeRequest::UCISearch => {}
                     TypeRequest::VisualiserMode => {}
                 }
-                // self.nodes[0].display_full_tree(self);
+                self.nodes[0].display_full_tree(self);
             }
         } else {
             let wdl = match input_b.status() {
@@ -270,13 +267,13 @@ impl Tree {
         self.backpropagate(selected_node);
         let backprop_debug = TimeStampDebugger::create_debug();
         if id % 512 == 0 {
-            // backprop_debug.record("backpropagation", &thread_name);
+            backprop_debug.record("backpropagation", &thread_name);
         }
         for child in self.nodes[0].children.clone() {
             let display_str = self.display_node(child);
-            //  debug_print(&format!("children: {}", &display_str));
+             debug_print!("{}", &format!("children: {}", &display_str))
         }
-        // self.nodes[0].display_full_tree(self);
+        self.nodes[0].display_full_tree(self);
         match self.settings.search_type {
             TypeRequest::UCISearch => {
                 let cp_eval = eval_in_cp(self.nodes[selected_node].value);
@@ -458,7 +455,7 @@ impl Tree {
         let send_logger = TimeStampDebugger::create_debug();
         tensor_exe_send.send_async(pack).await.unwrap();
         if id % 512 == 0 {
-            // send_logger.record("send_request", thread_name.as_str());
+            send_logger.record("send_request", thread_name.as_str());
         }
         end_event();
 
@@ -467,7 +464,7 @@ impl Tree {
         end_event();
         let recv_logger = TimeStampDebugger::create_debug();
         if id % 512 == 0 {
-            // recv_logger.record("recv_request", thread_name.as_str());
+            recv_logger.record("recv_request", thread_name.as_str());
         }
         let output = match output {
             ReturnMessage::ReturnMessage(Ok(output)) => output,
@@ -800,36 +797,36 @@ pub async fn get_move(
     };
     let best_move = tree.nodes[best_move_node].mv;
     let mut total_visits_list = Vec::new();
-    //  debug_print(&format!("{:#}", best_move.unwrap()));
+     debug_print!("{}", &format!("{:#}", best_move.unwrap()));
     for child in tree.nodes[0].children.clone() {
         total_visits_list.push(tree.nodes[child].visits);
     }
 
-    // let display_str = tree.display_node(0); // print root node
-    //  debug_print(&format!("{}", display_str));
+    let display_str = tree.display_node(0); // print root node
+     debug_print!("{}", &format!("{}", display_str));
     let total_visits: u32 = total_visits_list.iter().sum();
 
     let mut pi: Vec<f32> = Vec::new();
 
-    //  debug_print(&format!("{:?}", &total_visits_list));
+    debug_print!("{}", &format!("{:?}", &total_visits_list));
 
     for &t in &total_visits_list {
         let prob = t as f32 / total_visits as f32;
         pi.push(prob);
     }
 
-    //  debug_print(&format!("{:?}", &pi));
-    //  debug_print(&format!("{}", best_move.expect("Error").to_string()));
-    //  debug_print(&format!(
-    //     "best move: {}",
-    //     best_move.expect("Error").to_string()
-    // ));
+    debug_print!("{}",&format!("{:?}", &pi));
+    debug_print!("{}",&format!("{}", best_move.expect("Error").to_string()));
+    debug_print!("{}",&format!(
+        "best move: {}",
+        best_move.expect("Error").to_string()
+    ));
 
     for child in tree.nodes[0].children.clone() {
-        // let display_str = tree.display_node(child);
-        //  debug_print(&format!("{}", display_str));
+        let display_str = tree.display_node(child);
+         debug_print!("{}", &format!("{}", display_str));
     }
-    // tree.nodes[0].display_full_tree(&tree);
+    tree.nodes[0].display_full_tree(&tree);
 
     let mut all_pol = Vec::new();
 
