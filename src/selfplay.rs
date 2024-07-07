@@ -1,10 +1,5 @@
 use crate::{
-    boardmanager::BoardStack,
-    cache::{CacheEntryKey, CacheEntryValue},
-    dataformat::{Position, Simulation},
-    executor::{Packet, ReturnMessage},
-    mcts_trainer::{get_move, ExpansionType, TypeRequest},
-    settings::SearchSettings,
+    boardmanager::BoardStack, cache::{CacheEntryKey, CacheEntryValue}, dataformat::{Position, Simulation}, debug_print, executor::{Packet, ReturnMessage}, mcts_trainer::{get_move, ExpansionType, TypeRequest}, settings::SearchSettings
 };
 use cozy_chess::{Board, Color, GameStatus, Move};
 use flume::Sender;
@@ -29,6 +24,9 @@ pub struct DataGen {
 }
 
 impl DataGen {
+
+    /// plays a game of chess given a sender for an `executor.rs` inference backend (tensor_exe_send), where said executor should be spawned as a seperate thread
+    /// returns a `Simulation` containing key game metadata. for reference see `Simulation` and `Position` 
     pub async fn play_game(
         &self,
         tensor_exe_send: &Sender<Packet>,
@@ -81,10 +79,11 @@ impl DataGen {
                 zero_evaluation: search_data, // q
                 net_evaluation: v_p,          // v
             };
+
             let nps = settings.max_nodes as f32 / elapsed;
 
-            // // debug_print(&format!("thread {}, {:#}, {}nps", thread_name, final_mv, nps);
-            // // debug_print(&format!("{:#}", final_mv);
+            debug_print!("{}", &format!("thread {}, {:#}, {}nps", thread_name, final_mv, nps));
+            debug_print!("{}", &format!("{:#}", final_mv));
             nps_sender
                 .send_async(CollectorMessage::GeneratorStatistics(
                     settings.max_nodes as usize,
@@ -98,9 +97,10 @@ impl DataGen {
             positions,
             final_board: bs,
         };
+
         let elapsed_ms = sw.elapsed().as_nanos() as f32 / 1e9;
-        // // debug_print(&format!("one done {}s", elapsed_ms);
-        // // debug_print(&format!("one done!");
+        debug_print!("{}",&format!("one done {}s", elapsed_ms));
+        debug_print!("{}",&format!("one done!"));
         tz
     }
 }
