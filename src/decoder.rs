@@ -3,6 +3,7 @@ use std::time::Instant;
 use crate::{
     boardmanager::BoardStack,
     cache::{CacheEntryKey, CacheEntryValue},
+    debug_print,
     mcts_trainer::{Net, Node, Tree, Wdl},
     mvs::get_contents,
 };
@@ -10,6 +11,9 @@ use cozy_chess::{Color, Move, Piece, Rank, Square};
 use lru::LruCache;
 use tch::{Cuda, Device, IValue, Kind, Tensor};
 
+
+/// evaluates the current state of the chess board
+/// returns a tuple of `Tensors` - in the order (value, policy)
 pub fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> {
     let b = board.reshape([-1, 21, 8, 8]);
     let b: Tensor = b.to(net.device);
@@ -43,6 +47,20 @@ pub fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> 
 
     Ok((board_eval, policy))
 }
+
+/// extracts scalar and piece square data from the board state. used to convert board to use as nn inputs
+/// to save compute, the boolean-representable data is returned as a single Vec<bool> before broadcasting into a single input `Tensor`
+/// returns 2 items, a Vec<f32> for the board inputs and Vec<bool> 
+
+// # FULL LIST OF INFORMATION NEEDED FOR NN INPUTS:
+
+    /// sq1 - white's turn
+    /// sq2 - black's turn
+    /// sq3, sq4 - castling pos l + r (us)
+    /// sq5, sq6 - castling pos l + r (opponent)
+    /// sql7, sql8 -  sqs for bits for the repetition counter
+    /// sq9 - sq20 - sqs for turn to move + non-turn to move's pieces
+    /// sq21 - en passant square if any
 
 pub fn board_data(bs: &BoardStack) -> (Vec<f32>, Vec<bool>) {
     let us = bs.board().side_to_move();
@@ -93,9 +111,10 @@ pub fn board_data(bs: &BoardStack) -> (Vec<f32>, Vec<bool>) {
     }
 
     let is_ep = bs.board().en_passant();
-    // let fenstr = format!("{}", bs.board());
-    // // println!("    board FEN: {}", fenstr);
-    // // println!("En passant status: {:?}", is_ep);
+    let fenstr = format!("{}", bs.board());
+    debug_print!("    board FEN: {}", fenstr);
+    debug_print!("En passant status: {:?}", is_ep);
+
     let mut sq21: Vec<bool> = vec![false; 64];
     match is_ep {
         Some(is_ep) => {
@@ -116,21 +135,8 @@ pub fn board_data(bs: &BoardStack) -> (Vec<f32>, Vec<bool>) {
     (scalar_data, pieces_sqs)
 }
 
+/// converts the board state into a representation used for nn inputs
 pub fn convert_board(bs: &BoardStack) -> Tensor {
-    // FULL LIST HERE:
-    // sq1 - white's turn
-    // sq2 - black's turn
-    // sq3, sq4 - castling pos l + r (us)
-    // sq5, sq6 - castling pos l + r (opponent)
-    // sql7, sql8 -  sqs for bits for the repetition counter
-    // sq9 - sq20 - sqs for turn to move + non-turn to move's pieces
-    // sq21 - en passant square if any
-
-    // sq1 - white's turn
-    // sq2 - black's turn
-
-    // it seems that creating a Vec, processing everything first is faster than doing Tensor::zeros() and then stacking them
-    // so i instead work with Vecs, get all of them together and convert them into a single Tensor at the end
 
     let mut all_data: Vec<f32> = Vec::new();
 
@@ -148,12 +154,7 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
     all_data // all_data is 1d
 }
 
-pub fn get_evaluation(bs: &BoardStack, net: &Net) -> (Tensor, Tensor) {
-    let b = convert_board(bs);
-
-    eval_state(b, &net).expect("Error")
-}
-
+/// processes the board output after nn evaluation and updates the tree with new nodes
 pub fn process_board_output(
     output: (&Tensor, &Tensor),
     selected_node_idx: &usize,
@@ -200,7 +201,7 @@ pub fn process_board_output(
         pol_list.push(policy[*id]);
     }
 
-    // // println!("{:?}", pol_list);
+    debug_print!("{:?}", pol_list);
 
     // step 3 - softmax
 
@@ -210,11 +211,11 @@ pub fn process_board_output(
 
     let pol_list: Vec<f32> = Vec::try_from(sm).expect("Error");
 
-    // // println!("{:?}", pol_list);
+    debug_print!("{:?}", pol_list);
 
-    // // println!("        V={}", &value);
+    debug_print!("        V={}", &value);
 
-    // println!("        Value={}", &value);
+    debug_print!("        Value={}", &value);
 
     // step 4 - iteratively append nodes into class
     let mut counter = 0;
@@ -225,10 +226,8 @@ pub fn process_board_output(
 
     tree.nodes[*selected_node_idx].wdl = wdl;
 
-    // tree.nodes[*selected_node_idx].eval_score = 0.0;
     let ct = tree.nodes.len();
     for (mv, pol) in legal_moves.iter().zip(pol_list.iter()) {
-        // // println!("VAL {}", value);
         let fm: Move;
         if bs.board().side_to_move() == Color::Black {
             // flip move
@@ -240,15 +239,13 @@ pub fn process_board_output(
         } else {
             fm = *mv;
         }
-        // FLAT POLICY VER
-        // let child = Node::new(1.0/legal_moves.len() as f32, Some(*selected_node_idx), Some(fm));
         let child = Node::new(*pol, Some(*selected_node_idx), Some(fm));
-        // // println!("{:?}, {:?}, {:?}", mv, child.policy, child.eval_score);
+        debug_print!("{:?}, {:?}, {:?}", mv, child.policy, child.value);
         tree.nodes.push(child); // push child to the tree Vec<Node>
         counter += 1
     }
-    tree.nodes[*selected_node_idx].children = ct..ct + counter; // push numbers
-                                                                // // println!("{:?}", tree.nodes.len());
+    tree.nodes[*selected_node_idx].children = ct..ct + counter;
+    debug_print!("{:?}", tree.nodes.len());
 
     cache.put(
         CacheEntryKey {
@@ -267,6 +264,7 @@ pub fn process_board_output(
     idx_li
 }
 
+/// extracts the policy indices from `mvs.rs` given board state in order to filter raw output from neural network
 pub fn extract_policy(bs: &BoardStack, contents: &'static [Move]) -> (Vec<Move>, Vec<usize>) {
     let mut legal_moves: Vec<Move> = Vec::new();
     bs.board().generate_moves(|moves| {
