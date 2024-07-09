@@ -119,7 +119,7 @@ cargo run --bin ucimain
 - `getinferencetime.rs` - used for benchmarking inference times and batching effectiveness through calculating the nodes/s.
 
 ### External Engine testing (UCI compliant)
-- `uci.rs` - contains code for UCI implementation.
+- `uci.rs` - contains code for UCI implementation. Code modified from JW's [monty](https://github.com/jw1912/monty) engine
 - `ucimain.rs` - used for running games using UCI.
 
 ### Source code for the Engine
@@ -181,4 +181,4 @@ Portions/entire files of code from [KZero](https://github.com/KarelPeeters/kZero
 - `src/dataformat.rs`
 - the `lib` folder used for reading KZero's custom data format and training
 
-
+The [UCI code](https://github.com/andreaslam/ZanLing-TrueZero/blob/main/src/uci.rs) is modified from JW's (monty)[https://github.com/jw1912/monty] engine.
