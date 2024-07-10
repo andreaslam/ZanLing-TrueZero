@@ -51,7 +51,7 @@ fn main() {
     println!("Connected to server!");
 
     let mut num_executors = 2;
-    num_executors = max(min(tch::Cuda::device_count() as usize, num_executors), 1);
+    // num_executors = max(min(tch::Cuda::device_count() as usize, num_executors), 1);
     let batch_size = 1024;
     let num_generators = num_executors * batch_size * 2;
 
@@ -300,6 +300,11 @@ fn commander_main(
     let mut reader = BufReader::new(server_handle);
     let mut net_path_counter = 0;
     let mut generator_id: usize = 0;
+    let mut net_timestamp = SystemTime::now();
+    let net_save_time_duration = net_timestamp
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
+    let net_save_timestamp = net_save_time_duration.as_nanos();
     loop {
         if !directory_exists("nets") {
             fs::create_dir("nets").unwrap();
@@ -333,14 +338,16 @@ fn commander_main(
                 MessageType::JobSendData(_) => {}
                 MessageType::NewNetworkData(data) => {
                     println!("new net path");
-                    net_path = format!("nets/tz_temp_net_{}_{}.pt", generator_id, net_path_counter);
+                    net_path = format!("nets/tz_temp_net_{}_{}_{}.pt", generator_id, net_path_counter, net_save_timestamp);
                     let mut file = File::create(net_path.clone()).expect("Unable to create file");
                     file.write_all(&data).expect("Unable to write data");
+                    net_timestamp = SystemTime::now();
                     net_path_counter += 1;
                 }
                 MessageType::TBLink(_) => {}
                 MessageType::CreateTB => {}
                 MessageType::RequestingTBLink => {}
+                MessageType::EvaluationRequest(_) => {}
             }
         } else {
             match message.purpose {
@@ -370,6 +377,7 @@ fn commander_main(
                 MessageType::TBLink(_) => {}
                 MessageType::CreateTB => {}
                 MessageType::RequestingTBLink => {}
+                MessageType::EvaluationRequest(_) => {}
             }
         }
 
