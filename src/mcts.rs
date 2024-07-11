@@ -1,11 +1,18 @@
 use crate::{
-    boardmanager::BoardStack, cache::{CacheEntryKey, CacheEntryValue}, dataformat::ZeroEvaluation, debug_print, executor::Packet, mcts_trainer::Tree, settings::SearchSettings, uci::UCIMsg
+    boardmanager::BoardStack,
+    cache::{CacheEntryKey, CacheEntryValue},
+    dataformat::ZeroEvaluation,
+    debug_print,
+    executor::Packet,
+    mcts_trainer::Tree,
+    settings::SearchSettings,
+    uci::UCIMsg,
 };
 use cozy_chess::Move;
 use flume::{Receiver, Sender, TryRecvError};
 use lru::LruCache;
-use tokio::signal;
 use std::time::Instant;
+use tokio::signal;
 
 pub async fn get_move(
     bs: BoardStack,
@@ -32,21 +39,25 @@ pub async fn get_move(
 
     while tree.nodes[0].visits < settings.max_nodes as u32 {
         match stop_signal {
-            Some(ref signal) => {
-                match signal.try_recv() {
+            Some(ref signal) => match signal.try_recv() {
                 Ok(_) => {
-                    debug_print!("Debug: Stop signal received, breaking loop");
-                    break;
-                },
+                    if tree.nodes[0].visits < 1 {
+                        debug_print!("Debug: Insufficient search to produce output");
+                        tree.step(&tensor_exe_send, sw, 0, cache).await;
+                    } else {
+                        debug_print!("Debug: Stop signal received, breaking loop");
+                        break;
+                    }
+                    
+                }
                 Err(TryRecvError::Empty) => {
                     debug_print!("Debug: No stop signal, stepping tree");
                     tree.step(&tensor_exe_send, sw, 0, cache).await;
-                },
+                }
                 Err(TryRecvError::Disconnected) => {
                     debug_print!("Debug: Stop signal disconnected, breaking loop");
                     break;
-                },
-            }
+                }
             },
             None => {
                 tree.step(&tensor_exe_send, sw, 0, cache).await;
