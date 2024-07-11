@@ -1,7 +1,6 @@
 use cozy_chess::{Board, Color, GameStatus, Move};
 use crossbeam::thread;
 use flume::{Receiver, Sender};
-use futures::executor::ThreadPool;
 use lru::LruCache;
 use rand::seq::SliceRandom;
 use std::{
@@ -24,29 +23,27 @@ use tz_rust::{
     settings::SearchSettings,
     utils::TimeStampDebugger,
 };
-
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
     panic::set_hook(Box::new(|panic_info| {
+        // print panic information
         eprintln!("Panic occurred: {:?}", panic_info);
-        process::exit(1);
+        // exit the program immediately
+        std::process::exit(1);
     }));
 
-    let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
     let num_games = 1000000;
-    let num_threads = 2048;
-    let engine_0: String = "tz_6515.pt".to_string();
-    let engine_1: String = "./chess_16x128_gen3634.pt".to_string();
-    let num_executors = 2;
+    let num_threads = 1024;
+    let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(num_threads);
+    let engine_0: String = "nets/tz_3727.pt".to_string(); // new engine
+    let engine_1: String = "./chess_16x128_gen3634.pt".to_string(); // old engine
+    let num_executors = 2; // always be 2, 2 players, one each (one for each neural net)
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
-    let pool = ThreadPool::builder().pool_size(6).create().unwrap();
-    thread::scope(|s| {
-        debug_print!("Starting thread scope");
 
+    thread::scope(|s| {
         let mut vec_communicate_exe_send: Vec<Sender<String>> = Vec::new();
         let mut vec_communicate_exe_recv: Vec<Receiver<String>> = Vec::new();
         assert!(num_executors == 2);
-
         for _ in 0..num_executors {
             let (communicate_exe_send, communicate_exe_recv) = flume::bounded::<String>(1);
             vec_communicate_exe_send.push(communicate_exe_send);
@@ -59,22 +56,21 @@ fn main() {
             let sender_clone = game_sender.clone();
             let tensor_exe_send_clone_0 = tensor_exe_send_0.clone();
             let tensor_exe_send_clone_1 = tensor_exe_send_1.clone();
-            let fut_generator = async move {
-                generator_main(
-                    &sender_clone,
-                    tensor_exe_send_clone_0.clone(),
-                    tensor_exe_send_clone_1.clone(),
-                    n,
-                )
-                .await;
-            };
-            pool.spawn_ok(fut_generator);
+            s.builder()
+                .name(format!("generator_{}", n.to_string()))
+                .spawn(move |_| {
+                    generator_main(
+                        &sender_clone,
+                        tensor_exe_send_clone_0.clone(),
+                        tensor_exe_send_clone_1.clone(),
+                    )
+                })
+                .unwrap();
         }
 
         s.builder()
             .name("collector".to_string())
             .spawn(|_| {
-                debug_print!("Spawning collector thread");
                 collector_main(
                     &game_receiver,
                     num_games,
@@ -93,7 +89,6 @@ fn main() {
         s.builder()
             .name("executor_0".to_string())
             .spawn(move |_| {
-                debug_print!("Spawning executor_0 thread");
                 executor_static(
                     engine_0_clone,
                     tensor_exe_recv_0,
@@ -106,7 +101,6 @@ fn main() {
         s.builder()
             .name("executor_1".to_string())
             .spawn(move |_| {
-                debug_print!("Spawning executor_1 thread");
                 executor_static(
                     engine_1_clone,
                     tensor_exe_recv_1,
@@ -120,18 +114,16 @@ fn main() {
 }
 
 fn read_epd_file(file_path: &str) -> io::Result<Vec<String>> {
-    debug_print!("Reading EPD file: {}", file_path);
     let file = File::open(file_path)?;
     let reader = io::BufReader::new(file);
     let positions: Vec<String> = reader.lines().filter_map(|line| line.ok()).collect();
     Ok(positions)
 }
 
-async fn generator_main(
+fn generator_main(
     sender_collector: &Sender<CollectorMessage>,
     tensor_exe_send_0: Sender<Packet>,
     tensor_exe_send_1: Sender<Packet>,
-    generator_id: usize,
 ) {
     let settings: SearchSettings = SearchSettings {
         fpu: 0.0,
@@ -144,62 +136,57 @@ async fn generator_main(
         search_type: NonTrainerSearch,
         pst: 0.0,
     };
-    let thread_name = format!("sprt-generator-{}", generator_id);
-    debug_print!("{} Generator settings initialized", thread_name,);
-
     let openings = read_epd_file("./8moves_v3.epd").unwrap();
     let engines = vec![tensor_exe_send_0.clone(), tensor_exe_send_1.clone()];
     let mut swap_count = 0;
     let mut fen = openings.choose(&mut rand::thread_rng()).unwrap();
-
     loop {
         let mut moves_list: Vec<String> = Vec::new();
         if swap_count % 2 == 0 {
             fen = openings.choose(&mut rand::thread_rng()).unwrap();
         } else {
-            // do nothing, keeping the current FEN
         }
-        debug_print!("{} Current FEN: {}", thread_name, fen);
-
         let board = Board::from_fen(fen, false).unwrap();
         let mut bs = BoardStack::new(board);
+        let rt = Runtime::new().unwrap();
         let mut move_counter = swap_count % 2;
-        let mut cache: LruCache<CacheEntryKey, CacheEntryValue> =
+        let cache_0: LruCache<CacheEntryKey, CacheEntryValue> =
             LruCache::new(NonZeroUsize::new(settings.max_nodes as usize).unwrap());
+        let cache_1: LruCache<CacheEntryKey, CacheEntryValue> =
+            LruCache::new(NonZeroUsize::new(settings.max_nodes as usize).unwrap());
+        let mut caches = vec![cache_0, cache_1];
 
         while bs.status() == GameStatus::Ongoing {
             let engine = &engines[move_counter % 2];
-            let (mv, _, _, _, _) = get_move(
-                bs.clone(),
-                engine.clone(),
-                settings.clone(),
-                None,
-                &mut cache,
-            )
-            .await;
+            let (mv, _, _, _, _) = rt.block_on(async {
+                get_move(
+                    bs.clone(),
+                    engine.clone(),
+                    settings.clone(),
+                    None,
+                    &mut caches[move_counter % 2],
+                )
+                .await
+            });
             bs.play(mv);
             moves_list.push(format!("{:#}", mv));
             move_counter += 1;
         }
-
         let outcome: Option<bool> = match bs.status() {
             GameStatus::Drawn => None,
             GameStatus::Won => Some((move_counter - 1) % 2 == 0),
             GameStatus::Ongoing => panic!("Game is still ongoing!"),
         };
-
         let moves_list_str = moves_list.join(" ");
         debug_print!(
             "{}",
             &format!(
-                "{} first move engine_{} opening {}, moves {}",
-                thread_name,
+                "first move engine_{} opening {}, moves {}",
                 swap_count % 2,
                 fen,
                 moves_list_str
             )
         );
-
         swap_count += 1;
         sender_collector
             .send(CollectorMessage::TestingResult(outcome))
@@ -216,16 +203,19 @@ fn collector_main(
 ) {
     let mut results = (0, 0, 0); // (w,l,d) in the perspective of engine_0
     let mut counter = 0;
-
-    debug_print!("Collector main started");
-
     loop {
         let msg = receiver.recv().unwrap();
         match msg {
-            CollectorMessage::FinishedGame(_)
-            | CollectorMessage::GeneratorStatistics(_)
-            | CollectorMessage::ExecutorStatistics(_)
-            | CollectorMessage::GameResult(_) => {
+            CollectorMessage::FinishedGame(_) => {
+                panic!("not possible! this is to test engine changes");
+            }
+            CollectorMessage::GeneratorStatistics(_) => {
+                panic!("not possible! this is to test engine changes");
+            }
+            CollectorMessage::ExecutorStatistics(_) => {
+                panic!("not possible! this is to test engine changes");
+            }
+            CollectorMessage::GameResult(_) => {
                 panic!("not possible! this is to test engine changes");
             }
             CollectorMessage::TestingResult(result) => {
