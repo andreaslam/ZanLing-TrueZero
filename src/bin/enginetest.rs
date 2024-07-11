@@ -1,6 +1,7 @@
 use cozy_chess::{Board, Color, GameStatus, Move};
 use crossbeam::thread;
 use flume::{Receiver, Sender};
+use futures::executor::ThreadPool;
 use lru::LruCache;
 use rand::seq::SliceRandom;
 use std::{
@@ -33,12 +34,12 @@ fn main() {
 
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
     let num_games = 1000000;
-    let num_threads = 1024;
-    let engine_0: String = "nets/tz_3727.pt".to_string();
+    let num_threads = 2048;
+    let engine_0: String = "tz_6515.pt".to_string();
     let engine_1: String = "./chess_16x128_gen3634.pt".to_string();
     let num_executors = 2;
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
-
+    let pool = ThreadPool::builder().pool_size(6).create().unwrap();
     thread::scope(|s| {
         debug_print!("Starting thread scope");
 
@@ -58,17 +59,16 @@ fn main() {
             let sender_clone = game_sender.clone();
             let tensor_exe_send_clone_0 = tensor_exe_send_0.clone();
             let tensor_exe_send_clone_1 = tensor_exe_send_1.clone();
-            s.builder()
-                .name(format!("generator_{}", n.to_string()))
-                .spawn(move |_| {
-                    debug_print!("Spawning generator thread {}", n);
-                    generator_main(
-                        &sender_clone,
-                        tensor_exe_send_clone_0.clone(),
-                        tensor_exe_send_clone_1.clone(),
-                    )
-                })
-                .unwrap();
+            let fut_generator = async move {
+                generator_main(
+                    &sender_clone,
+                    tensor_exe_send_clone_0.clone(),
+                    tensor_exe_send_clone_1.clone(),
+                    n,
+                )
+                .await;
+            };
+            pool.spawn_ok(fut_generator);
         }
 
         s.builder()
@@ -127,10 +127,11 @@ fn read_epd_file(file_path: &str) -> io::Result<Vec<String>> {
     Ok(positions)
 }
 
-fn generator_main(
+async fn generator_main(
     sender_collector: &Sender<CollectorMessage>,
     tensor_exe_send_0: Sender<Packet>,
     tensor_exe_send_1: Sender<Packet>,
+    generator_id: usize,
 ) {
     let settings: SearchSettings = SearchSettings {
         fpu: 0.0,
@@ -143,8 +144,8 @@ fn generator_main(
         search_type: NonTrainerSearch,
         pst: 0.0,
     };
-
-    debug_print!("Generator settings initialized");
+    let thread_name = format!("sprt-generator-{}", generator_id);
+    debug_print!("{} Generator settings initialized", thread_name,);
 
     let openings = read_epd_file("./8moves_v3.epd").unwrap();
     let engines = vec![tensor_exe_send_0.clone(), tensor_exe_send_1.clone()];
@@ -158,27 +159,24 @@ fn generator_main(
         } else {
             // do nothing, keeping the current FEN
         }
-        debug_print!("Current FEN: {}", fen);
+        debug_print!("{} Current FEN: {}", thread_name, fen);
 
         let board = Board::from_fen(fen, false).unwrap();
         let mut bs = BoardStack::new(board);
-        let rt = Runtime::new().unwrap();
         let mut move_counter = swap_count % 2;
         let mut cache: LruCache<CacheEntryKey, CacheEntryValue> =
             LruCache::new(NonZeroUsize::new(settings.max_nodes as usize).unwrap());
 
         while bs.status() == GameStatus::Ongoing {
             let engine = &engines[move_counter % 2];
-            let (mv, _, _, _, _) = rt.block_on(async {
-                get_move(
-                    bs.clone(),
-                    engine.clone(),
-                    settings.clone(),
-                    None,
-                    &mut cache,
-                )
-                .await
-            });
+            let (mv, _, _, _, _) = get_move(
+                bs.clone(),
+                engine.clone(),
+                settings.clone(),
+                None,
+                &mut cache,
+            )
+            .await;
             bs.play(mv);
             moves_list.push(format!("{:#}", mv));
             move_counter += 1;
@@ -194,7 +192,8 @@ fn generator_main(
         debug_print!(
             "{}",
             &format!(
-                "first move engine_{} opening {}, moves {}",
+                "{} first move engine_{} opening {}, moves {}",
+                thread_name,
                 swap_count % 2,
                 fen,
                 moves_list_str
@@ -223,10 +222,10 @@ fn collector_main(
     loop {
         let msg = receiver.recv().unwrap();
         match msg {
-            CollectorMessage::FinishedGame(_) |
-            CollectorMessage::GeneratorStatistics(_) |
-            CollectorMessage::ExecutorStatistics(_) |
-            CollectorMessage::GameResult(_) => {
+            CollectorMessage::FinishedGame(_)
+            | CollectorMessage::GeneratorStatistics(_)
+            | CollectorMessage::ExecutorStatistics(_)
+            | CollectorMessage::GameResult(_) => {
                 panic!("not possible! this is to test engine changes");
             }
             CollectorMessage::TestingResult(result) => {
