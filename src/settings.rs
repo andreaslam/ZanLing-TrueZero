@@ -36,7 +36,6 @@ impl PlayoutCapSettings {
 
 #[derive(Clone, Debug, PartialEq, Copy)]
 pub struct MovesLeftSettings {
-    pub moves_left: f32,
     pub moves_left_weight: f32,
     pub moves_left_clip: f32,
     pub moves_left_sharpness: f32,
@@ -45,7 +44,6 @@ pub struct MovesLeftSettings {
 impl MovesLeftSettings {
     pub fn new(moves_left_weight: f32, moves_left_clip: f32, moves_left_sharpness: f32) -> Self {
         Self {
-            moves_left: f32::NAN,
             moves_left_weight,
             moves_left_clip,
             moves_left_sharpness,
