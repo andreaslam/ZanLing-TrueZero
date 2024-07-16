@@ -338,7 +338,10 @@ fn commander_main(
                 MessageType::JobSendData(_) => {}
                 MessageType::NewNetworkData(data) => {
                     println!("new net path");
-                    net_path = format!("nets/tz_temp_net_{}_{}_{}.pt", generator_id, net_path_counter, net_save_timestamp);
+                    net_path = format!(
+                        "nets/tz_temp_net_{}_{}_{}.pt",
+                        generator_id, net_path_counter, net_save_timestamp
+                    );
                     let mut file = File::create(net_path.clone()).expect("Unable to create file");
                     file.write_all(&data).expect("Unable to write data");
                     net_timestamp = SystemTime::now();
