@@ -2,7 +2,6 @@ use crossbeam::thread;
 use flume::{Receiver, Sender};
 use futures::executor::ThreadPool;
 use lru::LruCache;
-use rand::prelude::*;
 use std::{
     cmp::{max, min},
     env,
@@ -14,9 +13,9 @@ use std::{
     path::Path,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+use tch::Tensor;
 use tz_rust::{
     cache::{CacheEntryKey, CacheEntryValue},
-    dummyreq::{send_request, send_request_async},
     executor::{executor_main, Packet},
     fileformat::BinaryOutput,
     mcts_trainer::{EvalMode, TypeRequest::TrainerSearch},
@@ -70,78 +69,45 @@ fn main() {
         }
 
         let (id_send, id_recv) = flume::bounded::<usize>(1);
+        // selfplay send/recv pair
+        let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(num_generators); // mcts to executor
+
+        // spawn executor threads
+
+        for (exec_id, communicate_exe_recv) in vec_communicate_exe_recv.into_iter().enumerate() {
+            let eval_per_sec_sender = game_sender.clone();
+            let tensor_exe_recv_clone = tensor_exe_recv.clone();
+            let _ = s
+                .builder()
+                .name(format!("executor-{}", exec_id).to_string())
+                .spawn(move |_| {
+                    executor_main(
+                        communicate_exe_recv,
+                        tensor_exe_recv_clone,
+                        batch_size,
+                        eval_per_sec_sender,
+                        exec_id,
+                    )
+                })
+                .unwrap();
+        }
+
+        // commander will handle evaluation requests as well
 
         let _ = s
             .builder()
             .name("commander".to_string())
             .spawn(|_| {
-                commander_main(
+                commander_executor(
                     vec_communicate_exe_send,
                     &mut stream.try_clone().expect("clone failed"),
                     id_send,
-                )
-            })
-            .unwrap();
-
-        // selfplay threads
-        let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(num_generators); // mcts to executor
-
-        // write code to replace executor with requests to server
-
-        for n in 0..num_generators {
-            let sender_clone = game_sender.clone();
-            let mut selfplay_master = DataGen { iterations: 1 };
-            let tensor_exe_send_clone = tensor_exe_send.clone();
-            let fut_generator = async move {
-                generator_main(sender_clone, selfplay_master, tensor_exe_send_clone, n).await;
-            };
-            pool.spawn_ok(fut_generator);
-        }
-
-        let _ = s
-            .builder()
-            .name("collector".to_string())
-            .spawn(|_| {
-                collector_main(
-                    &game_receiver,
-                    &mut stream.try_clone().expect("clone failed"),
-                    id_recv,
+                    tensor_exe_send,
                 )
             })
             .unwrap();
     })
     .unwrap();
-}
-
-async fn generator_main(
-    sender_collector: Sender<CollectorMessage>,
-    datagen: DataGen,
-    tensor_exe_send: Sender<Packet>,
-    id: usize,
-) -> ! {
-    let settings: SearchSettings = SearchSettings {
-        fpu: 0.0,
-        wdl: EvalMode::Value,
-        moves_left: None,
-        c_puct: 3.0,
-        max_nodes: 400,
-        alpha: 0.3,
-        eps: 0.3,
-        search_type: TrainerSearch(None),
-        pst: 1.25,
-    };
-    let nps_sender = sender_collector.clone();
-    let mut cache: LruCache<CacheEntryKey, CacheEntryValue> =
-        LruCache::new(NonZeroUsize::new(10000).unwrap());
-    loop {
-        let sim = datagen
-            .play_game(&tensor_exe_send, &nps_sender, &settings, id, &mut cache)
-            .await;
-        sender_collector
-            .send_async(CollectorMessage::FinishedGame(sim))
-            .await
-            .unwrap();
-    }
 }
 
 fn serialise_file_to_bytes(file_path: &str) -> io::Result<Vec<u8>> {
@@ -153,117 +119,6 @@ fn serialise_file_to_bytes(file_path: &str) -> io::Result<Vec<u8>> {
     Ok(buffer)
 }
 
-fn collector_main(
-    receiver: &Receiver<CollectorMessage>,
-    server_handle: &mut TcpStream,
-    id_recv: Receiver<usize>,
-) {
-    let thread_name = std::thread::current()
-        .name()
-        .unwrap_or("unnamed")
-        .to_owned();
-    let folder_name = "games";
-    if let Err(e) = fs::create_dir(folder_name) {
-        if e.kind() != std::io::ErrorKind::AlreadyExists {
-            println!("Error creating folder: {}", e);
-        }
-    } else {
-        println!("created {}", folder_name);
-    }
-    let id = id_recv.recv().unwrap();
-    let file_save_time = SystemTime::now();
-    let file_save_time_duration = file_save_time
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards");
-    let file_save_time_num = file_save_time_duration.as_nanos();
-    let mut path = format!("games/gen_{}_games_{}", id, file_save_time_num);
-    let mut bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
-    let mut nps_start_time = Instant::now();
-    let mut nps_vec: Vec<usize> = Vec::new();
-    let mut evals_start_time = Instant::now();
-    let mut evals_vec: Vec<usize> = Vec::new();
-    let files = [".bin", ".off", ".json"];
-    loop {
-        let msg = receiver.recv().unwrap();
-        match msg {
-            CollectorMessage::FinishedGame(sim) => {
-                bin_output.append(&sim).unwrap();
-                if bin_output.game_count() >= 100 {
-                    bin_output.finish().unwrap();
-                    let mut file_data: Vec<Vec<u8>> = Vec::new(); // Clear file_data vector
-                    for file in files {
-                        let file_path = format!("{}{}", path, file);
-                        let data = serialise_file_to_bytes(&file_path).unwrap();
-                        file_data.push(data);
-                    }
-
-                    let (bin_file, off_file, metadata) = (
-                        file_data[0].clone(),
-                        file_data[1].clone(),
-                        file_data[2].clone(),
-                    );
-
-                    let message = MessageServer {
-                        purpose: MessageType::JobSendData(vec![
-                            DataFileType::BinFile(bin_file),
-                            DataFileType::OffFile(off_file),
-                            DataFileType::MetaDataFile(metadata),
-                        ]),
-                    };
-                    let mut serialised =
-                        serde_json::to_string(&message).expect("serialisation failed");
-                    serialised += "\n";
-                    server_handle.write_all(serialised.as_bytes()).unwrap();
-
-                    let file_save_time = SystemTime::now();
-                    let file_save_time_duration = file_save_time
-                        .duration_since(UNIX_EPOCH)
-                        .expect("Time went backwards");
-                    let file_save_time_num = file_save_time_duration.as_nanos();
-                    path = format!("games/gen_{}_games_{}", id, file_save_time_num);
-                    bin_output = BinaryOutput::new(path.clone(), "chess").unwrap();
-                }
-            }
-            CollectorMessage::GeneratorStatistics(nps) => {
-                if nps_start_time.elapsed() >= Duration::from_secs(1) {
-                    let nps: usize = nps_vec.iter().sum();
-                    nps_start_time = Instant::now();
-                    nps_vec = Vec::new();
-                    let message = MessageServer {
-                        purpose: MessageType::StatisticsSend(Statistics::NodesPerSecond(nps)),
-                    };
-                    let mut serialised =
-                        serde_json::to_string(&message).expect("serialisation failed");
-                    serialised += "\n";
-                    server_handle.write_all(serialised.as_bytes()).unwrap();
-                } else {
-                    nps_vec.push(nps);
-                }
-            }
-            CollectorMessage::ExecutorStatistics(evals_per_sec) => {
-                if evals_start_time.elapsed() >= Duration::from_secs(1) {
-                    let evals_per_second: usize = evals_vec.iter().sum();
-                    evals_start_time = Instant::now();
-                    evals_vec = Vec::new();
-                    let message = MessageServer {
-                        purpose: MessageType::StatisticsSend(Statistics::EvalsPerSecond(
-                            evals_per_second as usize,
-                        )),
-                    };
-                    let mut serialised =
-                        serde_json::to_string(&message).expect("serialisation failed");
-                    serialised += "\n";
-                    server_handle.write_all(serialised.as_bytes()).unwrap();
-                } else {
-                    evals_vec.push(evals_per_sec);
-                }
-            }
-            CollectorMessage::GameResult(_) => {}
-            CollectorMessage::TestingResult(_) => {}
-        }
-    }
-}
-
 fn directory_exists<P: AsRef<Path>>(path: P) -> bool {
     match fs::metadata(path) {
         Ok(metadata) => metadata.is_dir(),
@@ -271,10 +126,11 @@ fn directory_exists<P: AsRef<Path>>(path: P) -> bool {
     }
 }
 
-fn commander_main(
+fn commander_executor(
     vec_exe_sender: Vec<Sender<String>>,
     server_handle: &mut TcpStream,
     id_sender: Sender<usize>,
+    tensor_sender: Sender<Packet>,
 ) {
     let mut curr_net = String::new();
     let mut is_initialised = false;
@@ -324,6 +180,13 @@ fn commander_main(
                 MessageType::TBLink(_) => {}
                 MessageType::CreateTB => {}
                 MessageType::RequestingTBLink => {}
+                MessageType::EvaluationRequest(input_data) => {
+                    let tensor_packet = Packet {
+                        job: Tensor::from_slice(&input_data.data),
+                        resender: todo!(),
+                        id: todo!(),
+                    };
+                }
             }
         } else {
             match message.purpose {
@@ -353,6 +216,7 @@ fn commander_main(
                 MessageType::TBLink(_) => {}
                 MessageType::CreateTB => {}
                 MessageType::RequestingTBLink => {}
+                MessageType::EvaluationRequest(_) => {}
             }
         }
 
