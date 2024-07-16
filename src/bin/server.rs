@@ -86,7 +86,7 @@ fn handle_client(
                                     purpose: MessageType::RequestingNet,
                                 };
                                 let mut serialised = serde_json::to_string(&extra_request)
-                                    .expect("serialization failed");
+                                    .expect("serialisation failed");
                                 serialised += "\n";
                                 if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
                                     eprintln!("Error sending identification! {}", msg);
@@ -130,7 +130,7 @@ fn handle_client(
                             println!("[Server] Requested TensorBoard link");
 
                             let mut serialised = serde_json::to_string(&tb_link_request)
-                                .expect("serialization failed");
+                                .expect("serialisation failed");
                             serialised += "\n";
                             if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
                                 eprintln!("Error sending identification! {}", msg);
@@ -141,7 +141,7 @@ fn handle_client(
                         }
                     }
                     let mut serialised =
-                        serde_json::to_string(&message_send).expect("serialization failed");
+                        serde_json::to_string(&message_send).expect("serialisation failed");
                     serialised += "\n";
                     if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
                         eprintln!("Error sending identification! {}", msg);
@@ -288,6 +288,9 @@ fn handle_client(
                             needs_tb_link = true;
                         }
                     }
+                }
+                MessageType::EvaluationRequest(input_data) => {
+                    // TODO: process evaluation requests
                 }
             }
             // println!("[Message] {:?}", message);
