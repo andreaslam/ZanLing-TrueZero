@@ -43,7 +43,7 @@ fn main() {
     let message = MessageServer {
         purpose: MessageType::Initialise(Entity::RustDataGen),
     };
-    let serialised = serde_json::to_string(&message).expect("serialization failed");
+    let serialised = serde_json::to_string(&message).expect("serialisation failed");
     let mut serialised = serialised + "\n";
     stream
         .write_all(serialised.as_bytes())
