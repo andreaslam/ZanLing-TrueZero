@@ -8,7 +8,6 @@ use crate::{
     executor::{Packet, ReturnMessage},
     mvs::get_contents,
     settings::SearchSettings,
-    superluminal::{CL_GREEN, CL_PINK},
     uci::eval_in_cp,
     utils::TimeStampDebugger,
 };
@@ -30,15 +29,14 @@ use tch::{
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-
 pub enum TypeRequest {
     TrainerSearch(Option<ExpansionType>),
     NonTrainerSearch,
     SyntheticSearch,
-
     UCISearch,
     VisualiserMode,
 }
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ExpansionType {
     PolicyExpansion,
@@ -46,7 +44,6 @@ pub enum ExpansionType {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-
 pub enum EvalMode {
     Wdl,   // use wdl
     Value, // use value itself (1 value)
@@ -58,7 +55,6 @@ pub struct Net {
 }
 
 impl Net {
-    /// creates a new `Net` instance by loading a model from the specified path
     pub fn new(path: &str) -> Self {
         let device = if has_cuda() {
             if Cuda::cudnn_is_available() {
@@ -77,7 +73,7 @@ impl Net {
             device: device,
         }
     }
-    /// creates a new `Net` instance with a specified device ID (supports only CUDA)
+
     pub fn new_with_device_id(path: &str, id: usize) -> Self {
         let device = if has_cuda() {
             if Cuda::cudnn_is_available() {
@@ -108,13 +104,12 @@ impl Net {
 #[derive(PartialEq, Debug)]
 pub struct Tree {
     pub board: BoardStack,
-    pub nodes: Vec<Node>, // this is where all the `Nodes` are stored, as opposed to storing them individually in `Node.children`
+    pub nodes: Vec<Node>,
     pub settings: SearchSettings,
     pub pv: String,
 }
 
 impl Tree {
-    /// creates a new `Tree` instance with a given board state and search settings
     pub fn new(board: BoardStack, settings: SearchSettings) -> Tree {
         let root_node = Node::new(0.0, None, None);
         let mut container: Vec<Node> = Vec::new();
@@ -128,17 +123,14 @@ impl Tree {
         }
     }
 
-    /// executes one iteration of MCTS (selection, expansion, evaluation and backpropagation)
-
     pub async fn step(
         &mut self,
-        tensor_exe_send: &Sender<Packet>, // sender to send tensors to `executor.rs``, which gathers MCTS simulations to execute in a batch
-        sw: Instant,                      // timer for UCI
-        id: usize,                        // unique ID assigned to each thread for debugging
-        mut cache: &mut LruCache<CacheEntryKey, CacheEntryValue>,
+        tensor_exe_send: &Sender<Packet>,
+        sw: Instant,
+        id: usize,
+        cache: &mut LruCache<CacheEntryKey, CacheEntryValue>,
     ) {
         let thread_name = format!("mcts-{}", id);
-
         let step_debugger = TimeStampDebugger::create_debug();
 
         let (selected_node, input_b, (min_depth, max_depth)) = self.select();
@@ -151,11 +143,7 @@ impl Tree {
         let selected_node = selected_node;
         let idx_li: Vec<usize>;
 
-        // check if the board has reached terminal state in selection
-
         if !input_b.is_terminal() {
-            // check whether board position is in cache
-
             let cache_key = CacheEntryKey {
                 hash: input_b.board().hash(),
                 halfmove_clock: input_b.board().halfmove_clock(),
@@ -163,39 +151,33 @@ impl Tree {
 
             idx_li = match cache.get(&cache_key) {
                 Some(packet) => {
-                    // retrieve non-policy data
                     let ct = self.nodes.len();
 
                     self.nodes[selected_node].value = packet.eval_score;
                     self.nodes[selected_node].wdl = packet.wdl;
                     self.nodes[selected_node].moves_left = packet.moves_left;
 
-                    // retrieve policy data and children
-
-                    let contents = get_contents(); // this extracts the mapping for policy nodes according to `mvs.rs`
-                    let (_, idx_li) = extract_policy(&input_b, contents); // filters the correct indices of policy nodes according to current board legal moves
+                    let contents = get_contents();
+                    let (_, idx_li) = extract_policy(&input_b, contents);
                     let mut legal_moves: Vec<Move> = Vec::new();
                     input_b.board().generate_moves(|moves| {
-                        // Unpack dense move set into move list
                         legal_moves.extend(moves);
                         false
                     });
 
                     let mut counter = 0;
-
                     for mv in legal_moves {
                         let pol = packet.policy[counter];
                         let new_child = Node::new(pol, Some(selected_node), Some(mv));
-                        self.nodes.push(new_child); // push child to the tree Vec<Node>
+                        self.nodes.push(new_child);
                         counter += 1;
                     }
-                    self.nodes[selected_node].children = ct..ct + counter; // push indices of `Node.children` (type `Range<usize>`)
-
-                    idx_li // returns  idx_li, which is used for indexing legal moves
+                    self.nodes[selected_node].children = ct..ct + counter;
+                    idx_li
                 }
                 None => {
-                    self.eval_and_expand(&selected_node, &input_b, &tensor_exe_send, id, cache)
-                        .await // if there are no corresponding entries in the cache, request a nn evaluation
+                    self.eval_and_expand(&selected_node, &input_b, tensor_exe_send, id, cache)
+                        .await
                 }
             };
 
@@ -204,11 +186,9 @@ impl Tree {
             if selected_node == 0 {
                 legal_moves = Vec::new();
                 self.board.board().generate_moves(|moves| {
-                    // Unpack dense move set into move list
                     legal_moves.extend(moves);
                     false
                 });
-                // add policy softmax temperature and Dirichlet noise
                 let mut sum = 0.0;
                 for child in self.nodes[0].children.clone() {
                     self.nodes[child].policy = self.nodes[child].policy.powf(self.settings.pst);
@@ -217,29 +197,20 @@ impl Tree {
                 for child in self.nodes[0].children.clone() {
                     self.nodes[child].policy /= sum;
                 }
-                match self.settings.search_type {
-                    TypeRequest::TrainerSearch(_) => {
-                        // add Dirichlet noise
-                        let mut std_rng = StdRng::from_entropy();
-                        let distr = StableDirichlet::new(self.settings.alpha, legal_moves.len())
-                            .expect("wrong params");
-                        let sample = std_rng.sample(distr);
-                        //  debug_print(&format!("noise: {:?}", sample));
-                        for child in self.nodes[0].children.clone() {
-                            self.nodes[child].policy = (1.0 - self.settings.eps)
-                                * self.nodes[child].policy
-                                + (self.settings.eps * sample[child - 1]);
-                        }
+                if let TypeRequest::TrainerSearch(_) = self.settings.search_type {
+                    let mut std_rng = StdRng::from_entropy();
+                    let distr = StableDirichlet::new(self.settings.alpha, legal_moves.len())
+                        .expect("wrong params");
+                    let sample = std_rng.sample(distr);
+                    for child in self.nodes[0].children.clone() {
+                        self.nodes[child].policy = (1.0 - self.settings.eps)
+                            * self.nodes[child].policy
+                            + (self.settings.eps * sample[child - 1]);
                     }
-                    TypeRequest::NonTrainerSearch => {}
-                    TypeRequest::SyntheticSearch => {}
-                    TypeRequest::UCISearch => {}
-                    TypeRequest::VisualiserMode => {}
                 }
                 self.nodes[0].display_full_tree(self);
             }
         } else {
-            // handle terminal nodes - value and WDL assignment
             let wdl = match input_b.status() {
                 GameStatus::Drawn => Wdl {
                     w: 0.0,
@@ -258,9 +229,7 @@ impl Tree {
                         l: 1.0,
                     },
                 },
-                GameStatus::Ongoing => {
-                    unreachable!()
-                }
+                GameStatus::Ongoing => unreachable!(),
             };
             self.nodes[selected_node].value = wdl.w - wdl.l;
             self.nodes[selected_node].wdl = wdl;
@@ -273,49 +242,44 @@ impl Tree {
         }
         for child in self.nodes[0].children.clone() {
             let display_str = self.display_node(child);
-            debug_print!("{}", &format!("children: {}", &display_str))
+            debug_print!("{}", &format!("children: {}", &display_str));
         }
         self.nodes[0].display_full_tree(self);
-        match self.settings.search_type {
-            TypeRequest::UCISearch => {
-                let cp_eval = eval_in_cp(self.nodes[selected_node].value);
-                let elapsed_ms = sw.elapsed().as_nanos() as f32 / 1e6;
-                let nps =
-                    self.nodes[0].visits as f32 / (sw.elapsed().as_nanos() as f32 / 1e9 as f32);
-                let (pv, mate) = self.get_pv();
-                let eval_string = {
-                    if mate {
-                        format!("mate {}", pv.len())
-                    } else {
-                        format!(
-                            "cp {}",
-                            (cp_eval * 100.).round().max(-1000.).min(1000.) as i64,
-                        )
-                    }
-                };
-                if self.pv != pv {
-                    println!(
-                        "info depth {} seldepth {} score {} nodes {} nps {} time {} pv {}",
-                        min_depth,
-                        max_depth,
-                        eval_string,
-                        self.nodes.len(),
-                        nps as usize,
-                        elapsed_ms as usize,
-                        pv,
-                    );
-                    self.pv = pv;
+        if let TypeRequest::UCISearch = self.settings.search_type {
+            let cp_eval = eval_in_cp(self.nodes[selected_node].value);
+            let elapsed_ms = sw.elapsed().as_nanos() as f32 / 1e6;
+            let nps = self.nodes[0].visits as f32 / (sw.elapsed().as_nanos() as f32 / 1e9 as f32);
+            let (pv, mate) = self.get_pv();
+            let eval_string = {
+                if mate {
+                    format!("mate {}", pv.len())
                 } else {
+                    format!(
+                        "cp {}",
+                        (cp_eval * 100.).round().max(-1000.).min(1000.) as i64,
+                    )
                 }
+            };
+            if self.pv != pv {
+                println!(
+                    "info depth {} seldepth {} score {} nodes {} nps {} time {} pv {}",
+                    min_depth,
+                    max_depth,
+                    eval_string,
+                    self.nodes.len(),
+                    nps as usize,
+                    elapsed_ms as usize,
+                    pv,
+                );
+                self.pv = pv;
             }
-            _ => {}
         }
     }
 
     fn get_pv(&self) -> (String, bool) {
         let mut pv_nodes: Vec<usize> = vec![];
         let mut curr_node = 0;
-        let mut terminal = false; // by default assume the pv has not reached mate
+        let mut terminal = false;
         loop {
             if self.nodes[curr_node].children.is_empty() || self.board.is_terminal() {
                 if self.board.is_terminal() {
@@ -342,8 +306,8 @@ impl Tree {
     }
 
     pub fn depth_range(&self, node: usize) -> (usize, usize) {
-        match self.settings.search_type {
-            TypeRequest::UCISearch => match self.nodes[node].children.len() {
+        if let TypeRequest::UCISearch = self.settings.search_type {
+            match self.nodes[node].children.len() {
                 0 => (0, 0),
                 _ => {
                     let mut total_min = usize::MAX;
@@ -357,17 +321,16 @@ impl Tree {
 
                     (total_min + 1, total_max + 1)
                 }
-            },
-            _ => (0, 0),
+            }
+        } else {
+            (0, 0)
         }
     }
 
-    /// selects the node to expand based on the PUCT formula/policy score if the visit count is 0
     fn select(&mut self) -> (usize, BoardStack, (usize, usize)) {
         let mut curr: usize = 0;
         debug_print!("{}", &format!("    selection:"));
-        let mut input_b: BoardStack;
-        input_b = self.board.clone();
+        let mut input_b: BoardStack = self.board.clone();
         let fenstr = format!("{}", &input_b.board());
         debug_print!("{}", &format!("    board FEN: {}", fenstr));
         let mut depth = 1;
@@ -377,13 +340,10 @@ impl Tree {
             if curr_node.children.is_empty() || input_b.is_terminal() {
                 break;
             }
-            // get number of visits for children
-            // step 1, use curr.children vec<usize> to index tree.nodes (get a slice)
             let children = &curr_node.children;
-            // step 2, iterate over them and get the child with highest PUCT value
             let mut total_visits = 0;
             for child in children.clone() {
-                total_visits += &self.nodes[child].visits;
+                total_visits += self.nodes[child].visits;
             }
             (_, max_depth) = self.depth_range(curr);
             curr = children
@@ -403,15 +363,7 @@ impl Tree {
                         input_b.board().side_to_move(),
                         self.settings,
                     );
-                     debug_print!("{}",&format!(
-                        "{}, {}",
-                        self.display_node(*a),
-                        self.display_node(*b)
-                    ));
-                     debug_print!("{}",&format!("{}, {}", a_puct, b_puct));
-                     debug_print!("{}",&format!("    CURRENT {:?}, {:?}", &a_node, &b_node));
                     if a_puct == b_puct || curr_node.visits == 0 {
-                        // if PUCT values are equal or parent visits == 0, use largest policy as tiebreaker
                         let a_policy = a_node.policy;
                         let b_policy = b_node.policy;
                         a_policy.partial_cmp(&b_policy).unwrap()
@@ -420,33 +372,33 @@ impl Tree {
                     }
                 })
                 .expect("Error");
-            debug_print!("{}",&format!("{}, {}", total_visits + 1, curr_node.visits));
+            debug_print!("{}", &format!("{}, {}", total_visits + 1, curr_node.visits));
             assert!(total_visits + 1 == curr_node.visits);
             let display_str = self.display_node(curr);
-            debug_print!("{}",&format!("        selected: {}", display_str));
+            debug_print!("{}", &format!("        selected: {}", display_str));
             input_b.play(self.nodes[curr].mv.expect("Error"));
             depth += 1;
         }
         let display_str = self.display_node(curr);
-         debug_print!("{}",&format!("    {}", display_str));
-         debug_print!("{}",&format!("        children:"));
+        debug_print!("{}", &format!("    {}", display_str));
+        debug_print!("{}", &format!("        children:"));
 
         (curr, input_b, (depth, max_depth))
     }
 
-    /// evaluates selected node using the neural network by sending the input tensors to `executor.rs` through async sender
-    /// then the results are sent back and calls `decoder.rs` to process the nn ouputs and update the tree
     async fn eval_and_expand(
         &mut self,
         selected_node_idx: &usize,
         bs: &BoardStack,
         tensor_exe_send: &Sender<Packet>,
         id: usize,
-        mut cache: &mut LruCache<CacheEntryKey, CacheEntryValue>,
+        cache: &mut LruCache<CacheEntryKey, CacheEntryValue>,
     ) -> Vec<usize> {
-        let input_tensor = convert_board(&bs);
+        debug_print!("    eval_and_expand:");
 
-        let (resender_send, resender_recv) = flume::bounded::<ReturnMessage>(1); // mcts to `executor.rs`
+        let input_tensor = convert_board(bs);
+
+        let (resender_send, resender_recv) = flume::bounded::<ReturnMessage>(1);
         let thread_name = std::thread::current()
             .name()
             .unwrap_or("unnamed-generator")
@@ -457,21 +409,9 @@ impl Tree {
             id: thread_name.clone(),
         };
 
-        begin_event_with_color("send_request", CL_GREEN);
-        let send_logger = TimeStampDebugger::create_debug();
         tensor_exe_send.send_async(pack).await.unwrap();
-        if id % 512 == 0 {
-            send_logger.record("send_request", thread_name.as_str());
-        }
-        end_event();
 
-        begin_event_with_color("recv_request", CL_PINK);
         let output = resender_recv.recv_async().await.unwrap();
-        end_event();
-        let recv_logger = TimeStampDebugger::create_debug();
-        if id % 512 == 0 {
-            recv_logger.record("recv_request", thread_name.as_str());
-        }
         let output = match output {
             ReturnMessage::ReturnMessage(Ok(output)) => output,
             ReturnMessage::ReturnMessage(Err(_)) => panic!("error in returning!"),
@@ -480,39 +420,43 @@ impl Tree {
         assert!(thread_name == output.id);
         let idx_li = process_board_output(
             (&output.packet.0, &output.packet.1),
-            &selected_node_idx,
+            selected_node_idx,
             self,
-            &bs,
+            bs,
             cache,
         );
 
         idx_li
     }
 
-    /// backpropagates the evaluation results up the tree
     fn backpropagate(&mut self, node: usize) {
         debug_print!("{}", &format!("    backpropagation:"));
-        let mut curr: Option<usize> = Some(node); // used to index parent
+        let n = self.nodes[node].value;
+        let mut curr: Option<usize> = Some(node);
         debug_print!("{}", &format!("    curr: {:?}", curr));
         let wdl = self.nodes[node].wdl;
         let value = self.nodes[node].value;
         let mut moves_left = self.nodes[node].moves_left;
+        debug_print!("moves left {}", moves_left);
         while let Some(current) = curr {
             self.nodes[current].visits += 1;
-            self.nodes[current].total_action_value += value;
+            self.nodes[current].total_action_value += n;
             self.nodes[current].total_wdl += wdl;
             self.nodes[current].moves_left_total += moves_left;
             moves_left += 1.0;
-            debug_print!("{}", &format!(
-                "    updated total action value: {}",
-                self.nodes[current].total_action_value
-            ));
+            debug_print!(
+                "{}",
+                &format!(
+                    "    updated total action value: {}",
+                    self.nodes[current].total_action_value
+                )
+            );
             curr = self.nodes[current].parent;
             let display_str = self.display_node(current);
-            debug_print!("{}",&format!("        updated node to {}", display_str));
+            debug_print!("{}", &format!("        updated node to {}", display_str));
         }
     }
-    /// Displays information on a node [debug]
+
     pub fn display_node(&self, id: usize) -> String {
         if cfg!(debug_assertions) {
             let u: f32;
@@ -549,7 +493,7 @@ impl Tree {
             }
 
             format!(
-                "Node(action= {}, V= {}, N={}, W={}, P={}, Q={}, U={}, PUCT={}, len_children={}, wdl={}, w={}, d={}, l={})",
+                "Node(action= {}, V= {}, N={}, W={}, P={}, Q={}, U={}, PUCT={}, len_children={}, wdl={}, w={}, d={}, l={}, M={}, M_total={})",
                 mv_n,
                 self.nodes[id].value,
                 self.nodes[id].visits,
@@ -563,6 +507,8 @@ impl Tree {
                 self.nodes[id].wdl.w,
                 self.nodes[id].wdl.d,
                 self.nodes[id].wdl.l,
+                self.nodes[id].moves_left,
+                self.nodes[id].moves_left_total,
             )
         } else {
             String::new()
@@ -593,7 +539,7 @@ pub struct Node {
     pub children: Range<usize>,
     pub policy: f32,
     pub visits: u32,
-    pub value: f32, // -1 for black and 1 for white
+    pub value: f32,
     pub total_action_value: f32,
     pub wdl: Wdl,
     pub total_wdl: Wdl,
@@ -602,6 +548,7 @@ pub struct Node {
     pub moves_left_total: f32,
     pub move_idx: Option<Vec<usize>>,
 }
+
 #[derive(PartialEq, Clone, Debug, Copy)]
 pub struct Wdl {
     pub w: f32,
@@ -610,7 +557,6 @@ pub struct Wdl {
 }
 
 impl Wdl {
-    /// utility function that inverts the winning and losing probabilities
     pub fn flip(self) -> Self {
         Wdl {
             w: self.l,
@@ -630,7 +576,7 @@ impl std::ops::AddAssign for Wdl {
 
 impl Node {
     pub fn get_q_val(&self, settings: SearchSettings) -> f32 {
-        let fpu = settings.fpu; // First Player Urgency
+        let fpu = settings.fpu;
         if self.visits > 0 {
             let total = match settings.wdl {
                 EvalMode::Wdl => self.total_wdl.w - self.total_wdl.l,
@@ -643,7 +589,11 @@ impl Node {
     }
 
     pub fn get_u_val(&self, parent_visits: u32, settings: SearchSettings) -> f32 {
-        let c_puct = settings.c_puct; // "constant determining the level of exploration"
+        println!(
+            "parent_visits {}, self.visits {}",
+            parent_visits, self.visits
+        );
+        let c_puct = settings.c_puct;
         c_puct * self.policy * ((parent_visits - 1) as f32).sqrt() / (1.0 + self.visits as f32)
     }
 
@@ -656,25 +606,22 @@ impl Node {
     ) -> f32 {
         let u = self.get_u_val(parent_visits, settings);
         let q = self.get_q_val(settings);
-        let puct_logit = match settings.moves_left {
-            Some(weights) => {
-                let m = if self.visits == 0 {
-                    // don't even bother with moves_left if we don't have any information
-                    0.0
-                } else {
-                    // this node has been visited, so we know parent_moves_left is also a useful value
-                    self.moves_left - (parent_moves_left - 1.0)
-                };
-                let m_unit = if weights.moves_left_weight == 0.0 {
-                    0.0
-                } else {
-                    let m_clipped = m.clamp(-weights.moves_left_clip, weights.moves_left_clip);
-                    (weights.moves_left_sharpness * m_clipped * -q).clamp(-1.0, 1.0)
-                }; // tries to speed up the game if winning and vice versa
-
-                q + settings.c_puct * u + weights.moves_left_weight * m_unit
-            }
-            None => q + u,
+        let puct_logit = if let Some(weights) = settings.moves_left {
+            let m = if self.visits == 0 {
+                0.0
+            } else {
+                self.moves_left - (parent_moves_left - 1.0)
+            };
+            let m_unit = if weights.moves_left_weight == 0.0 {
+                0.0
+            } else {
+                let m_clipped = m.clamp(-weights.moves_left_clip, weights.moves_left_clip);
+                (weights.moves_left_sharpness * m_clipped * -q).clamp(-1.0, 1.0)
+            };
+            println!("moves_left_weight={} m_unit={}, m={}", weights.moves_left_weight, m_unit, m);
+            q + u + weights.moves_left_weight * m_unit
+        } else {
+            q + u
         };
         match player {
             Color::Black => -puct_logit,
@@ -703,11 +650,10 @@ impl Node {
                 l: 0.0,
             },
             moves_left: f32::NAN,
-            moves_left_total: f32::NAN,
+            moves_left_total: 0.0,
         }
     }
 
-    /// recursively prints the tree containing information about each node [debug]
     pub fn layer_p(&self, depth: u8, max_tree_print_depth: u8, tree: &Tree) {
         if cfg!(debug_assertions) {
             let indent = "    ".repeat(depth as usize + 2);
@@ -715,7 +661,6 @@ impl Node {
                 if !self.children.is_empty() {
                     for c in self.children.clone() {
                         let display_str = tree.display_node(c);
-
                         debug_print!("{}", &format!("{}{}", indent, display_str));
                         tree.nodes[c].layer_p(depth + 1, max_tree_print_depth, tree);
                     }
@@ -724,10 +669,8 @@ impl Node {
         }
     }
 
-    /// prints the entire tree with all node information [debug]
     pub fn display_full_tree(&self, tree: &Tree) {
         if cfg!(debug_assertions) {
-            println!("yoo");
             debug_print!("{}", &format!("        root node:"));
             let display_str = tree.display_node(0);
             debug_print!("{}", &format!("            {}", display_str));
@@ -739,14 +682,12 @@ impl Node {
     }
 }
 
-/// computes the best move using MCTS with nn given the number of total MCTS iteration. (handles tree creation as well). 
-/// to reuse cache simply pass a mutable reference `&mut LruCache<CacheEntryKey, CacheEntryValue>` while repeatedly calling the function
 pub async fn get_move(
     bs: BoardStack,
     tensor_exe_send: &Sender<Packet>,
     settings: SearchSettings,
     id: usize,
-    mut cache: &mut LruCache<CacheEntryKey, CacheEntryValue>,
+    cache: &mut LruCache<CacheEntryKey, CacheEntryValue>,
 ) -> (
     Move,
     ZeroEvaluation,
@@ -754,15 +695,13 @@ pub async fn get_move(
     ZeroEvaluation,
     u32,
 ) {
-    let sw_uci = Instant::now(); // timer for uci
+    let sw_uci = Instant::now();
     let thread_name = format!("mcts-{}", id);
-    //  debug_print(&format!("{:?}", &bs));
     let mut tree = Tree::new(bs, settings);
     if tree.board.is_terminal() {
         panic!("No valid move!/Board is already game over!");
     }
 
-    // let search_type = TypeRequest::TrainerSearch;
     while tree.nodes[0].visits < settings.max_nodes as u32 {
         debug_print!("{}", &format!("step {}", tree.nodes[0].visits));
         debug_print!(
@@ -772,7 +711,7 @@ pub async fn get_move(
 
         let get_move_debugger = TimeStampDebugger::create_debug();
 
-        tree.step(&tensor_exe_send, sw_uci, id, cache).await;
+        tree.step(tensor_exe_send, sw_uci, id, cache).await;
 
         if id % 512 == 0 {
             get_move_debugger.record("mcts_step", &thread_name);
@@ -788,7 +727,6 @@ pub async fn get_move(
     let all_same = child_visits.iter().all(|&x| x == child_visits[0]);
 
     let best_move_node = if !all_same {
-        // if visits to nodes are the same eg max_nodes=1
         tree.nodes[0]
             .children
             .clone()
@@ -812,9 +750,11 @@ pub async fn get_move(
     debug_print!("{}", &format!("{:#}", best_move.unwrap()));
     for child in tree.nodes[0].children.clone() {
         total_visits_list.push(tree.nodes[child].visits);
+        let msg = tree.display_node(child);
+        debug_print!("{}", msg);
     }
 
-    let display_str = tree.display_node(0); // print root node
+    let display_str = tree.display_node(0);
     debug_print!("{}", &format!("{}", display_str));
     let total_visits: u32 = total_visits_list.iter().sum();
 
@@ -847,13 +787,11 @@ pub async fn get_move(
     }
 
     let v_p = ZeroEvaluation {
-        // network evaluation, NOT search/empirical data
         values: tree.nodes[0].value,
         policy: all_pol,
     };
 
     let search_data = ZeroEvaluation {
-        // search data
         values: tree.nodes[0].get_q_val(tree.settings),
         policy: pi,
     };
