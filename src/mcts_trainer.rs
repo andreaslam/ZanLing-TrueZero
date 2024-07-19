@@ -234,7 +234,7 @@ impl Tree {
             self.nodes[selected_node].value = wdl.w - wdl.l;
             self.nodes[selected_node].wdl = wdl;
         }
-
+            
         self.backpropagate(selected_node);
         let backprop_debug = TimeStampDebugger::create_debug();
         if id % 512 == 0 {
@@ -432,8 +432,6 @@ impl Tree {
 
     pub fn backpropagate(&mut self, node: usize) {
         debug_print!("{}", &format!("    backpropagation:"));
-        let fenstr = format!("{}", &input_b.board());
-        debug_print!("{}", &format!("        board FEN: {}", fenstr));
         let value = self.nodes[node].value;
         let mut curr: Option<usize> = Some(node);
         debug_print!("{}", &format!("    curr: {:?}", curr));
