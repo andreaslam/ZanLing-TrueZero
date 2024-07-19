@@ -589,10 +589,6 @@ impl Node {
     }
 
     pub fn get_u_val(&self, parent_visits: u32, settings: SearchSettings) -> f32 {
-        println!(
-            "parent_visits {}, self.visits {}",
-            parent_visits, self.visits
-        );
         let c_puct = settings.c_puct;
         c_puct * self.policy * ((parent_visits - 1) as f32).sqrt() / (1.0 + self.visits as f32)
     }
@@ -618,7 +614,7 @@ impl Node {
                 let m_clipped = m.clamp(-weights.moves_left_clip, weights.moves_left_clip);
                 (weights.moves_left_sharpness * m_clipped * -q).clamp(-1.0, 1.0)
             };
-            println!("moves_left_weight={} m_unit={}, m={}", weights.moves_left_weight, m_unit, m);
+            // println!("moves_left_weight={} m_unit={}, m={}", weights.moves_left_weight, m_unit, m);
             q + u + weights.moves_left_weight * m_unit
         } else {
             q + u
