@@ -432,6 +432,8 @@ impl Tree {
 
     pub fn backpropagate(&mut self, node: usize) {
         debug_print!("{}", &format!("    backpropagation:"));
+        let fenstr = format!("{}", &input_b.board());
+        debug_print!("{}", &format!("        board FEN: {}", fenstr));
         let value = self.nodes[node].value;
         let mut curr: Option<usize> = Some(node);
         debug_print!("{}", &format!("    curr: {:?}", curr));
