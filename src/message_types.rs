@@ -1,6 +1,8 @@
 use pyo3::{exceptions::PyValueError, prelude::*};
 use serde::{Deserialize, Serialize};
 
+use crate::executor::Packet;
+
 // use crate::executor::FullPacket;
 
 #[pyclass]
@@ -43,6 +45,14 @@ pub enum MessageType {
     TBLink((String, String)),
     CreateTB,
     RequestingTBLink,
+    EvaluationRequest(ExternalPacket), // use Vec<f32> to handle raw input data
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub struct ExternalPacket {
+    pub data: Vec<f32>,
+    pub datagen_id: usize,
+    pub mcts_id: usize,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
