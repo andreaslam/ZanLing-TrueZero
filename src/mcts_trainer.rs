@@ -130,7 +130,7 @@ impl Tree {
         id: usize,
         cache: &mut LruCache<CacheEntryKey, CacheEntryValue>,
     ) {
-        let thread_name = format!("mcts-{}", id);
+        let thread_name = format!("generator-{}", id);
         let step_debugger = TimeStampDebugger::create_debug();
 
         let (selected_node, input_b, (min_depth, max_depth)) = self.select();
@@ -138,7 +138,7 @@ impl Tree {
             step_debugger.record("mcts select", &thread_name);
         }
 
-        self.nodes[0].display_full_tree(self);
+        // self.nodes[0].display_full_tree(self);
 
         let selected_node = selected_node;
         let idx_li: Vec<usize>;
@@ -208,7 +208,7 @@ impl Tree {
                             + (self.settings.eps * sample[child - 1]);
                     }
                 }
-                self.nodes[0].display_full_tree(self);
+                // self.nodes[0].display_full_tree(self);
             }
         } else {
             let wdl = match input_b.status() {
@@ -240,11 +240,12 @@ impl Tree {
         if id % 512 == 0 {
             backprop_debug.record("backpropagation", &thread_name);
         }
+        debug_print!("    all children:");
         for child in self.nodes[0].children.clone() {
             let display_str = self.display_node(child);
-            debug_print!("{}", &format!("children: {}", &display_str));
+            debug_print!("        {}", &format!("{}", &display_str));
         }
-        self.nodes[0].display_full_tree(self);
+        // self.nodes[0].display_full_tree(self);
         if let TypeRequest::UCISearch = self.settings.search_type {
             let cp_eval = eval_in_cp(self.nodes[selected_node].value);
             let elapsed_ms = sw.elapsed().as_nanos() as f32 / 1e6;
@@ -327,12 +328,12 @@ impl Tree {
         }
     }
 
-    fn select(&mut self) -> (usize, BoardStack, (usize, usize)) {
+    pub fn select(&mut self) -> (usize, BoardStack, (usize, usize)) {
         let mut curr: usize = 0;
         debug_print!("{}", &format!("    selection:"));
         let mut input_b: BoardStack = self.board.clone();
         let fenstr = format!("{}", &input_b.board());
-        debug_print!("{}", &format!("    board FEN: {}", fenstr));
+        debug_print!("{}", &format!("        board FEN: {}", fenstr));
         let mut depth = 1;
         let mut max_depth: usize = 1;
         loop {
@@ -429,18 +430,16 @@ impl Tree {
         idx_li
     }
 
-    fn backpropagate(&mut self, node: usize) {
+    pub fn backpropagate(&mut self, node: usize) {
         debug_print!("{}", &format!("    backpropagation:"));
-        let n = self.nodes[node].value;
+        let value = self.nodes[node].value;
         let mut curr: Option<usize> = Some(node);
         debug_print!("{}", &format!("    curr: {:?}", curr));
         let wdl = self.nodes[node].wdl;
-        let value = self.nodes[node].value;
         let mut moves_left = self.nodes[node].moves_left;
-        debug_print!("moves left {}", moves_left);
         while let Some(current) = curr {
             self.nodes[current].visits += 1;
-            self.nodes[current].total_action_value += n;
+            self.nodes[current].total_action_value += value;
             self.nodes[current].total_wdl += wdl;
             self.nodes[current].moves_left_total += moves_left;
             moves_left += 1.0;
@@ -468,6 +467,7 @@ impl Tree {
                         u = f32::NAN;
                         puct = f32::NAN;
                     } else {
+                        
                         u = self.nodes[id].get_u_val(self.nodes[*parent].visits, self.settings);
                         puct = self.nodes[id].puct_formula(
                             self.nodes[*parent].visits,
@@ -491,7 +491,6 @@ impl Tree {
                     mv_n = "Null".to_string();
                 }
             }
-
             format!(
                 "Node(action= {}, V= {}, N={}, W={}, P={}, Q={}, U={}, PUCT={}, len_children={}, wdl={}, w={}, d={}, l={}, M={}, M_total={})",
                 mv_n,
@@ -589,6 +588,10 @@ impl Node {
     }
 
     pub fn get_u_val(&self, parent_visits: u32, settings: SearchSettings) -> f32 {
+        // println!(
+        //     "parent_visits {}, self.visits {}",
+        //     parent_visits, self.visits
+        // );
         let c_puct = settings.c_puct;
         c_puct * self.policy * ((parent_visits - 1) as f32).sqrt() / (1.0 + self.visits as f32)
     }
@@ -614,7 +617,8 @@ impl Node {
                 let m_clipped = m.clamp(-weights.moves_left_clip, weights.moves_left_clip);
                 (weights.moves_left_sharpness * m_clipped * -q).clamp(-1.0, 1.0)
             };
-            // println!("moves_left_weight={} m_unit={}, m={}", weights.moves_left_weight, m_unit, m);
+            // debug_print!("{:?}, self {:?}, {}", player, self, q + u + weights.moves_left_weight * m_unit);
+            // debug_print!("moves_left_weight={} m_unit={}, m={}", weights.moves_left_weight, m_unit, m);
             q + u + weights.moves_left_weight * m_unit
         } else {
             q + u
@@ -692,7 +696,7 @@ pub async fn get_move(
     u32,
 ) {
     let sw_uci = Instant::now();
-    let thread_name = format!("mcts-{}", id);
+    let thread_name = format!("generator-{}", id);
     let mut tree = Tree::new(bs, settings);
     if tree.board.is_terminal() {
         panic!("No valid move!/Board is already game over!");
@@ -774,7 +778,7 @@ pub async fn get_move(
         let display_str = tree.display_node(child);
         debug_print!("{}", &format!("{}", display_str));
     }
-    tree.nodes[0].display_full_tree(&tree);
+    // tree.nodes[0].display_full_tree(&tree);
 
     let mut all_pol = Vec::new();
 
