@@ -366,7 +366,7 @@ impl Tree {
                         input_b.board().side_to_move(),
                         self.settings,
                     );
-                    
+
                     let msg = self.display_node(*a);
 
                     let msg = self.display_node(*b);
@@ -651,16 +651,26 @@ impl Node {
             // debug_print!("{:?}, self {:?}, {}", player, self, q + u + weights.moves_left_weight * m_unit);
             // debug_print!("moves_left_weight={} m_unit={}, m={}", weights.moves_left_weight, m_unit, m);
             // println!("{:?}", player);
-            
+
             match player {
                 Color::Black => {
-                    if self.visits > 0 {-q + u - weights.moves_left_weight * m_unit} else {q+u - weights.moves_left_weight}
-                },
+                    if self.visits > 0 {
+                        -q + u - weights.moves_left_weight * m_unit
+                    } else {
+                        q + u - weights.moves_left_weight
+                    }
+                }
                 Color::White => q + u + weights.moves_left_weight * m_unit,
             }
         } else {
             match player {
-                Color::Black => -q + u,
+                Color::Black => {
+                    if self.visits > 0 {
+                        -q + u
+                    } else {
+                        q + u
+                    }
+                }
                 Color::White => q + u,
             }
         };
