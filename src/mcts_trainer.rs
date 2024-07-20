@@ -607,7 +607,7 @@ pub struct Node {
     pub move_idx: Option<Vec<usize>>,
 }
 
-#[derive(PartialEq, Clone, Debug, Copy)]
+#[derive(PartialEq, Clone, Debug, Copy, Default)]
 pub struct Wdl {
     pub w: f32,
     pub d: f32,
