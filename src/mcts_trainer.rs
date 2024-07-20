@@ -234,7 +234,7 @@ impl Tree {
             self.nodes[selected_node].value = wdl.w - wdl.l;
             self.nodes[selected_node].wdl = wdl;
         }
-            
+
         self.backpropagate(selected_node);
         let backprop_debug = TimeStampDebugger::create_debug();
         if id % 512 == 0 {
@@ -329,6 +329,7 @@ impl Tree {
     }
 
     pub fn select(&mut self) -> (usize, BoardStack, (usize, usize)) {
+        // track moves colour in here
         let mut curr: usize = 0;
         debug_print!("{}", &format!("    selection:"));
         let mut input_b: BoardStack = self.board.clone();
@@ -338,6 +339,7 @@ impl Tree {
         let mut max_depth: usize = 1;
         loop {
             let curr_node = &self.nodes[curr];
+            println!("{:?}", input_b.board().side_to_move());
             if curr_node.children.is_empty() || input_b.is_terminal() {
                 break;
             }
@@ -373,7 +375,7 @@ impl Tree {
                     }
                 })
                 .expect("Error");
-            debug_print!("{}", &format!("{}, {}", total_visits + 1, curr_node.visits));
+
             assert!(total_visits + 1 == curr_node.visits);
             let display_str = self.display_node(curr);
             debug_print!("{}", &format!("        selected: {}", display_str));
@@ -434,23 +436,21 @@ impl Tree {
         debug_print!("{}", &format!("    backpropagation:"));
         let value = self.nodes[node].value;
         let mut curr: Option<usize> = Some(node);
-        debug_print!("{}", &format!("    curr: {:?}", curr));
         let wdl = self.nodes[node].wdl;
         let mut moves_left = self.nodes[node].moves_left;
+        let mut backprop_nodes_vec: Vec<usize> = Vec::new(); // keep track of the vecs used for backpropagation
         while let Some(current) = curr {
+            debug_print!("{}", &format!("    curr: {:?}", current));
             self.nodes[current].visits += 1;
             self.nodes[current].total_action_value += value;
             self.nodes[current].total_wdl += wdl;
             self.nodes[current].moves_left_total += moves_left;
             moves_left += 1.0;
-            debug_print!(
-                "{}",
-                &format!(
-                    "    updated total action value: {}",
-                    self.nodes[current].total_action_value
-                )
-            );
+            backprop_nodes_vec.push(current);
             curr = self.nodes[current].parent;
+        }
+
+        for current in backprop_nodes_vec {
             let display_str = self.display_node(current);
             debug_print!("{}", &format!("        updated node to {}", display_str));
         }
@@ -461,18 +461,33 @@ impl Tree {
             let u: f32;
             let puct: f32;
 
+            // get moves
+            let mut curr: Option<usize> = Some(id);
+            let mut bs_clone = self.board.clone();
+            let mut mv_vec: Vec<Move> = Vec::new();
+            while let Some(current) = curr {
+                match self.nodes[current].mv {
+                    Some(mv) => mv_vec.push(mv),
+                    None => {}
+                }
+                curr = self.nodes[current].parent;
+            }
+            mv_vec.reverse();
+            for mv in mv_vec {
+                bs_clone.play(mv);
+            }
+
             match &self.nodes[id].parent {
                 Some(parent) => {
                     if self.nodes[*parent].visits == 0 {
                         u = f32::NAN;
                         puct = f32::NAN;
                     } else {
-                        
                         u = self.nodes[id].get_u_val(self.nodes[*parent].visits, self.settings);
                         puct = self.nodes[id].puct_formula(
                             self.nodes[*parent].visits,
                             self.nodes[*parent].moves_left,
-                            self.board.board().side_to_move(),
+                            bs_clone.board().side_to_move(),
                             self.settings,
                         );
                     }
@@ -588,10 +603,6 @@ impl Node {
     }
 
     pub fn get_u_val(&self, parent_visits: u32, settings: SearchSettings) -> f32 {
-        // println!(
-        //     "parent_visits {}, self.visits {}",
-        //     parent_visits, self.visits
-        // );
         let c_puct = settings.c_puct;
         c_puct * self.policy * ((parent_visits - 1) as f32).sqrt() / (1.0 + self.visits as f32)
     }
@@ -603,6 +614,8 @@ impl Node {
         player: Color,
         settings: SearchSettings,
     ) -> f32 {
+        assert!(self.visits < parent_visits);
+
         let u = self.get_u_val(parent_visits, settings);
         let q = self.get_q_val(settings);
         let puct_logit = if let Some(weights) = settings.moves_left {
@@ -619,14 +632,18 @@ impl Node {
             };
             // debug_print!("{:?}, self {:?}, {}", player, self, q + u + weights.moves_left_weight * m_unit);
             // debug_print!("moves_left_weight={} m_unit={}, m={}", weights.moves_left_weight, m_unit, m);
-            q + u + weights.moves_left_weight * m_unit
+            println!("{:?}", player);
+            match player {
+                Color::Black => q + u + weights.moves_left_weight * m_unit,
+                Color::White => q - u + weights.moves_left_weight * m_unit,
+            }
         } else {
-            q + u
+            match player {
+                Color::Black => -(q + u),
+                Color::White => q + u,
+            }
         };
-        match player {
-            Color::Black => -puct_logit,
-            Color::White => puct_logit,
-        }
+        puct_logit
     }
 
     pub fn new(policy: f32, parent: Option<usize>, mv: Option<cozy_chess::Move>) -> Node {
