@@ -329,14 +329,15 @@ impl Tree {
     }
 
     pub fn select(&mut self) -> (usize, BoardStack, (usize, usize)) {
-        // track moves colour in here
         let mut curr: usize = 0;
+        let mut visited_nodes = Vec::new();
         debug_print!("{}", &format!("    selection:"));
         let mut input_b: BoardStack = self.board.clone();
         let fenstr = format!("{}", &input_b.board());
         debug_print!("{}", &format!("        board FEN: {}", fenstr));
         let mut depth = 1;
         let mut max_depth: usize = 1;
+
         loop {
             let curr_node = &self.nodes[curr];
             println!("{:?}", input_b.board().side_to_move());
@@ -366,6 +367,12 @@ impl Tree {
                         input_b.board().side_to_move(),
                         self.settings,
                     );
+                    
+                    let msg = self.display_node(*a);
+                    debug_print!("{}",msg);
+
+                    let msg = self.display_node(*b);
+                    debug_print!("{}",msg);
                     if a_puct == b_puct || curr_node.visits == 0 {
                         let a_policy = a_node.policy;
                         let b_policy = b_node.policy;
@@ -377,14 +384,28 @@ impl Tree {
                 .expect("Error");
 
             assert!(total_visits + 1 == curr_node.visits);
-            let display_str = self.display_node(curr);
-            debug_print!("{}", &format!("        selected: {}", display_str));
+            if !visited_nodes.contains(&curr) {
+                visited_nodes.push(curr);
+                let display_str = self.display_node(curr);
+                debug_print!("{}", &format!("        selected: {}", display_str));
+            }
             input_b.play(self.nodes[curr].mv.expect("Error"));
+            debug_print!(
+                "select - just played {:?}, player now {:?} ",
+                self.nodes[curr].mv,
+                input_b.board().side_to_move()
+            );
             depth += 1;
         }
+
         let display_str = self.display_node(curr);
         debug_print!("{}", &format!("    {}", display_str));
         debug_print!("{}", &format!("        children:"));
+
+        for node_id in visited_nodes {
+            let display_str = self.display_node(node_id);
+            debug_print!("{}", &format!("        node: {}", display_str));
+        }
 
         (curr, input_b, (depth, max_depth))
     }
@@ -438,7 +459,6 @@ impl Tree {
         let mut curr: Option<usize> = Some(node);
         let wdl = self.nodes[node].wdl;
         let mut moves_left = self.nodes[node].moves_left;
-        let mut backprop_nodes_vec: Vec<usize> = Vec::new(); // keep track of the vecs used for backpropagation
         while let Some(current) = curr {
             debug_print!("{}", &format!("    curr: {:?}", current));
             self.nodes[current].visits += 1;
@@ -446,13 +466,7 @@ impl Tree {
             self.nodes[current].total_wdl += wdl;
             self.nodes[current].moves_left_total += moves_left;
             moves_left += 1.0;
-            backprop_nodes_vec.push(current);
             curr = self.nodes[current].parent;
-        }
-
-        for current in backprop_nodes_vec {
-            let display_str = self.display_node(current);
-            debug_print!("{}", &format!("        updated node to {}", display_str));
         }
     }
 
@@ -475,6 +489,7 @@ impl Tree {
             mv_vec.reverse();
             for mv in mv_vec {
                 bs_clone.play(mv);
+                // debug_print!("display - just played {:?}, player now {:?} ", mv, bs_clone.board().side_to_move());
             }
 
             match &self.nodes[id].parent {
@@ -487,7 +502,7 @@ impl Tree {
                         puct = self.nodes[id].puct_formula(
                             self.nodes[*parent].visits,
                             self.nodes[*parent].moves_left,
-                            bs_clone.board().side_to_move(),
+                            !bs_clone.board().side_to_move(),
                             self.settings,
                         );
                     }
@@ -634,8 +649,8 @@ impl Node {
             // debug_print!("moves_left_weight={} m_unit={}, m={}", weights.moves_left_weight, m_unit, m);
             println!("{:?}", player);
             match player {
-                Color::Black => q + u + weights.moves_left_weight * m_unit,
-                Color::White => q - u + weights.moves_left_weight * m_unit,
+                Color::Black => -q + u - weights.moves_left_weight * m_unit,
+                Color::White => q + u + weights.moves_left_weight * m_unit,
             }
         } else {
             match player {
