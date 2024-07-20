@@ -208,7 +208,6 @@ impl Tree {
                             + (self.settings.eps * sample[child - 1]);
                     }
                 }
-                // self.nodes[0].display_full_tree(self);
             }
         } else {
             let wdl = match input_b.status() {
@@ -245,7 +244,8 @@ impl Tree {
             let display_str = self.display_node(child);
             debug_print!("        {}", &format!("{}", &display_str));
         }
-        // self.nodes[0].display_full_tree(self);
+        debug_print!("    full tree:");
+        self.nodes[0].display_full_tree(self);
         if let TypeRequest::UCISearch = self.settings.search_type {
             let cp_eval = eval_in_cp(self.nodes[selected_node].value);
             let elapsed_ms = sw.elapsed().as_nanos() as f32 / 1e6;
@@ -649,8 +649,8 @@ impl Node {
                 (weights.moves_left_sharpness * m_clipped * -q).clamp(-1.0, 1.0)
             };
             // debug_print!("{:?}, self {:?}, {}", player, self, q + u + weights.moves_left_weight * m_unit);
-            debug_print!("moves_left_weight={} m_unit={}, m={}", weights.moves_left_weight, m_unit, m);
-            println!("{:?}", player);
+            // debug_print!("moves_left_weight={} m_unit={}, m={}", weights.moves_left_weight, m_unit, m);
+            // println!("{:?}", player);
             match player {
                 Color::Black => -q + u - weights.moves_left_weight * m_unit,
                 Color::White => q + u + weights.moves_left_weight * m_unit,
