@@ -651,8 +651,11 @@ impl Node {
             // debug_print!("{:?}, self {:?}, {}", player, self, q + u + weights.moves_left_weight * m_unit);
             // debug_print!("moves_left_weight={} m_unit={}, m={}", weights.moves_left_weight, m_unit, m);
             // println!("{:?}", player);
+            
             match player {
-                Color::Black => -q + u - weights.moves_left_weight * m_unit,
+                Color::Black => {
+                    if self.visits > 0 {-q + u - weights.moves_left_weight * m_unit} else {q+u - weights.moves_left_weight}
+                },
                 Color::White => q + u + weights.moves_left_weight * m_unit,
             }
         } else {
