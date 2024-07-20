@@ -38,6 +38,7 @@ pub async fn get_move(
     }
 
     while tree.nodes[0].visits < settings.max_nodes as u32 {
+        debug_print!("step {}", tree.nodes[0].visits);
         match stop_signal {
             Some(ref signal) => match signal.try_recv() {
                 Ok(_) => {
@@ -48,7 +49,6 @@ pub async fn get_move(
                         debug_print!("Debug: Stop signal received, breaking loop");
                         break;
                     }
-                    
                 }
                 Err(TryRecvError::Empty) => {
                     debug_print!("Debug: No stop signal, stepping tree");
@@ -70,7 +70,6 @@ pub async fn get_move(
     for child in tree.nodes[0].children.clone() {
         child_visits.push(tree.nodes[child].visits);
     }
-    debug_print!("Debug: Child visits: {:?}", child_visits);
 
     let all_same = child_visits.iter().all(|&x| x == child_visits[0]);
     debug_print!("Debug: All child visits same: {}", all_same);
@@ -98,10 +97,11 @@ pub async fn get_move(
 
     let best_move = tree.nodes[best_move_node].mv;
     debug_print!("Debug: Best move determined: {:?}", best_move);
-
     let mut total_visits_list = Vec::new();
     for child in tree.nodes[0].children.clone() {
         total_visits_list.push(tree.nodes[child].visits);
+        let msg = tree.display_node(child);
+        debug_print!("{}", msg);
     }
     debug_print!("Debug: Total visits list: {:?}", total_visits_list);
 
@@ -119,8 +119,9 @@ pub async fn get_move(
     for child in tree.nodes[0].clone().children {
         all_pol.push(tree.nodes[child].policy);
     }
-    debug_print!("Debug: All policies: {:?}", all_pol);
 
+    debug_print!("Debug: All policies: {:?}", all_pol);
+    tree.nodes[0].display_full_tree(&tree);
     let v_p = ZeroEvaluation {
         values: tree.nodes[0].value,
         policy: all_pol,
