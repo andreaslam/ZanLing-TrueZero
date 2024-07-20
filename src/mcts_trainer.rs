@@ -239,6 +239,9 @@ impl Tree {
         if id % 512 == 0 {
             backprop_debug.record("backpropagation", &thread_name);
         }
+
+        debug_print!("root node: {}", self.display_node(0));
+
         debug_print!("    all children:");
         for child in self.nodes[0].children.clone() {
             let display_str = self.display_node(child);
