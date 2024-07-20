@@ -340,7 +340,6 @@ impl Tree {
 
         loop {
             let curr_node = &self.nodes[curr];
-            println!("{:?}", input_b.board().side_to_move());
             if curr_node.children.is_empty() || input_b.is_terminal() {
                 break;
             }
@@ -369,10 +368,8 @@ impl Tree {
                     );
                     
                     let msg = self.display_node(*a);
-                    debug_print!("{}",msg);
 
                     let msg = self.display_node(*b);
-                    debug_print!("{}",msg);
                     if a_puct == b_puct || curr_node.visits == 0 {
                         let a_policy = a_node.policy;
                         let b_policy = b_node.policy;
@@ -390,11 +387,11 @@ impl Tree {
                 debug_print!("{}", &format!("        selected: {}", display_str));
             }
             input_b.play(self.nodes[curr].mv.expect("Error"));
-            debug_print!(
-                "select - just played {:?}, player now {:?} ",
-                self.nodes[curr].mv,
-                input_b.board().side_to_move()
-            );
+            // debug_print!(
+            //     "select - just played {:?}, player now {:?} ",
+            //     self.nodes[curr].mv,
+            //     input_b.board().side_to_move()
+            // );
             depth += 1;
         }
 
@@ -459,14 +456,20 @@ impl Tree {
         let mut curr: Option<usize> = Some(node);
         let wdl = self.nodes[node].wdl;
         let mut moves_left = self.nodes[node].moves_left;
+        let mut backprop_nodes_vec: Vec<usize> = Vec::new(); // keep track of the vecs used for backpropagation
         while let Some(current) = curr {
-            debug_print!("{}", &format!("    curr: {:?}", current));
             self.nodes[current].visits += 1;
             self.nodes[current].total_action_value += value;
             self.nodes[current].total_wdl += wdl;
             self.nodes[current].moves_left_total += moves_left;
             moves_left += 1.0;
+            backprop_nodes_vec.push(current);
             curr = self.nodes[current].parent;
+        }
+
+        for current in backprop_nodes_vec {
+            let display_str = self.display_node(current);
+            debug_print!("{}", &format!("        updated node to {}", display_str));
         }
     }
 
@@ -646,7 +649,7 @@ impl Node {
                 (weights.moves_left_sharpness * m_clipped * -q).clamp(-1.0, 1.0)
             };
             // debug_print!("{:?}, self {:?}, {}", player, self, q + u + weights.moves_left_weight * m_unit);
-            // debug_print!("moves_left_weight={} m_unit={}, m={}", weights.moves_left_weight, m_unit, m);
+            debug_print!("moves_left_weight={} m_unit={}, m={}", weights.moves_left_weight, m_unit, m);
             println!("{:?}", player);
             match player {
                 Color::Black => -q + u - weights.moves_left_weight * m_unit,
@@ -654,7 +657,7 @@ impl Node {
             }
         } else {
             match player {
-                Color::Black => -(q + u),
+                Color::Black => -q + u,
                 Color::White => q + u,
             }
         };
