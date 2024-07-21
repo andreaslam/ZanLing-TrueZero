@@ -1,24 +1,23 @@
 use crate::{
-    boardmanager::BoardStack,
+    debug_print,
     decoder::eval_state,
-    mcts_trainer::{Net, Wdl},
+    mcts_trainer::Net,
     selfplay::CollectorMessage,
     superluminal::{CL_BLUE, CL_ORANGE, CL_RED},
     utils::TimeStampDebugger,
 };
-use cozy_chess::Move;
+
 use crossbeam::thread;
-use crossfire::{channel::MPMCShared, mpmc::RxBlocking, mpsc::TryRecvError};
+
 use flume::{Receiver, RecvError, Selector, Sender};
 use std::{
     cmp::min,
     collections::VecDeque,
-    ops::Range,
     process,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::Instant,
 };
 use superluminal_perf::{begin_event_with_color, end_event};
-use tch::{data, Cuda, Tensor};
+use tch::Tensor;
 
 pub struct Packet {
     pub job: Tensor,
@@ -55,9 +54,12 @@ fn handle_new_graph(
     thread_name: &str,
     id: usize,
 ) {
+    debug_print!("{}: loading new net", thread_name);
+
     if let Some(network) = network.take() {
         drop(network);
     }
+
     *network = graph.map(|graph| Net::new_with_device_id(&graph[..], id));
 }
 
@@ -69,7 +71,6 @@ fn handle_requests(
     let mut input_vec: VecDeque<Tensor> = VecDeque::new();
     let mut output_senders: VecDeque<Sender<ReturnMessage>> = VecDeque::new();
     let mut id_vec: VecDeque<String> = VecDeque::new();
-    let mut board_vec: VecDeque<BoardStack> = VecDeque::new();
     loop {
         let job = tensor_receiver.recv().unwrap();
         input_vec.push_back(job.job);
@@ -194,7 +195,6 @@ pub fn executor_main(
                     }
                 }
             }
-
         }
 
         process::exit(0)
@@ -214,42 +214,48 @@ pub fn executor_static(
         .name()
         .unwrap_or("unnamed-executor")
         .to_owned();
-    let mut input_vec: VecDeque<Tensor> = VecDeque::new();
-    let mut output_senders: VecDeque<Sender<ReturnMessage>> = VecDeque::new();
-    let mut id_vec: VecDeque<String> = VecDeque::new();
+
+    let (handler_send, handler_recv) = flume::bounded::<ExecutorPacket>(1);
 
     handle_new_graph(&mut network, Some(net_path), thread_name.as_str(), 0); // TODO maybe pass an option to use either/both GPUs? and not hardcode static GPU to 1 GPU only?
 
-    loop {
-        let mut selector = Selector::new();
+    let _ = thread::scope(|s| {
+        s.builder()
+            .name(format!("executor-wait-{}", 0).to_string()) // TODO placeholder
+            .spawn(move |_| {
+                handle_requests(handler_send, tensor_receiver, max_batch_size);
+            })
+            .unwrap();
 
-        // Register all receivers in the selector
-        selector = selector.recv(&tensor_receiver, |res| Message::JobTensor(res));
-        selector = selector.recv(&ctrl_receiver, |_| Message::StopServer);
-        let message = selector.wait();
+        loop {
+            let mut selector = Selector::new();
 
-        match message {
-            Message::StopServer => {
-                break;
-            }
-            Message::NewNetwork(_) => {
-                unreachable!(); // Handle new network message if needed
-            }
-            Message::JobTensor(job) => {
-                let job = job.expect("JobTensor should be available");
-                let network = network.as_mut().expect("Network should be available");
+            // Register all receivers in the selector
+            selector = selector.recv(&handler_recv, |res| Message::JobTensorExecutor(res));
+            selector = selector.recv(&ctrl_receiver, |_| Message::StopServer);
+            let message = selector.wait();
 
-                input_vec.push_back(job.job);
-                output_senders.push_back(job.resender);
-                id_vec.push_back(job.id);
+            match message {
+                Message::StopServer => {
+                    break;
+                }
+                Message::NewNetwork(_) => {
+                    unreachable!(); // Handle new network message if needed
+                }
+                Message::JobTensor(_) => {}
+                Message::JobTensorExecutor(job) => {
+                    let job = job.expect("JobTensor should be available");
+                    let network = network.as_mut().expect("Network should be available");
+                    let mut input_vec = job.job;
+                    let mut id_vec = job.id;
+                    let mut output_senders = job.resenders;
 
-                while input_vec.len() >= max_batch_size {
                     let batch_size = min(max_batch_size, input_vec.len());
                     let i_v = input_vec.make_contiguous();
                     let input_tensors = Tensor::cat(&i_v[..batch_size], 0);
 
                     let (board_eval, policy) =
-                        eval_state(input_tensors, network).expect("Evaluation failed");
+                        eval_state(input_tensors, &network).expect("Evaluation failed");
                     for i in 0..batch_size {
                         let sender = output_senders
                             .pop_front()
@@ -266,8 +272,7 @@ pub fn executor_static(
                     drop(input_vec.drain(0..batch_size));
                 }
             }
-            Message::JobTensorExecutor(_) => {}
         }
-    }
-    // Return the senders to avoid them being dropped and disconnected
+        // Return the senders to avoid them being dropped and disconnected
+    });
 }
