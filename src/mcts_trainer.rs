@@ -1,3 +1,4 @@
+use crate::dataformat::ZeroValuesPov;
 use crate::debug_print;
 use crate::{
     boardmanager::BoardStack,
@@ -8,7 +9,6 @@ use crate::{
     executor::{Packet, ReturnMessage},
     mvs::get_contents,
     settings::SearchSettings,
-    superluminal::{CL_GREEN, CL_PINK},
     uci::eval_in_cp,
     utils::TimeStampDebugger,
 };
@@ -20,9 +20,8 @@ use std::{
     cmp::{max, min},
     fmt,
     ops::Range,
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    time::Instant,
 };
-use superluminal_perf::{begin_event_with_color, end_event};
 use tch::{
     maybe_init_cuda,
     utils::{has_cuda, has_mps},
@@ -59,6 +58,7 @@ pub struct Net {
 impl Net {
     /// creates a new `Net` instance by loading a model from the specified path
     pub fn new(path: &str) -> Self {
+        maybe_init_cuda();
         let device = if has_cuda() {
             if Cuda::cudnn_is_available() {
                 Cuda::cudnn_set_benchmark(true);
@@ -78,6 +78,7 @@ impl Net {
     }
     /// creates a new `Net` instance with a specified device ID (supports only CUDA)
     pub fn new_with_device_id(path: &str, id: usize) -> Self {
+        maybe_init_cuda();
         let device = if has_cuda() {
             if Cuda::cudnn_is_available() {
                 Cuda::cudnn_set_benchmark(true);
@@ -759,7 +760,7 @@ impl Node {
     }
 }
 
-/// computes the best move using MCTS with nn given the number of total MCTS iteration. (handles tree creation as well). 
+/// computes the best move using MCTS with nn given the number of total MCTS iteration. (handles tree creation as well).
 /// to reuse cache simply pass a mutable reference `&mut LruCache<CacheEntryKey, CacheEntryValue>` while repeatedly calling the function
 pub async fn get_move(
     bs: BoardStack,
@@ -866,15 +867,31 @@ pub async fn get_move(
         all_pol.push(tree.nodes[child].policy);
     }
 
+    let v_p_vals = ZeroValuesPov {
+        value: tree.nodes[0].value,
+        wdl: tree.nodes[0].wdl,
+        moves_left: tree.nodes[0].moves_left,
+    };
+
     let v_p = ZeroEvaluation {
         // network evaluation, NOT search/empirical data
-        values: tree.nodes[0].value,
+        values: v_p_vals,
         policy: all_pol,
+    };
+
+    let search_data_vals = ZeroValuesPov {
+        value: tree.nodes[0].get_q_val(tree.settings),
+        wdl: Wdl {
+            w: tree.nodes[0].total_wdl.w / tree.nodes[0].visits as f32,
+            d: tree.nodes[0].total_wdl.d / tree.nodes[0].visits as f32,
+            l: tree.nodes[0].total_wdl.l / tree.nodes[0].visits as f32,
+        },
+        moves_left: tree.nodes[0].moves_left,
     };
 
     let search_data = ZeroEvaluation {
         // search data
-        values: tree.nodes[0].get_q_val(tree.settings),
+        values: search_data_vals,
         policy: pi,
     };
 
