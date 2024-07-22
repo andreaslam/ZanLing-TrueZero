@@ -1,9 +1,8 @@
-use crate::dataformat::ZeroValuesPov;
-use crate::debug_print;
 use crate::{
     boardmanager::BoardStack,
     cache::{CacheEntryKey, CacheEntryValue},
-    dataformat::ZeroEvaluation,
+    dataformat::{ZeroEvaluation, ZeroValuesPov},
+    debug_print,
     decoder::{convert_board, extract_policy, process_board_output},
     dirichlet::StableDirichlet,
     executor::{Packet, ReturnMessage},
@@ -498,7 +497,7 @@ impl Tree {
             debug_print!("{}", &format!("        updated node to {}", display_str));
         }
     }
-    /// Displays information on a node [debug]
+    /// Displays information on a node (debug)
     pub fn display_node(&self, id: usize) -> String {
         if cfg!(debug_assertions) {
             let u: f32;
@@ -730,7 +729,7 @@ impl Node {
         }
     }
 
-    /// recursively prints the tree containing information about each node [debug]
+    /// recursively prints the tree containing information about each node (debug)
     pub fn layer_p(&self, depth: u8, max_tree_print_depth: u8, tree: &Tree) {
         if cfg!(debug_assertions) {
             let indent = "    ".repeat(depth as usize + 2);
@@ -746,7 +745,7 @@ impl Node {
         }
     }
 
-    /// prints the entire tree with all node information [debug]
+    /// prints the entire tree with all node information (debug)
     pub fn display_full_tree(&self, tree: &Tree) {
         if cfg!(debug_assertions) {
             debug_print!("{}", &format!("        root node:"));
@@ -886,7 +885,7 @@ pub async fn get_move(
             d: tree.nodes[0].total_wdl.d / tree.nodes[0].visits as f32,
             l: tree.nodes[0].total_wdl.l / tree.nodes[0].visits as f32,
         },
-        moves_left: tree.nodes[0].moves_left,
+        moves_left: tree.nodes[0].moves_left_total / tree.nodes[0].visits as f32,
     };
 
     let search_data = ZeroEvaluation {
