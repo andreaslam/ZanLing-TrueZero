@@ -52,7 +52,7 @@ fn main() {
 
     let mut num_executors = 2;
     // num_executors = max(min(tch::Cuda::device_count() as usize, num_executors), 1);
-    let batch_size = 8192;
+    let batch_size = 1024;
     let num_generators = num_executors * batch_size * 2;
 
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(num_generators);
@@ -304,7 +304,7 @@ fn commander_main(
     let net_save_time_duration = net_timestamp
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards");
-    let net_save_timestamp = net_save_time_duration.as_nanos();
+    let mut net_save_timestamp = net_save_time_duration.as_nanos();
     loop {
         if !directory_exists("nets") {
             fs::create_dir("nets").unwrap();
@@ -345,6 +345,10 @@ fn commander_main(
                     let mut file = File::create(net_path.clone()).expect("Unable to create file");
                     file.write_all(&data).expect("Unable to write data");
                     net_timestamp = SystemTime::now();
+                    let net_save_time_duration = net_timestamp
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Time went backwards");
+                    net_save_timestamp = net_save_time_duration.as_nanos();
                     net_path_counter += 1;
                 }
                 MessageType::TBLink(_) => {}
