@@ -11,7 +11,6 @@ use cozy_chess::{Color, Move, Piece, Rank, Square};
 use lru::LruCache;
 use tch::{Cuda, Device, IValue, Kind, Tensor};
 
-
 /// evaluates the current state of the chess board
 /// returns a tuple of `Tensors` - in the order (value, policy)
 pub fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> {
@@ -50,17 +49,17 @@ pub fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> 
 
 /// extracts scalar and piece square data from the board state. used to convert board to use as nn inputs
 /// to save compute, the boolean-representable data is returned as a single Vec<bool> before broadcasting into a single input `Tensor`
-/// returns 2 items, a Vec<f32> for the board inputs and Vec<bool> 
+/// returns 2 items, a Vec<f32> for the board inputs and Vec<bool>
 
 // # FULL LIST OF INFORMATION NEEDED FOR NN INPUTS:
 
-    /// sq1 - white's turn
-    /// sq2 - black's turn
-    /// sq3, sq4 - castling pos l + r (us)
-    /// sq5, sq6 - castling pos l + r (opponent)
-    /// sql7, sql8 -  sqs for bits for the repetition counter
-    /// sq9 - sq20 - sqs for turn to move + non-turn to move's pieces
-    /// sq21 - en passant square if any
+/// sq1 - white's turn
+/// sq2 - black's turn
+/// sq3, sq4 - castling pos l + r (us)
+/// sq5, sq6 - castling pos l + r (opponent)
+/// sql7, sql8 -  sqs for bits for the repetition counter
+/// sq9 - sq20 - sqs for turn to move + non-turn to move's pieces
+/// sq21 - en passant square if any
 
 pub fn board_data(bs: &BoardStack) -> (Vec<f32>, Vec<bool>) {
     let us = bs.board().side_to_move();
@@ -137,7 +136,6 @@ pub fn board_data(bs: &BoardStack) -> (Vec<f32>, Vec<bool>) {
 
 /// converts the board state into a representation used for nn inputs
 pub fn convert_board(bs: &BoardStack) -> Tensor {
-
     let mut all_data: Vec<f32> = Vec::new();
 
     let (scalar_data, pieces_sqs) = board_data(bs);
@@ -201,8 +199,6 @@ pub fn process_board_output(
         pol_list.push(policy[*id]);
     }
 
-    debug_print!("{:?}", pol_list);
-
     // step 3 - softmax
 
     let sm = Tensor::from_slice(&pol_list);
@@ -211,14 +207,12 @@ pub fn process_board_output(
 
     let pol_list: Vec<f32> = Vec::try_from(sm).expect("Error");
 
-    debug_print!("{:?}", pol_list);
-
-    debug_print!("        V={}", &value);
-
-    debug_print!("        Value={}", &value);
-
     // step 4 - iteratively append nodes into class
     let mut counter = 0;
+
+    // ensure that moves_left is positive - there are no negative moves
+
+    let moves_left = 0.0_f32.max(moves_left);
 
     tree.nodes[*selected_node_idx].moves_left = moves_left;
 
@@ -240,12 +234,11 @@ pub fn process_board_output(
             fm = *mv;
         }
         let child = Node::new(*pol, Some(*selected_node_idx), Some(fm));
-        debug_print!("{:?}, {:?}, {:?}", mv, child.policy, child.value);
         tree.nodes.push(child); // push child to the tree Vec<Node>
+
         counter += 1
     }
     tree.nodes[*selected_node_idx].children = ct..ct + counter;
-    debug_print!("{:?}", tree.nodes.len());
 
     cache.put(
         CacheEntryKey {
