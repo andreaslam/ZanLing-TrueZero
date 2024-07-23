@@ -9,7 +9,7 @@ use crate::{
 };
 use cozy_chess::{Color, Move, Piece, Rank, Square};
 use lru::LruCache;
-use tch::{Cuda, Device, IValue, Kind, Tensor};
+use tch::{Device, IValue, Kind, Tensor};
 
 /// evaluates the current state of the chess board
 /// returns a tuple of `Tensors` - in the order (value, policy)
@@ -18,9 +18,7 @@ pub fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> 
     let b: Tensor = b.to(net.device);
     let board = IValue::Tensor(b);
 
-    let sw = Instant::now();
     let output = net.net.forward_is(&[board])?;
-    let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
 
     let output_tensor = match output {
         IValue::Tuple(b) => b,
