@@ -21,7 +21,7 @@ use tz_rust::{
     mcts_trainer::{EvalMode, TypeRequest::TrainerSearch},
     message_types::{DataFileType, Entity, MessageServer, MessageType, Statistics},
     selfplay::{CollectorMessage, DataGen},
-    settings::SearchSettings,
+    settings::{MovesLeftSettings, SearchSettings},
 };
 
 fn main() {
@@ -133,10 +133,15 @@ async fn generator_main(
     tensor_exe_send: Sender<Packet>,
     id: usize,
 ) {
+    let m_settings = MovesLeftSettings {
+            moves_left_weight: 0.03,
+            moves_left_clip: 20.0,
+            moves_left_sharpness: 0.5,
+        };
     let settings: SearchSettings = SearchSettings {
-        fpu: 0.0,
-        wdl: EvalMode::Value,
-        moves_left: None,
+        fpu: 0.6,
+        wdl: EvalMode::Wdl,
+        moves_left: Some(m_settings),
         c_puct: 3.0,
         max_nodes: 400,
         alpha: 0.3,
