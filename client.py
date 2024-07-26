@@ -60,10 +60,10 @@ def load_file(games_path):
 
 HOST = "127.0.0.1"
 PORT = 38475
-BUFFER_SIZE = 500000
+BUFFER_SIZE = 150000
 BATCH_SIZE = 2048
-MIN_SAMPLING = 10
-SAMPLING_RATIO = 0.25
+MIN_SAMPLING = 50
+SAMPLING_RATIO = 0.75
 
 assert BATCH_SIZE > 0 and (BATCH_SIZE & (BATCH_SIZE - 1)) == 0
 
@@ -79,6 +79,7 @@ def main():
     model_path = get_model_path(training_nets)
     model = torch.jit.load(model_path, map_location=device).eval()
     starting_gen = int(re.findall(r"tz_(\d+)\.pt", model_path)[0])
+    print(f"starting generation: {starting_gen}")
     server = Server(HOST, PORT)
     server.connect()
     data_paths = get_previous_data_paths()
@@ -89,15 +90,15 @@ def main():
         scalar_target=ScalarTarget.Final,
         value_weight=0.1,
         wdl_weight=0.0,
-        moves_left_weight=0.0,
-        moves_left_delta=0.0,
+        moves_left_weight=0.0001,
+        moves_left_delta=20,
         policy_weight=1,
         sim_weight=0.0,
         train_in_eval_mode=False,
         clip_norm=5.0,
         mask_policy=True,
     )
-    op = optim.AdamW(params=model.parameters(), lr=1e-4)
+    op = optim.AdamW(params=model.parameters(), lr=1e-3)
     log = load_previous_data(data_paths, loopbuf)
 
     while True:
@@ -193,12 +194,10 @@ def full_train_and_send(
         send_new_net(model_path, model, server)
 
 
-def send_new_net(model_path, model, server):
+def send_new_net(model_path, model, server):  # sends both new net and path
     msg = {"NewNetworkPath": model_path}
     server.send(msg)
-    net_send = serialise_net(model)
-    msg = {"NewNetworkData": net_send}
-    server.send(msg)
+    send_net_in_bytes(model, server)
 
 
 def save_and_register_net(model, starting_gen):
@@ -245,7 +244,12 @@ def train_net(model, train_settings, op, log, train_sampler, num_steps_training)
 def get_num_steps_training(data, min_sampling):
     num_steps_training = (len(data.positions) / BATCH_SIZE) * SAMPLING_RATIO
     if num_steps_training < min_sampling:
-        print("[Warning] minimum training step is", min_sampling)
+        print(
+            "[Warning] minimum training step is",
+            min_sampling,
+            "current training step is",
+            num_steps_training,
+        )
         num_steps_training = min_sampling
         print("[Warning] set training step to", min_sampling)
     return int(num_steps_training)
