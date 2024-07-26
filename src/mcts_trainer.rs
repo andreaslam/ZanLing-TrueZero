@@ -251,6 +251,7 @@ impl Tree {
             };
             self.nodes[selected_node].value = wdl.w - wdl.l;
             self.nodes[selected_node].wdl = wdl;
+            self.nodes[selected_node].moves_left = 0.0;
         }
 
         self.backpropagate(selected_node);
@@ -402,6 +403,7 @@ impl Tree {
                         let b_policy = b_node.policy;
                         a_policy.partial_cmp(&b_policy).unwrap()
                     } else {
+                        debug_print!("{} {}", a_puct, b_puct);
                         a_puct.partial_cmp(&b_puct).unwrap()
                     }
                 })
@@ -879,11 +881,21 @@ pub async fn get_move(
     };
 
     let search_data_vals = ZeroValuesPov {
-        value: tree.nodes[0].get_q_val(tree.settings),
-        wdl: Wdl {
-            w: tree.nodes[0].total_wdl.w / tree.nodes[0].visits as f32,
-            d: tree.nodes[0].total_wdl.d / tree.nodes[0].visits as f32,
-            l: tree.nodes[0].total_wdl.l / tree.nodes[0].visits as f32,
+        value: match tree.board.board().side_to_move() {
+            Color::White => tree.nodes[0].get_q_val(tree.settings),
+            Color::Black => -tree.nodes[0].get_q_val(tree.settings),
+        },
+        wdl: match tree.board.board().side_to_move() {
+            Color::White => Wdl {
+                w: tree.nodes[0].total_wdl.w / tree.nodes[0].visits as f32,
+                d: tree.nodes[0].total_wdl.d / tree.nodes[0].visits as f32,
+                l: tree.nodes[0].total_wdl.l / tree.nodes[0].visits as f32,
+            },
+            Color::Black => Wdl {
+                w: tree.nodes[0].total_wdl.l / tree.nodes[0].visits as f32,
+                d: tree.nodes[0].total_wdl.d / tree.nodes[0].visits as f32,
+                l: tree.nodes[0].total_wdl.w / tree.nodes[0].visits as f32,
+            },
         },
         moves_left: tree.nodes[0].moves_left_total / tree.nodes[0].visits as f32,
     };
