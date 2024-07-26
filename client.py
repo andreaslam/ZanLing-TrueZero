@@ -87,15 +87,15 @@ def main():
     loopbuf = LoopBuffer(game, target_positions=BUFFER_SIZE, test_fraction=0.2)
     train_settings = TrainSettings(
         game=game,
-        scalar_target=ScalarTarget.Final,
         value_weight=0.1,
-        wdl_weight=0.0,
-        moves_left_weight=0.0001,
-        moves_left_delta=20,
-        policy_weight=1,
+        wdl_weight=1.0,
+        policy_weight=1.0,
         sim_weight=0.0,
-        train_in_eval_mode=False,
+        moves_left_delta=20,
+        moves_left_weight=0.0001,
         clip_norm=5.0,
+        scalar_target=ScalarTarget.Final,
+        train_in_eval_mode=False,
         mask_policy=True,
     )
     op = optim.AdamW(params=model.parameters(), lr=1e-3)
