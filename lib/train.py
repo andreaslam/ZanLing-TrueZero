@@ -227,14 +227,13 @@ class TrainSettings:
         loss_value_separate = nnf.mse_loss(value, batch_value, reduction="none")
         # TODO add option to choose between cross-entropy and mse
         loss_wdl_separate = (-batch_wdl * nnf.log_softmax(wdl_logits, dim=1)).sum(dim=1)
-        # loss_moves_left_separate = nnf.huber_loss(moves_left, batch_moves_left, delta=self.moves_left_delta,
-        #                                           reduction="none")
+        loss_moves_left_separate = nnf.huber_loss(
+            moves_left, batch_moves_left, delta=self.moves_left_delta, reduction="none"
+        )
 
         loss_value = loss_value_separate.mean()
         loss_wdl = loss_wdl_separate.mean()
-        # loss_moves_left = loss_moves_left_separate.mean()
-
-        loss_moves_left = 0
+        loss_moves_left = loss_moves_left_separate.mean()
 
         eval_policy = evaluate_policy(
             policy_logits, batch.policy_indices, batch.policy_values, self.mask_policy

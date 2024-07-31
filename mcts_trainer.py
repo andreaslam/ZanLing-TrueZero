@@ -17,7 +17,7 @@ class Node:
         self.board = board
         self.total_action_value = 0  # total action value
         self.move_name = move_name  # chess.Move, eg e2e4
-        self.move_idx = None # stores indexes for training
+        self.move_idx = None  # stores indexes for training
 
     def is_leaf(self):
         return self.visits == 0
@@ -86,7 +86,7 @@ class Node:
             logit_draw_pc,
             logit_loss_pc,
             policy,
-            idx_li
+            idx_li,
         ) = decoder.eval_board(board, bigl)
         # print("    board FEN: " + board.fen())
         # print("    ran NN:")
@@ -203,4 +203,9 @@ def move(board):
     # call to store the root board input
     rb_input = decoder.convert_board(tree.root_node.board, [])
     memory_piece = rb_input
-    return best_move, memory_piece, pi, tree.root_node.move_idx # return the best move, memory
+    return (
+        best_move,
+        memory_piece,
+        pi,
+        tree.root_node.move_idx,
+    )  # return the best move, memory

@@ -12,11 +12,20 @@ from lib.networks import MuZeroNetworks
 from lib.util import guess_module_device
 
 
-def save_muzero_onnx(game: Game, path_base: str, networks: MuZeroNetworks, check_batch_size: Optional[int]):
+def save_muzero_onnx(
+    game: Game,
+    path_base: str,
+    networks: MuZeroNetworks,
+    check_batch_size: Optional[int],
+):
     assert path_base.endswith("_"), f"Path must end with '_', got '{path_base}'"
 
     state_shape = (networks.state_channels, game.board_size, game.board_size)
-    state_limit_shape = (networks.state_channels_saved, game.board_size, game.board_size)
+    state_limit_shape = (
+        networks.state_channels_saved,
+        game.board_size,
+        game.board_size,
+    )
 
     info_path = path_base + "info.json"
     assert not os.path.exists(info_path), f"Path '{info_path}' already exists"
@@ -34,8 +43,9 @@ def save_muzero_onnx(game: Game, path_base: str, networks: MuZeroNetworks, check
         path_base + "representation.onnx",
         networks.representation,
         [game.full_input_shape],
-        ["input"], ["state"],
-        check_batch_size
+        ["input"],
+        ["state"],
+        check_batch_size,
     )
 
     save_onnx_inner(
@@ -44,7 +54,7 @@ def save_muzero_onnx(game: Game, path_base: str, networks: MuZeroNetworks, check
         [state_limit_shape, game.input_mv_shape],
         ["prev_state", "move"],
         ["state"],
-        check_batch_size
+        check_batch_size,
     )
 
     save_onnx_inner(
@@ -53,27 +63,35 @@ def save_muzero_onnx(game: Game, path_base: str, networks: MuZeroNetworks, check
         [state_shape],
         ["state"],
         ["scalars", "policy"],
-        check_batch_size
+        check_batch_size,
     )
 
 
-def save_onnx(game: Game, path_onnx: str, network: nn.Module, check_batch_size: Optional[int]):
+def save_onnx(
+    game: Game, path_onnx: str, network: nn.Module, check_batch_size: Optional[int]
+):
     save_onnx_inner(
         path_onnx,
-        network, [game.full_input_shape],
-        ["input"], ["scalars", "policy"],
-        check_batch_size
+        network,
+        [game.full_input_shape],
+        ["input"],
+        ["scalars", "policy"],
+        check_batch_size,
     )
 
 
 def save_onnx_inner(
-        path_onnx,
-        network: nn.Module, input_shapes,
-        input_names: List[str], output_names: List[str],
-        check_batch_size: Optional[int]
+    path_onnx,
+    network: nn.Module,
+    input_shapes,
+    input_names: List[str],
+    output_names: List[str],
+    check_batch_size: Optional[int],
 ):
     path_onnx = Path(path_onnx)
-    assert path_onnx.suffix == ".onnx", f"Output path should end with .onnx: '{path_onnx}'"
+    assert (
+        path_onnx.suffix == ".onnx"
+    ), f"Output path should end with .onnx: '{path_onnx}'"
     assert not path_onnx.exists(), f"Output path already exists: '{path_onnx}'"
 
     print(f"Saving model to {path_onnx}")
@@ -83,10 +101,7 @@ def save_onnx_inner(
 
     # calculate a real example
     used_batch_size = check_batch_size if check_batch_size is not None else 1
-    check_inputs = [
-        torch.randn(used_batch_size, *shape)
-        for shape in input_shapes
-    ]
+    check_inputs = [torch.randn(used_batch_size, *shape) for shape in input_shapes]
 
     check_inputs_device = [x.to(guessed_device) for x in check_inputs]
     check_outputs_device = network(*check_inputs_device)
@@ -126,7 +141,7 @@ def save_onnx_inner(
 def remove_initializers_from_input(model):
     if model.ir_version < 4:
         print(
-            'Model with ir_version below 4 requires to include initilizer in graph input'
+            "Model with ir_version below 4 requires to include initilizer in graph input"
         )
         return
 

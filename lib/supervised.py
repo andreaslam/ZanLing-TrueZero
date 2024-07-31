@@ -19,14 +19,22 @@ from lib.util import json_map
 
 
 def supervised_loop(
-        settings: TrainSettings, schedule: Optional[Schedule], optimizer: Optimizer,
-        start_bi: int, output_folder: str,
-        logger: Logger, plotter: LogPlotter,
-        network: nn.Module,
-        train_sampler: PositionSampler, test_sampler: PositionSampler,
-        test_steps: int, save_steps: int,
+    settings: TrainSettings,
+    schedule: Optional[Schedule],
+    optimizer: Optimizer,
+    start_bi: int,
+    output_folder: str,
+    logger: Logger,
+    plotter: LogPlotter,
+    network: nn.Module,
+    train_sampler: PositionSampler,
+    test_sampler: PositionSampler,
+    test_steps: int,
+    save_steps: int,
 ):
-    with open(os.path.join(output_folder, f"settings_{start_bi}.json"), "w") as settings_f:
+    with open(
+        os.path.join(output_folder, f"settings_{start_bi}.json"), "w"
+    ) as settings_f:
         json.dump(settings, settings_f, default=json_map, indent=2)
 
     prev_start = time.perf_counter()
@@ -62,16 +70,24 @@ def supervised_loop(
             settings.evaluate_batch(network, test_batch, "test-test", logger)
 
             # compare to just predicting the mean value
-            train_batch_wdl = settings.scalar_target.pick(final=train_batch.wdl_final, zero=train_batch.wdl_zero)
-            test_batch_wdl = settings.scalar_target.pick(final=test_batch.wdl_final, zero=test_batch.wdl_zero)
+            train_batch_wdl = settings.scalar_target.pick(
+                final=train_batch.wdl_final, zero=train_batch.wdl_zero
+            )
+            test_batch_wdl = settings.scalar_target.pick(
+                final=test_batch.wdl_final, zero=test_batch.wdl_zero
+            )
 
             mean_wdl = train_batch_wdl.mean(axis=0, keepdims=True)
             mean_value = mean_wdl[0, 0] - mean_wdl[0, 2]
 
-            loss_wdl_mean = nnf.cross_entropy(mean_wdl.expand(len(test_batch), 3), test_batch_wdl)
+            loss_wdl_mean = nnf.cross_entropy(
+                mean_wdl.expand(len(test_batch), 3), test_batch_wdl
+            )
 
             test_batch_value = test_batch_wdl[:, 0] - test_batch_wdl[:, 2]
-            loss_value_mean = nnf.mse_loss(mean_value.expand(len(test_batch)), test_batch_value)
+            loss_value_mean = nnf.mse_loss(
+                mean_value.expand(len(test_batch)), test_batch_value
+            )
 
             logger.log("loss-wdl", "trivial", loss_wdl_mean.item())
             logger.log("loss-value", "trivial", loss_value_mean.item())
@@ -83,5 +99,12 @@ def supervised_loop(
             logger.save(os.path.join(output_folder, "log.npz"))
 
             print("Saving network")
-            torch.jit.script(network).save(os.path.join(output_folder, f"network_{bi}.pt"))
-            save_onnx(settings.game, os.path.join(output_folder, f"network_{bi}.onnx"), network, 4)
+            torch.jit.script(network).save(
+                os.path.join(output_folder, f"network_{bi}.pt")
+            )
+            save_onnx(
+                settings.game,
+                os.path.join(output_folder, f"network_{bi}.onnx"),
+                network,
+                4,
+            )

@@ -40,8 +40,10 @@ class UctWeights:
     @staticmethod
     def default():
         return UctWeights(
-            exploration_weight=None, moves_left_weight=None,
-            moves_left_clip=None, moves_left_sharpness=None
+            exploration_weight=None,
+            moves_left_weight=None,
+            moves_left_clip=None,
+            moves_left_sharpness=None,
         )
 
     def as_dict(self):

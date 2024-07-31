@@ -1,8 +1,11 @@
 use cozy_chess::{Board, Color, GameStatus};
 use crossbeam::thread;
 use flume::Sender;
+use lru::LruCache;
+use std::{env, num::NonZeroUsize, panic};
 use tokio::runtime::Runtime;
-use std::{env, panic};
+use tz_rust::mcts_trainer::TypeRequest::TrainerSearch;
+use tz_rust::settings::MovesLeftSettings;
 use tz_rust::{
     boardmanager::BoardStack,
     executor::{
@@ -11,7 +14,7 @@ use tz_rust::{
         Packet,
     },
     mcts::get_move,
-    mcts_trainer::TypeRequest::NonTrainerSearch,
+    mcts_trainer::{EvalMode, TypeRequest::NonTrainerSearch},
     settings::SearchSettings,
 };
 
@@ -37,16 +40,21 @@ fn main() {
     // set up executor and sender pairs
 
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
+    let m_settings = MovesLeftSettings {
+        moves_left_weight: 0.03,
+        moves_left_clip: 20.0,
+        moves_left_sharpness: 0.5,
+    };
     let settings: SearchSettings = SearchSettings {
-        fpu: 0.0,
-        wdl: None,
-        moves_left: None,
-        c_puct: 2.0,
-        max_nodes: 800,
-        alpha: 0.0,
-        eps: 0.0,
-        search_type: NonTrainerSearch,
-        pst: 0.0,
+        fpu: 0.6,
+        wdl: EvalMode::Wdl,
+        moves_left: Some(m_settings),
+        c_puct: 3.0,
+        max_nodes: 10,
+        alpha: 0.03,
+        eps: 0.25,
+        search_type: TrainerSearch(None),
+        pst: 1.3,
     };
     thread::scope(|s| {
         while games_count < target_games {
@@ -58,7 +66,7 @@ fn main() {
                 .name("executor_net_0".to_string())
                 .spawn(move |_| {
                     executor_static(
-                        "./nets/tz_5521.pt".to_string(),
+                        "./nets/tz_1.pt".to_string(),
                         // "chess_16x128_gen3634.pt".to_string(),
                         tensor_exe_recv_clone_0,
                         ctrl_recv_clone,
@@ -89,7 +97,17 @@ fn main() {
                     tensor_exe_send = tensor_exe_send_1.clone();
                 }
                 let rt = Runtime::new().unwrap();
-                let (mv, _, _, _, _) = rt.block_on(async {get_move(bs.clone(), tensor_exe_send.clone(), settings.clone()).await});
+                let mut cache = LruCache::new(NonZeroUsize::new(1000).unwrap());
+                let (mv, _, _, _, _) = rt.block_on(async {
+                    get_move(
+                        bs.clone(),
+                        tensor_exe_send.clone(),
+                        settings.clone(),
+                        None,
+                        &mut cache,
+                    )
+                    .await
+                });
                 bs.play(mv);
                 println!("{:#}", mv);
 
@@ -121,7 +139,7 @@ fn main() {
             games_count += 1;
         }
         println!("{:?}", scores);
-        ctrl_sender.send(StopServer()).unwrap();
+        ctrl_sender.send(StopServer).unwrap();
     })
     .unwrap();
 }

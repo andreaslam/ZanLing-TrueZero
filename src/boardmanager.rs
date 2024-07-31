@@ -16,7 +16,7 @@ impl BoardStack {
         }
     }
 
-    // get number of repetitions for decoder.rs
+    /// get number of repetitions for decoder.rs
 
     pub fn get_reps(&self) -> usize {
         // reps only for the current position, not the global maximum of repetitions recorded
@@ -24,7 +24,7 @@ impl BoardStack {
         (&self.move_stack).iter().filter(|&x| *x == target).count()
     }
 
-    // play function to be called instead of calling directly on the cozy-chess board
+    /// play function to be called instead of calling directly on the cozy-chess board
     pub fn play(&mut self, mv: Move) {
         assert!(self.status == GameStatus::Ongoing); // check if prev board is valid (can play a move)
         self.move_stack.push(self.board.hash());

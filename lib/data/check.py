@@ -32,15 +32,18 @@ def check_data_file(file: DataFile):
     if len(file.simulations) >= 50:
         sim_count = len(file.simulations)
 
-        middle_slice = file.simulations[sim_count // 3: 2 * sim_count // 3]
+        middle_slice = file.simulations[sim_count // 3 : 2 * sim_count // 3]
 
         assert file.positions[middle_slice[0].start_file_pi].move_index == 0
-        assert file.positions[middle_slice[-1].end_file_pi - 1].is_final == file.info.includes_final_positions
+        assert (
+            file.positions[middle_slice[-1].end_file_pi - 1].is_final
+            == file.info.includes_final_positions
+        )
         assert file.positions[middle_slice[-1].end_file_pi].move_index == 0
 
         sim_slices = [
-            file.simulations[sim_count // 5:2 * sim_count // 5],
-            file.simulations[3 * sim_count // 5:4 * sim_count // 5]
+            file.simulations[sim_count // 5 : 2 * sim_count // 5],
+            file.simulations[3 * sim_count // 5 : 4 * sim_count // 5],
         ]
         group = DataGroup(file.info.game, sim_slices)
 
@@ -64,7 +67,6 @@ def check_data_file(file: DataFile):
             last_file_pis = [-1] * len(unrolled_batch)
 
             for batch in unrolled_batch.positions:
-
                 for ni, file_pi in enumerate(batch.file_pi):
                     file_pi = int(file_pi)
 

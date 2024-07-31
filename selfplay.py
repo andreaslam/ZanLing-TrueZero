@@ -91,7 +91,7 @@ class TrueZero:
         # torch.onnx.export(net, training, onnx_path, verbose=False, dynamic_axes=None)
         torch.jit.save(self.net, "tz.pt")
         # torch.jit.save(self.optimiser.state_dict(), "optimiser.pt")
-        
+
     def data_loop(self):
         memory = []
         for iteration in range(self.iterations):
@@ -143,6 +143,7 @@ class TrueZero:
         policy_target = torch.stack(policy_target)
         return training_batch, value_target, policy_target
 
+
 try:
     net = torch.jit.load("tz.pt", map_location=d)
 except ValueError:
@@ -152,8 +153,7 @@ except ValueError:
             nn.init.xavier_uniform_(m.weight)
             if m.bias is not None:
                 nn.init.kaiming_uniform(m.bias)
-    torch.jit.save(net,"tz.pt") # if it doesn't exist
-
+    torch.jit.save(net, "tz.pt")  # if it doesn't exist
 
 
 # TODO: make a LR scheduler

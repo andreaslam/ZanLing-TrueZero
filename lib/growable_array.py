@@ -13,7 +13,7 @@ class GrowableArray:
 
     @property
     def values(self):
-        return self._values[:self._next_i]
+        return self._values[: self._next_i]
 
     def __len__(self):
         return self._next_i
@@ -31,7 +31,7 @@ class GrowableArray:
             new_size = max(2 * len(old_values), self._next_i + n)
 
             self._values = np.full(new_size, np.NaN)
-            self._values[:len(old_values)] = old_values
+            self._values[: len(old_values)] = old_values
 
     def append(self, value):
         self._ensure_space(1)
@@ -43,5 +43,5 @@ class GrowableArray:
         n = len(values)
 
         self._ensure_space(n)
-        self._values[self._next_i:self._next_i + n, :] = values
+        self._values[self._next_i : self._next_i + n, :] = values
         self._next_i += n

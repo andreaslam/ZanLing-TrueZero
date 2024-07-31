@@ -19,9 +19,13 @@ def prod(values):
     return result
 
 
-def print_param_count(module: nn.Module, ):
+def print_param_count(
+    module: nn.Module,
+):
     param_count = sum(prod(p.shape) for p in module.parameters())
-    print(f"Model has {param_count} parameters, which takes {4 * param_count // 1024 / 1024:.3f} Mb")
+    print(
+        f"Model has {param_count} parameters, which takes {4 * param_count // 1024 / 1024:.3f} Mb"
+    )
 
     for name, child in module.named_children():
         child_param_count = sum(prod(p.shape) for p in child.parameters())
@@ -57,10 +61,12 @@ def inv_softmax(x, c):
 
 
 def fake_quantize_scale(x, scale: float, bits: int):
-    assert bits > 1, f"Need at least two bits (to properly represent min, max and 0), got {bits}"
+    assert (
+        bits > 1
+    ), f"Need at least two bits (to properly represent min, max and 0), got {bits}"
     assert scale > 0.0
 
-    a = 2 ** bits
+    a = 2**bits
     return torch.fake_quantize_per_tensor_affine(
         x,
         scale=2 * scale / (a - 2),
@@ -76,8 +82,8 @@ def clean_folder(path):
     os.makedirs(path)
 
 
-X = TypeVar('X')
-Y = TypeVar('Y')
+X = TypeVar("X")
+Y = TypeVar("Y")
 
 
 def map_none(x: Optional[X], f: Callable[[X], Y]) -> Optional[Y]:

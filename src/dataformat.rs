@@ -2,12 +2,12 @@
 
 use cozy_chess::Move;
 
-use crate::boardmanager::BoardStack;
+use crate::{boardmanager::BoardStack, mcts_trainer::Wdl};
 
 #[derive(Debug, Clone)]
 pub struct ZeroEvaluation {
     /// The (normalized) values.
-    pub values: f32, // stole it from https://github.com/KarelPeeters/kZero/blob/master/rust/kz-core/src/network/mod.rs#L23
+    pub values: ZeroValuesPov,
 
     /// The (normalized) policy "vector", only containing the available moves in the order they are yielded by `available_moves`.
     pub policy: Vec<f32>,
@@ -39,5 +39,23 @@ impl Simulation {
             Some(pos) => &pos.board,
             None => &self.final_board,
         }
+    }
+}
+
+#[derive(Debug, Copy, Clone, Default)]
+pub struct ZeroValuesPov {
+    pub value: f32,
+    pub wdl: Wdl,
+    pub moves_left: f32,
+}
+impl ZeroValuesPov {
+    pub fn to_slice(self) -> [f32; 5] {
+        [
+            self.value,
+            self.wdl.w,
+            self.wdl.d,
+            self.wdl.l,
+            self.moves_left,
+        ]
     }
 }

@@ -9,8 +9,17 @@ import pyqtgraph as pg
 import scipy.signal
 from PyQt5.QtCore import pyqtSignal, QObject, Qt, QTimer
 from PyQt5.QtGui import QColor, QColorConstants
-from PyQt5.QtWidgets import QMainWindow, QVBoxLayout, QWidget, QHBoxLayout, QPushButton, QTabWidget, \
-    QSlider, QLabel, QApplication
+from PyQt5.QtWidgets import (
+    QMainWindow,
+    QVBoxLayout,
+    QWidget,
+    QHBoxLayout,
+    QPushButton,
+    QTabWidget,
+    QSlider,
+    QLabel,
+    QApplication,
+)
 from pyqtgraph import PlotWidget
 
 from lib.logger import Logger, LoggerData
@@ -119,7 +128,9 @@ class LogPlotter(QObject):
         # noinspection PyUnresolvedReferences
         self.window.signal_pause_pressed.connect(self._on_pause_pressed)
         # noinspection PyUnresolvedReferences
-        self.window.signal_smooth_window_size_changed.connect(self._on_smooth_window_size_changed)
+        self.window.signal_smooth_window_size_changed.connect(
+            self._on_smooth_window_size_changed
+        )
         # noinspection PyUnresolvedReferences
         self.window.signal_reset_view_pressed.connect(self._on_reset_view_pressed)
 
@@ -204,7 +215,9 @@ class LogPlotter(QObject):
     def _update_plot_items(self, data: LoggerData):
         self.plot_items = {}
         groups = list(dict.fromkeys(g for g, _ in data.values))
-        keys_per_group = {g: dict.fromkeys(k for h, k in data.values if h == g) for g in groups}
+        keys_per_group = {
+            g: dict.fromkeys(k for h, k in data.values if h == g) for g in groups
+        }
 
         for g in groups:
             widget = self._widget_for_group(g)
@@ -214,7 +227,7 @@ class LogPlotter(QObject):
             keys = keys_per_group[g]
             colors = generate_distinct_colors(1.0, 1.0, len(keys))
 
-            for (k, color) in zip(keys, colors):
+            for k, color in zip(keys, colors):
                 pen = pg.mkPen(color)
                 self.plot_items[(g, k)] = widget.plot(name=f"{g} {k}", pen=pen)
 
@@ -243,7 +256,9 @@ def clean_data(axis, values, smooth_window_size: int):
     if smooth_window_size == 1:
         clean_values = values
     else:
-        clean_values = scipy.signal.savgol_filter(values, smooth_window_size, polyorder=1, mode="nearest")
+        clean_values = scipy.signal.savgol_filter(
+            values, smooth_window_size, polyorder=1, mode="nearest"
+        )
 
     return axis, clean_values
 
@@ -254,12 +269,12 @@ def generate_distinct_colors(s: float, v: float, n: int):
 
 def set_pg_defaults():
     if darkdetect.isDark():
-        pg.setConfigOption('background', QColorConstants.DarkGray.darker().darker())
-        pg.setConfigOption('foreground', QColorConstants.LightGray)
+        pg.setConfigOption("background", QColorConstants.DarkGray.darker().darker())
+        pg.setConfigOption("foreground", QColorConstants.LightGray)
     else:
-        pg.setConfigOption('background', QColorConstants.LightGray.lighter())
-        pg.setConfigOption('foreground', QColorConstants.Black)
-    pg.setConfigOption('antialias', True)
+        pg.setConfigOption("background", QColorConstants.LightGray.lighter())
+        pg.setConfigOption("foreground", QColorConstants.Black)
+    pg.setConfigOption("antialias", True)
 
 
 def run_with_plotter(target: Callable[[LogPlotter], None]):
@@ -309,6 +324,7 @@ def show_log(path: str):
 
     run_with_plotter(f)
 
+
 def run_with_plotter_direct(target: Callable[[LogPlotter], None]):
     """
     Run the given function with a newly constructed `LogPlotter`.
@@ -335,9 +351,10 @@ def run_with_plotter_direct(target: Callable[[LogPlotter], None]):
         except BaseException as e:
             QApplication.quit()
             raise e
+
     gui_thread = Thread(target=gui_main)
     gui_thread.start()
-    
+
     app = QApplication([])
 
     plotter = LogPlotter()

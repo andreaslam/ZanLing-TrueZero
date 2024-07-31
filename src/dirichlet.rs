@@ -1,7 +1,7 @@
 use rand::{distributions::Distribution, Rng};
 use rand_distr::Gamma;
 
-/// Variant of [rand::distributions::Dirichlet] that never generates NaNs, even when `alpha` is low
+/// variant of [rand::distributions::Dirichlet] that never generates NaNs, even when `alpha` is low
 #[derive(Debug, Copy, Clone)]
 pub struct StableDirichlet {
     alpha: f32,

@@ -8,7 +8,9 @@ from lib.mapping.mapping import CHESS_FLAT_TO_ATT, CHESS_FLAT_TO_CONV
 
 
 class ScalarHead(nn.Module):
-    def __init__(self, board_size: int, channels: int, hidden_channels: int, hidden_size: int):
+    def __init__(
+        self, board_size: int, channels: int, hidden_channels: int, hidden_size: int
+    ):
         super().__init__()
         self.seq = nn.Sequential(
             conv2d(channels, hidden_channels, 1),
@@ -16,7 +18,7 @@ class ScalarHead(nn.Module):
             nn.Flatten(),
             nn.Linear(hidden_channels * board_size * board_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(hidden_size, 1 + 3 + 1)
+            nn.Linear(hidden_size, 1 + 3 + 1),
         )
 
     def forward(self, common):
@@ -24,7 +26,13 @@ class ScalarHead(nn.Module):
 
 
 class DensePolicyHead(nn.Module):
-    def __init__(self, game: Game, channels: int, hidden_channels: Optional[int], hidden_size: Optional[int]):
+    def __init__(
+        self,
+        game: Game,
+        channels: int,
+        hidden_channels: Optional[int],
+        hidden_size: Optional[int],
+    ):
         super().__init__()
 
         seq = nn.Sequential()
@@ -53,17 +61,21 @@ class DensePolicyHead(nn.Module):
 
 class ConvPolicyHead(nn.Module):
     def __init__(self, game: Game, channels: int, extra_moves: int = 0):
-        assert game.policy_conv_channels is not None, "Conv head only works for games with policy_conv_channels set"
+        assert (
+            game.policy_conv_channels is not None
+        ), "Conv head only works for games with policy_conv_channels set"
         super().__init__()
 
-        policy_count = extra_moves + game.policy_conv_channels * game.board_size * game.board_size
+        policy_count = (
+            extra_moves + game.policy_conv_channels * game.board_size * game.board_size
+        )
         assert game.policy_shape == (policy_count,)
 
         self.extra_moves = extra_moves
         self.seq_extra = nn.Sequential(
             conv2d(channels, 1, 1),
             nn.Flatten(),
-            nn.Linear(game.board_size * game.board_size, extra_moves)
+            nn.Linear(game.board_size * game.board_size, extra_moves),
         )
 
         self.seq = nn.Sequential(
@@ -92,7 +104,9 @@ class AtaxxConvPolicyHead(nn.Module):
     def __init__(self, game: Game, channels: int):
         super().__init__()
 
-        assert game.name.startswith("ataxx-"), "AtaxxConvPolicyHead only works for ataxx"
+        assert game.name.startswith(
+            "ataxx-"
+        ), "AtaxxConvPolicyHead only works for ataxx"
 
         self.seq = nn.Sequential(
             conv2d(channels, channels, 1),
@@ -104,10 +118,10 @@ class AtaxxConvPolicyHead(nn.Module):
         policy_part = self.seq(common)
 
         batch_size, _, _, _ = policy_part.shape
-        policy = torch.concat([
-            policy_part.flatten(1),
-            torch.zeros(batch_size, 1, device=common.device)
-        ], dim=1)
+        policy = torch.concat(
+            [policy_part.flatten(1), torch.zeros(batch_size, 1, device=common.device)],
+            dim=1,
+        )
 
         return policy
 
@@ -115,8 +129,9 @@ class AtaxxConvPolicyHead(nn.Module):
 class AttentionPolicyHead(nn.Module):
     def __init__(self, game: Game, channels: int, query_channels: int):
         super().__init__()
-        assert game.name == "chess" or game.name.startswith("chess-hist"), \
-            "Attention policy head only works for chess for now"
+        assert game.name == "chess" or game.name.startswith(
+            "chess-hist"
+        ), "Attention policy head only works for chess for now"
 
         self.query_channels = query_channels
         self.conv_bulk = conv2d(channels, 2 * query_channels, 1)
@@ -128,23 +143,30 @@ class AttentionPolicyHead(nn.Module):
         bulk = self.conv_bulk(common)
         under = self.conv_under(common[:, :, 7, None, :])
 
-        q_from = bulk[:, :self.query_channels, :, :].flatten(2)
-        q_to = torch.cat([
-            bulk[:, self.query_channels:, :, :].flatten(2),
-            under.reshape(-1, self.query_channels, 3 * 8)
-        ], dim=2)
+        q_from = bulk[:, : self.query_channels, :, :].flatten(2)
+        q_to = torch.cat(
+            [
+                bulk[:, self.query_channels :, :, :].flatten(2),
+                under.reshape(-1, self.query_channels, 3 * 8),
+            ],
+            dim=2,
+        )
 
         # TODO try to do this scaling inside of the weight (and bias?) initializations instead
-        policy = torch.bmm(q_from.transpose(1, 2), q_to) / self.query_channels ** 0.5
+        policy = torch.bmm(q_from.transpose(1, 2), q_to) / self.query_channels**0.5
 
         flat_policy = policy.flatten(1)[:, self.FLAT_TO_ATT]
         return flat_policy
 
 
 class ArimaaPolicyHead(nn.Module):
-    def __init__(self, game: Game, channels: int, hidden_channels: int, hidden_size: int):
+    def __init__(
+        self, game: Game, channels: int, hidden_channels: int, hidden_size: int
+    ):
         super().__init__()
-        assert game.name == "arimaa-split", "This policy head only supports arimaa-split"
+        assert (
+            game.name == "arimaa-split"
+        ), "This policy head only supports arimaa-split"
 
         self.bulk = nn.Sequential(
             conv2d(channels, channels, 1),
@@ -158,17 +180,14 @@ class ArimaaPolicyHead(nn.Module):
             nn.Flatten(),
             nn.Linear(hidden_channels * game.board_size * game.board_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(hidden_size, 1 + 6)
+            nn.Linear(hidden_size, 1 + 6),
         )
 
     def forward(self, common):
         bulk = self.bulk(common)
         scalar = self.scalar(common)
 
-        policy = torch.concat([
-            scalar,
-            torch.flatten(bulk, 1)
-        ], dim=1)
+        policy = torch.concat([scalar, torch.flatten(bulk, 1)], dim=1)
 
         return policy
 
@@ -185,7 +204,9 @@ class ConcatInputsChannelwise(nn.Module):
 
 
 class PredictionHeads(nn.Module):
-    def __init__(self, common: nn.Module, scalar_head: nn.Module, policy_head: nn.Module):
+    def __init__(
+        self, common: nn.Module, scalar_head: nn.Module, policy_head: nn.Module
+    ):
         super().__init__()
         self.common = common
         self.scalar_head = scalar_head
@@ -199,7 +220,9 @@ class PredictionHeads(nn.Module):
 
 
 class ResTower(nn.Module):
-    def __init__(self, depth: int, input_channels: int, channels: int, final_affine=True):
+    def __init__(
+        self, depth: int, input_channels: int, channels: int, final_affine=True
+    ):
         super().__init__()
         self.tower = nn.Sequential(
             conv2d(input_channels, channels, 3),
@@ -233,7 +256,8 @@ def conv2d(in_channels: int, out_channels: int, kernel_size: int) -> nn.Conv2d:
     padding = kernel_size // 2
 
     return nn.Conv2d(
-        in_channels, out_channels,
+        in_channels,
+        out_channels,
         kernel_size=(kernel_size, kernel_size),
-        padding=(padding, padding)
+        padding=(padding, padding),
     )

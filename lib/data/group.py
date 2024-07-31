@@ -14,16 +14,17 @@ class DataGroup:
         self.game = game
         self._sim_views = sim_views
 
-        self._cum_len_sim = np.cumsum([len(s) for s in sim_views], )
+        self._cum_len_sim = np.cumsum(
+            [len(s) for s in sim_views],
+        )
         self._cum_len_position = np.cumsum([len(s.positions) for s in sim_views])
 
         self.simulations = GroupSimulationsView(self)
         self.positions = GroupPositionsView(self)
 
-    def with_new_handles(self) -> 'DataGroup':
+    def with_new_handles(self) -> "DataGroup":
         return DataGroup(
-            game=self.game,
-            sim_views=[s.with_new_handles() for s in self._sim_views]
+            game=self.game, sim_views=[s.with_new_handles() for s in self._sim_views]
         )
 
     def close(self):
@@ -31,7 +32,9 @@ class DataGroup:
             s.file.close()
 
     @staticmethod
-    def from_files(game: Game, files: List[DataFile], range_min: float = 0, range_max: float = 1) -> 'DataGroup':
+    def from_files(
+        game: Game, files: List[DataFile], range_min: float = 0, range_max: float = 1
+    ) -> "DataGroup":
         def pick_slice(f: DataFile):
             min = int(range_min * len(f.simulations))
             max = int(range_max * len(f.simulations))

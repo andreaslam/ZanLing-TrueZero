@@ -2,3 +2,15 @@
 /games/
 /nets/
 /__pycache__/
+/frames/
+/experiment_nets/
+.gitignore
+/runs/
+/python_client_games/
+/UHO_2024/
+.DS_Store
+log.npz
+logs.txt
+debug.txt
+8moves_v3.epd
+datafile.txt

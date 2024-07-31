@@ -1,10 +1,10 @@
-use crate::mcts_trainer::{TypeRequest, Wdl};
+use crate::mcts_trainer::{EvalMode, TypeRequest};
 
 #[derive(Clone, Debug, PartialEq, Copy)]
 
 pub struct SearchSettings {
     pub fpu: f32,
-    pub wdl: Option<Wdl>, // if WDL is None then automatically use value
+    pub wdl: EvalMode, // if WDL is None then automatically use value
     pub moves_left: Option<MovesLeftSettings>,
     pub c_puct: f32,
     pub max_nodes: u128,
@@ -12,7 +12,12 @@ pub struct SearchSettings {
     pub eps: f32,
     pub search_type: TypeRequest,
     pub pst: f32,
-    // pub cap_randomisation: Option<PlayoutCapSettings>, // "playout cap randomisation", TODO use option<playoutcapsettings>
+    // pub cap_randomisation: Option<PlayoutCapSettings>,
+}
+
+pub struct FPUSettings {
+    pub root_fpu: Option<f32>,
+    pub children_fpu: Option<f32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Copy)]
@@ -36,7 +41,6 @@ impl PlayoutCapSettings {
 
 #[derive(Clone, Debug, PartialEq, Copy)]
 pub struct MovesLeftSettings {
-    pub moves_left: f32,
     pub moves_left_weight: f32,
     pub moves_left_clip: f32,
     pub moves_left_sharpness: f32,
@@ -45,7 +49,6 @@ pub struct MovesLeftSettings {
 impl MovesLeftSettings {
     pub fn new(moves_left_weight: f32, moves_left_clip: f32, moves_left_sharpness: f32) -> Self {
         Self {
-            moves_left: f32::NAN,
             moves_left_weight,
             moves_left_clip,
             moves_left_sharpness,

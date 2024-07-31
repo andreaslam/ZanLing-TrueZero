@@ -10,8 +10,9 @@ use std::{
 
 use crate::{
     boardmanager::BoardStack,
-    dataformat::{Position, Simulation},
-    decoder::{board_data, convert_board},
+    dataformat::{Position, Simulation, ZeroValuesPov},
+    decoder::board_data,
+    mcts_trainer::Wdl,
     mvs::get_contents,
 };
 
@@ -73,9 +74,9 @@ struct Scalars {
     available_mv_count: usize,
     played_mv: isize,
     kdl_policy: f32,
-    final_values: f32, // z
-    zero_values: f32,  // q
-    net_values: f32,   // v
+    final_values: ZeroValuesPov, // z
+    zero_values: ZeroValuesPov,  // q
+    net_values: ZeroValuesPov,   // v
 }
 
 impl BinaryOutput {
@@ -137,14 +138,26 @@ impl BinaryOutput {
             self.min_game_length.unwrap_or(i32::MAX),
         ));
 
-        // let outcome = final_board.outcome().unwrap_or(Outcome::Draw);
-
         let outcome: Option<Color> = match final_board.status() {
             GameStatus::Drawn => None,
             GameStatus::Won => Some(!final_board.board().side_to_move()),
             GameStatus::Ongoing => panic!("Game is still ongoing!"),
-        };
+        }; // colour (if any) that won the game
 
+        let pov_player = !simulation.positions[0].board.board().side_to_move();
+
+        match outcome {
+            Some(player) => {
+                if player == pov_player {
+                    self.total_root_wdl[2] += 1;
+                } else {
+                    self.total_root_wdl[0] += 1;
+                }
+            }
+            None => self.total_root_wdl[1] += 1,
+        }
+
+        // self.hit_move_limit_count += final_board.outcome().is_none() as u8 as u64;
         // write the positions
         for (pos_index, position) in positions.iter().enumerate() {
             let &Position {
@@ -175,18 +188,45 @@ impl BinaryOutput {
             // let played_mv_index = self.mapper.move_to_index(board, played_mv);
             // let kdl_policy = kdl_divergence(&zero_evaluation.policy, &net_evaluation.policy);
             let kdl_policy = f32::NAN;
-            let moves_left = game_length + 1 - pos_index;
+            let moves_left = game_length as f32 + 1.0 - pos_index as f32;
             let stored_policy = &zero_evaluation.policy;
+
             let final_values = match outcome {
-                Some(outcome) => {
-                    if outcome == board.board().side_to_move() {
-                        1.0
-                    } else {
-                        -1.0
-                    }
-                }
-                None => 0.0,
+                // [white] wins - white turn: 1.0
+                // [black] wins - white turn: -1.0
+                // [white] wins - black turn: 1.0
+                // [black] wins - black turn: -1.0
+                Some(colour) => match colour {
+                    Color::White => ZeroValuesPov {
+                        value: 1.0,
+                        wdl: Wdl {
+                            w: 1.0,
+                            d: 0.0,
+                            l: 0.0,
+                        },
+                        moves_left,
+                    },
+                    Color::Black => ZeroValuesPov {
+                        value: -1.0,
+                        wdl: Wdl {
+                            w: 0.0,
+                            d: 0.0,
+                            l: 1.0,
+                        },
+                        moves_left,
+                    },
+                },
+                None => ZeroValuesPov {
+                    value: 0.0,
+                    wdl: Wdl {
+                        w: 0.0,
+                        d: 1.0,
+                        l: 0.0,
+                    },
+                    moves_left,
+                },
             };
+
             let scalars = Scalars {
                 game_id,
                 pos_index,
@@ -206,16 +246,44 @@ impl BinaryOutput {
 
             self.append_position(board, &scalars, &policy_indices, stored_policy)?;
         }
-        let final_values = match outcome {
-            Some(outcome) => {
-                if outcome == final_board.board().side_to_move() {
-                    1.0
-                } else {
-                    -1.0
-                }
-            }
-            None => 0.0,
+
+        let final_wdl = match outcome {
+            Some(player) => match player {
+                Color::White => Wdl {
+                    w: 1.0,
+                    d: 0.0,
+                    l: 0.0,
+                },
+                Color::Black => Wdl {
+                    w: 0.0,
+                    d: 0.0,
+                    l: 1.0,
+                },
+            },
+            None => Wdl {
+                w: 0.0,
+                d: 1.0,
+                l: 0.0,
+            },
         };
+
+        let final_v = final_wdl.w - final_wdl.l;
+        let final_values = ZeroValuesPov {
+            value: final_v,
+            wdl: final_wdl,
+            moves_left: game_length as f32,
+        };
+
+        let nan = ZeroValuesPov {
+            value: f32::NAN,
+            wdl: Wdl {
+                w: f32::NAN,
+                d: f32::NAN,
+                l: f32::NAN,
+            },
+            moves_left: f32::NAN,
+        };
+
         let scalars = Scalars {
             game_id,
             pos_index: game_length,
@@ -229,9 +297,9 @@ impl BinaryOutput {
             played_mv: -1,
             kdl_policy: f32::NAN,
             final_values,
-            zero_values: f32::NAN,
-            //TODO in theory we could ask the network, but this is only really meaningful for muzero
-            net_values: f32::NAN,
+            zero_values: nan,
+            // TODO in theory we could ask the network, but this is only really meaningful for muzero
+            net_values: nan,
         };
 
         self.append_position(&final_board, &scalars, &[], &[])?;
@@ -249,12 +317,6 @@ impl BinaryOutput {
         // encode board
 
         let (board_scalars, board_bools) = board_data(board);
-        // assert_eq!(self.mapper.input_bool_len(), board_bools.len());
-        // assert_eq!(self.mapper.input_scalar_count(), board_scalars.len());
-        // assert_eq!(
-        //     (self.mapper.input_bool_len() + 7) / 8,
-        //     board_bools.storage().len()
-        // );
 
         // converting bools into u8s (8 bools = 1 u8)
 
@@ -275,9 +337,15 @@ impl BinaryOutput {
         // check that everything makes sense
         let policy_len = policy_indices.len();
         assert_eq!(policy_len, policy_values.len());
-        // assert_normalized_or_nan(scalars.zero_values.wdl.sum());
-        // assert_normalized_or_nan(scalars.net_values.wdl.sum());
-        // assert_normalized_or_nan(scalars.final_values.wdl.sum());
+        assert_normalized_or_nan(
+            scalars.zero_values.wdl.w + scalars.zero_values.wdl.d + scalars.zero_values.wdl.l,
+        );
+        assert_normalized_or_nan(
+            scalars.net_values.wdl.w + scalars.net_values.wdl.d + scalars.net_values.wdl.l,
+        );
+        assert_normalized_or_nan(
+            scalars.final_values.wdl.w + scalars.final_values.wdl.d + scalars.final_values.wdl.l,
+        );
         if policy_len != 0 {
             assert_normalized_or_nan(policy_values.iter().sum());
         }
@@ -322,8 +390,11 @@ impl BinaryOutput {
             includes_game_start_indices: true,
             max_game_length: self.max_game_length.unwrap_or(-1),
             min_game_length: self.min_game_length.unwrap_or(-1),
-            // root_wdl: (self.total_root_wdl.cast::<f32>() / self.game_count as f32).to_slice(),
-            root_wdl: [0.0, 0.0, 0.0],
+            root_wdl: [
+                self.total_root_wdl[0] as f32,
+                self.total_root_wdl[1] as f32,
+                self.total_root_wdl[2] as f32,
+            ],
             hit_move_limit: self.hit_move_limit_count as f32 / self.game_count as f32,
         };
 
@@ -344,6 +415,9 @@ impl BinaryOutput {
 
     pub fn game_count(&self) -> usize {
         self.game_count
+    }
+    pub fn position_count(&self) -> usize {
+        self.position_count
     }
 }
 
@@ -396,20 +470,20 @@ impl Scalars {
         "played_mv",
         "kdl_policy",
         "final_v",
-        // "final_wdl_w",
-        // "final_wdl_d",
-        // "final_wdl_l",
-        // "final_moves_left",
+        "final_wdl_w",
+        "final_wdl_d",
+        "final_wdl_l",
+        "final_moves_left",
         "zero_v",
-        // "zero_wdl_w",
-        // "zero_wdl_d",
-        // "zero_wdl_l",
-        // "zero_moves_left",
+        "zero_wdl_w",
+        "zero_wdl_d",
+        "zero_wdl_l",
+        "zero_moves_left",
         "net_v",
-        // "net_wdl_w",
-        // "net_wdl_d",
-        // "net_wdl_l",
-        // "net_moves_left",
+        "net_wdl_w",
+        "net_wdl_d",
+        "net_wdl_l",
+        "net_moves_left",
     ];
 
     fn to_vec(&self) -> Vec<f32> {
@@ -427,9 +501,9 @@ impl Scalars {
             self.kdl_policy as f32,
         ];
 
-        result.extend_from_slice(&[self.final_values]);
-        result.extend_from_slice(&[self.zero_values]);
-        result.extend_from_slice(&[self.net_values]);
+        result.extend_from_slice(&self.final_values.to_slice());
+        result.extend_from_slice(&self.zero_values.to_slice());
+        result.extend_from_slice(&self.net_values.to_slice());
 
         assert_eq!(result.len(), Self::NAMES.len());
         result

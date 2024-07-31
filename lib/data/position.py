@@ -1,4 +1,4 @@
-import random 
+import random
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -45,7 +45,6 @@ class Position:
         data = Taker(data)
 
         scalar_array = np.frombuffer(data.take(len(scalar_names) * 4), dtype=np.float32)
-        # print("scalar_array", len(scalar_names) * 4)
         scalars = {n: v for n, v in zip(scalar_names, scalar_array)}
 
         self.file_pi = file_pi
@@ -82,44 +81,54 @@ class Position:
         self.kdl_policy = float(scalars.pop("kdl_policy"))
 
         self.final_v = float(scalars.pop("final_v"))
-        # print(self.final_v)
         self.zero_v = float(scalars.pop("zero_v"))
-        # print(self.zero_v)
         self.net_v = float(scalars.pop("net_v"))
-        # print(self.net_v)
 
-        # self.final_wdl = np.array([scalars.pop("final_wdl_w"), scalars.pop("final_wdl_d"), scalars.pop("final_wdl_l")])
-        # self.zero_wdl = np.array([scalars.pop("zero_wdl_w"), scalars.pop("zero_wdl_d"), scalars.pop("zero_wdl_l")])
-        # self.net_wdl = np.array([scalars.pop("net_wdl_w"), scalars.pop("net_wdl_d"), scalars.pop("net_wdl_l")])
+        self.final_wdl = np.array(
+            [
+                scalars.pop("final_wdl_w"),
+                scalars.pop("final_wdl_d"),
+                scalars.pop("final_wdl_l"),
+            ]
+        )
+        self.zero_wdl = np.array(
+            [
+                scalars.pop("zero_wdl_w"),
+                scalars.pop("zero_wdl_d"),
+                scalars.pop("zero_wdl_l"),
+            ]
+        )
+        self.net_wdl = np.array(
+            [
+                scalars.pop("net_wdl_w"),
+                scalars.pop("net_wdl_d"),
+                scalars.pop("net_wdl_l"),
+            ]
+        )
 
-        # self.final_moves_left = float(scalars.pop("final_moves_left", move_count - self.move_index))
-        # self.zero_moves_left = float(scalars.pop("zero_moves_left", np.nan))
-        # self.net_moves_left = float(scalars.pop("net_moves_left", np.nan))
+        self.final_moves_left = float(
+            scalars.pop("final_moves_left", move_count - self.move_index)
+        )
+        self.zero_moves_left = float(scalars.pop("zero_moves_left", np.nan))
+        self.net_moves_left = float(scalars.pop("net_moves_left", np.nan))
 
         if len(scalars):
             print(f"Leftover scalars: {list(scalars.keys())}")
 
         bool_count = prod(game.input_bool_shape)
         bit_buffer = np.frombuffer(data.take((bool_count + 7) // 8), dtype=np.uint8)
-        # print("bit_buffer", (bool_count + 7) // 8)
-        # print("bit_buffer", bit_buffer)
         bool_buffer = np.unpackbits(bit_buffer, bitorder="little")
         self.input_bools = bool_buffer[:bool_count].reshape(*game.input_bool_shape)
-        # print("self.input_bools", self.input_bools)
         self.input_scalars = np.frombuffer(
             data.take(game.input_scalar_channels * 4), dtype=np.float32
         )
-        # print("input_scalars", game.input_scalar_channels * 4)
-        # print("input_scalars", self.input_scalars)
+
         self.policy_indices = np.frombuffer(
             data.take(self.available_mv_count * 4), dtype=np.int32
         )
-        # print("input_scalars", game.input_scalar_channels * 4)
-        # print("policy_indices", self.policy_indices)
         self.policy_values = np.frombuffer(
             data.take(self.available_mv_count * 4), dtype=np.float32
         )
-        # print("policy_values", self.policy_values)
 
         data.finish()
 
@@ -254,15 +263,15 @@ class PositionBatch:
                 assert p.final_position is not None
                 write_input(game, final_input_full[i, :, :, :], p.final_position)
 
-            # all_wdls[i, 0:3] = torch.from_numpy(p.final_wdl)
-            # all_wdls[i, 3:6] = torch.from_numpy(p.zero_wdl)
-            # all_wdls[i, 6:9] = torch.from_numpy(p.net_wdl)
+            all_wdls[i, 0:3] = torch.from_numpy(p.final_wdl)
+            all_wdls[i, 3:6] = torch.from_numpy(p.zero_wdl)
+            all_wdls[i, 6:9] = torch.from_numpy(p.net_wdl)
             all_values[i, 0] = p.final_v
             all_values[i, 1] = p.zero_v
             all_values[i, 2] = p.net_v
-            # all_moves_left[i, 0] = p.final_moves_left
-            # all_moves_left[i, 1] = p.zero_moves_left
-            # all_moves_left[i, 2] = p.net_moves_left
+            all_moves_left[i, 0] = p.final_moves_left
+            all_moves_left[i, 1] = p.zero_moves_left
+            all_moves_left[i, 2] = p.net_moves_left
 
             policy_indices[i, : p.available_mv_count] = torch.from_numpy(
                 p.policy_indices.copy()

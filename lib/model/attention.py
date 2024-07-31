@@ -7,11 +7,16 @@ from torch import nn
 
 class AttentionTower(nn.Module):
     def __init__(
-            self,
-            board_size: int, input_channels: int,
-            depth: int,
-            d_model: int, heads: int, d_k: int, d_v: int, d_ff: int,
-            dropout: float
+        self,
+        board_size: int,
+        input_channels: int,
+        depth: int,
+        d_model: int,
+        heads: int,
+        d_k: int,
+        d_v: int,
+        d_ff: int,
+        dropout: float,
     ):
         super().__init__()
         self.board_size = board_size
@@ -24,7 +29,9 @@ class AttentionTower(nn.Module):
         self.embedding = nn.Parameter(torch.randn(board_size * board_size, d_model))
 
         self.encoders = nn.ModuleList(
-            EncoderLayer(d_model, heads, d_k, d_v, d_ff, dropout, alpha=alpha, beta=beta)
+            EncoderLayer(
+                d_model, heads, d_k, d_v, d_ff, dropout, alpha=alpha, beta=beta
+            )
             for _ in range(depth)
         )
 
@@ -34,7 +41,9 @@ class AttentionTower(nn.Module):
         # "b c h w -> (h w) b c"
         shaped = x.permute(2, 3, 0, 1).view(h * w, b, d_in)
 
-        expanded = self.expand(shaped.reshape(h * w * b, d_in)).view(h * w, b, self.d_model)
+        expanded = self.expand(shaped.reshape(h * w * b, d_in)).view(
+            h * w, b, self.d_model
+        )
         curr = expanded + self.embedding.unsqueeze(1)
 
         for encoder in self.encoders:
@@ -47,10 +56,15 @@ class AttentionTower(nn.Module):
 
 class EncoderLayer(nn.Module):
     def __init__(
-            self,
-            d_model: int, heads: int, d_k: int, d_v: int, d_ff: int,
-            dropout: float,
-            alpha: float = 1.0, beta: float = 1.0
+        self,
+        d_model: int,
+        heads: int,
+        d_k: int,
+        d_v: int,
+        d_ff: int,
+        dropout: float,
+        alpha: float = 1.0,
+        beta: float = 1.0,
     ):
         super().__init__()
 
@@ -84,11 +98,16 @@ class EncoderLayer(nn.Module):
         # initialize weights according to DeepNet/DeepNorm paper
         self.alpha = alpha
 
-        project_q = self.project_qkv.weight[:self.d_k_total, :]
-        project_k = self.project_qkv.weight[self.d_k_total:2 * self.d_k_total, :]
-        project_v = self.project_qkv.weight[2 * self.d_k_total:, :]
+        project_q = self.project_qkv.weight[: self.d_k_total, :]
+        project_k = self.project_qkv.weight[self.d_k_total : 2 * self.d_k_total, :]
+        project_v = self.project_qkv.weight[2 * self.d_k_total :, :]
 
-        for w in [self.ff[0].weight, self.ff[2].weight, project_v, self.project_out.weight]:
+        for w in [
+            self.ff[0].weight,
+            self.ff[2].weight,
+            project_v,
+            self.project_out.weight,
+        ]:
             nn.init.xavier_normal_(w, gain=beta)
         for w in [project_q, project_k]:
             nn.init.xavier_normal_(w, gain=1)
@@ -101,12 +120,14 @@ class EncoderLayer(nn.Module):
         assert c == self.d_model
 
         # input projection
-        qkv = self.project_qkv(input.view(n * b, self.d_model)).view(n, b * heads, self.d_kqv)
+        qkv = self.project_qkv(input.view(n * b, self.d_model)).view(
+            n, b * heads, self.d_kqv
+        )
 
         # split
-        q = qkv[:, :, :self.d_k]
-        k = qkv[:, :, self.d_k:2 * self.d_k]
-        v = qkv[:, :, 2 * self.d_k:]
+        q = qkv[:, :, : self.d_k]
+        k = qkv[:, :, self.d_k : 2 * self.d_k]
+        v = qkv[:, :, 2 * self.d_k :]
 
         # main attention calculation
         # weights: (b*h, n_q, n_k)
@@ -123,7 +144,9 @@ class EncoderLayer(nn.Module):
         att_projected = self.project_out(att_viewed).view(n, b, self.d_model)
         att_result = self.norm_att(input * self.alpha + self.dropout(att_projected))
 
-        ff_inner = self.ff(att_result.view(n * b, self.d_model)).view(n, b, self.d_model)
+        ff_inner = self.ff(att_result.view(n * b, self.d_model)).view(
+            n, b, self.d_model
+        )
         ff_result = self.norm_ff(att_result * self.alpha + self.dropout(ff_inner))
 
         return ff_result, weights
@@ -151,6 +174,10 @@ def check_att_shapes(q, k, v, heads: int) -> AttShapes:
     assert n0 == n1, "Input seq length mismatch"
     assert dk_total0 == dk_total1, "Key size mismatch"
 
-    assert dk_total0 % heads == 0 and dv_total % heads == 0, "Size not divisible by heads"
+    assert (
+        dk_total0 % heads == 0 and dv_total % heads == 0
+    ), "Size not divisible by heads"
 
-    return AttShapes(b=b0, n=n0, m=m, heads=heads, dk=dk_total0 // heads, dv=dv_total // heads)
+    return AttShapes(
+        b=b0, n=n0, m=m, heads=heads, dk=dk_total0 // heads, dv=dv_total // heads
+    )

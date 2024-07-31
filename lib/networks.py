@@ -5,9 +5,13 @@ from torch import nn
 
 class MuZeroNetworks(nn.Module):
     def __init__(
-            self,
-            state_channels: int, state_quant_bits: Optional[int], state_channels_saved: int,
-            representation: nn.Module, dynamics: nn.Module, prediction: nn.Module
+        self,
+        state_channels: int,
+        state_quant_bits: Optional[int],
+        state_channels_saved: int,
+        representation: nn.Module,
+        dynamics: nn.Module,
+        prediction: nn.Module,
     ):
         assert state_channels <= state_channels
         super().__init__()

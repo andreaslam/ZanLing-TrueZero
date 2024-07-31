@@ -424,6 +424,7 @@ class LoopBuffer:
         self.position_count += len(file.positions)
         self.position_total += len(file.positions)
         self.simulation_count += file.info.simulation_count
+
         while (
             self.position_count - len(self.files[0].positions) > self.target_positions
         ):

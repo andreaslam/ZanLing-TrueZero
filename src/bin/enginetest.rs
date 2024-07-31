@@ -1,85 +1,74 @@
 use cozy_chess::{Board, Color, GameStatus, Move};
 use crossbeam::thread;
 use flume::{Receiver, Sender};
+use lru::LruCache;
 use rand::seq::SliceRandom;
-use tokio::runtime::Runtime;
 use std::{
     env,
     fs::File,
     io::{self, BufRead},
+    num::NonZeroUsize,
     panic, process,
 };
+use tokio::runtime::Runtime;
+use tz_rust::debug_print;
+use tz_rust::settings::MovesLeftSettings;
 use tz_rust::{
     boardmanager::BoardStack,
+    cache::{CacheEntryKey, CacheEntryValue},
     elo::elo_wld,
     executor::{executor_static, Message, Packet},
     mcts::get_move,
-    mcts_trainer::TypeRequest::NonTrainerSearch,
+    mcts_trainer::{EvalMode, TypeRequest::NonTrainerSearch},
     selfplay::CollectorMessage,
     settings::SearchSettings,
+    utils::TimeStampDebugger,
 };
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
-    // panic::set_hook(Box::new(|panic_info| {
-    //     // print panic information
-    //     eprintln!("Panic occurred: {:?}", panic_info);
-    //     // exit the program immediately
-    //     std::process::exit(1);
-    // }));
+    panic::set_hook(Box::new(|panic_info| {
+        // print panic information
+        eprintln!("Panic occurred: {:?}", panic_info);
+        // exit the program immediately
+        std::process::exit(1);
+    }));
 
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
-    let num_games = 10000; // number of games to generate
-    let num_threads = 32;
-    let engine_0: String = "./nets/tz_6574.pt".to_string(); // new engine
-                                                            // let engine_1: String = "./nets/tz_5780.pt".to_string(); // old engine
+    let num_games = 1000000;
+    let num_threads = 1024;
+    let engine_0: String = "nets/tz_16.pt".to_string(); // new engine
     let engine_1: String = "./chess_16x128_gen3634.pt".to_string(); // old engine
-    let engine_0_clone = engine_0.clone();
-    let engine_1_clone = engine_1.clone();
+                                                                    // let engine_1: String = "tz_6515.pt".to_string();
     let num_executors = 2; // always be 2, 2 players, one each (one for each neural net)
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
 
     thread::scope(|s| {
-        // let mut selfplay_masters: Vec<DataGen> = Vec::new();
-        // commander
-
         let mut vec_communicate_exe_send: Vec<Sender<String>> = Vec::new();
         let mut vec_communicate_exe_recv: Vec<Receiver<String>> = Vec::new();
-
         assert!(num_executors == 2);
-
         for _ in 0..num_executors {
             let (communicate_exe_send, communicate_exe_recv) = flume::bounded::<String>(1);
             vec_communicate_exe_send.push(communicate_exe_send);
             vec_communicate_exe_recv.push(communicate_exe_recv);
         }
 
-        // send-recv pair between commander and collector
-
-        // selfplay threads
-        let (tensor_exe_send_0, tensor_exe_recv_0) = flume::bounded::<Packet>(1); // mcts to executor
-        let (tensor_exe_send_1, tensor_exe_recv_1) = flume::bounded::<Packet>(1); // mcts to executor
+        let (tensor_exe_send_0, tensor_exe_recv_0) = flume::bounded::<Packet>(num_threads);
+        let (tensor_exe_send_1, tensor_exe_recv_1) = flume::bounded::<Packet>(num_threads);
         for n in 0..num_threads {
-            // // executor
-            // sender-receiver pair to communicate for each thread instance to the executor
             let sender_clone = game_sender.clone();
-            // let mut selfplay_master = DataGen { iterations: 1 };
             let tensor_exe_send_clone_0 = tensor_exe_send_0.clone();
             let tensor_exe_send_clone_1 = tensor_exe_send_1.clone();
-            // let nps_sender = game_sender.clone();
             s.builder()
                 .name(format!("generator_{}", n.to_string()))
                 .spawn(move |_| {
                     generator_main(
                         &sender_clone,
-                        tensor_exe_send_clone_0,
-                        tensor_exe_send_clone_1,
+                        tensor_exe_send_clone_0.clone(),
+                        tensor_exe_send_clone_1.clone(),
                     )
                 })
                 .unwrap();
-
-            // selfplay_masters.push(selfplay_master.clone());
         }
-        // collector
 
         s.builder()
             .name("collector".to_string())
@@ -88,13 +77,12 @@ fn main() {
                     &game_receiver,
                     num_games,
                     ctrl_sender,
-                    engine_0_clone,
-                    engine_1_clone,
+                    engine_0.clone(),
+                    engine_1.clone(),
                 )
             })
             .unwrap();
-        // executor
-        // send/recv pair between executor and commander
+
         let ctrl_recv_0 = ctrl_recv.clone();
         let ctrl_recv_1 = ctrl_recv.clone();
 
@@ -130,9 +118,7 @@ fn main() {
 fn read_epd_file(file_path: &str) -> io::Result<Vec<String>> {
     let file = File::open(file_path)?;
     let reader = io::BufReader::new(file);
-
     let positions: Vec<String> = reader.lines().filter_map(|line| line.ok()).collect();
-
     Ok(positions)
 }
 
@@ -141,12 +127,18 @@ fn generator_main(
     tensor_exe_send_0: Sender<Packet>,
     tensor_exe_send_1: Sender<Packet>,
 ) {
+    let m_settings = MovesLeftSettings {
+        moves_left_weight: 0.03,
+        moves_left_clip: 20.0,
+        moves_left_sharpness: 0.5,
+    };
+
     let settings: SearchSettings = SearchSettings {
         fpu: 0.0,
-        wdl: None,
-        moves_left: None,
-        c_puct: 0.0,
-        max_nodes: 2,
+        wdl: EvalMode::Wdl,
+        moves_left: Some(m_settings),
+        c_puct: 3.0,
+        max_nodes: 400,
         alpha: 0.0,
         eps: 0.0,
         search_type: NonTrainerSearch,
@@ -155,56 +147,53 @@ fn generator_main(
 
     let openings = read_epd_file("./8moves_v3.epd").unwrap();
     let engines = vec![tensor_exe_send_0.clone(), tensor_exe_send_1.clone()];
+    let mut swap_count = 0;
+    let mut fen = openings.choose(&mut rand::thread_rng()).unwrap();
     loop {
-        let mut swap_count = 0; // so that each engine can play same opening as black and white
-
-        let fen = openings.choose(&mut rand::thread_rng()).unwrap();
-        for (engine_idx, engine) in engines.iter().enumerate() {
-            let board = Board::from_fen(fen, false).unwrap();
-            // println!("starting fen: {}", fen);
-            let mut bs = BoardStack::new(board);
-
-            let mut counter = 0;
-            let rt = Runtime::new().unwrap();
-            while bs.status() == GameStatus::Ongoing {
-                let mv: Move;
-                if counter % 2 == 0 {
-                    // white
-                    (mv, _, _, _, _) = rt.block_on(async {get_move(bs.clone(), engine.clone(), settings.clone()).await});
-                } else {
-                    // swap the engine for black
-                    let opponent_engine = engines[(engine_idx + 1) % engines.len()].clone();
-
-                    (mv, _, _, _, _) = rt.block_on(async {get_move(bs.clone(), opponent_engine, settings.clone()).await});
-                }
-                bs.play(mv);
-                counter += 1;
-            }
-
-            let outcome: Option<Color> = match bs.status() {
-                GameStatus::Drawn => None,
-                GameStatus::Won => Some(!bs.board().side_to_move()),
-                GameStatus::Ongoing => panic!("Game is still ongoing!"),
-            };
-            // handle outcome based on engine and move colour (engine_0 POV)
-            let outcome: Option<Color> = match outcome {
-                Some(colour) => {
-                    if swap_count == 0 {
-                        Some(colour)
-                    } else if swap_count == 1 {
-                        Some(!colour)
-                    } else {
-                        unreachable!()
-                    }
-                }
-                None => None,
-            };
-
-            swap_count += 1;
-            sender_collector
-                .send(CollectorMessage::GameResult(outcome))
-                .unwrap();
+        let mut moves_list: Vec<String> = Vec::new();
+        if swap_count % 2 == 0 {
+            fen = openings.choose(&mut rand::thread_rng()).unwrap();
+        } else {
         }
+        let board = Board::from_fen(fen, false).unwrap();
+        let mut bs = BoardStack::new(board);
+        let rt = Runtime::new().unwrap();
+        let mut move_counter = swap_count % 2;
+        let mut cache_0: LruCache<CacheEntryKey, CacheEntryValue> =
+            LruCache::new(NonZeroUsize::new(settings.max_nodes as usize).unwrap());
+        let mut cache_1: LruCache<CacheEntryKey, CacheEntryValue> =
+            LruCache::new(NonZeroUsize::new(settings.max_nodes as usize).unwrap());
+
+        let mut caches = vec![cache_0, cache_1];
+        while bs.status() == GameStatus::Ongoing {
+            let engine = &engines[move_counter % 2];
+            let cache = &mut caches[move_counter % 2];
+            let (mv, _, _, _, _) = rt.block_on(async {
+                get_move(bs.clone(), engine.clone(), settings.clone(), None, cache).await
+            });
+            bs.play(mv);
+            moves_list.push(format!("{:#}", mv));
+            move_counter += 1;
+        }
+        let outcome: Option<bool> = match bs.status() {
+            GameStatus::Drawn => None,
+            GameStatus::Won => Some((move_counter - 1) % 2 == 0),
+            GameStatus::Ongoing => panic!("Game is still ongoing!"),
+        };
+        let moves_list_str = moves_list.join(" ");
+        println!(
+            "{}",
+            &format!(
+                "first move engine_{} opening {}, moves {}",
+                swap_count % 2,
+                fen,
+                moves_list_str
+            )
+        );
+        swap_count += 1;
+        sender_collector
+            .send(CollectorMessage::TestingResult(outcome))
+            .unwrap();
     }
 }
 
@@ -215,7 +204,7 @@ fn collector_main(
     engine_0_path: String,
     engine_1_path: String,
 ) {
-    let mut results = (0, 0, 0); // win, loss, draw (engine_0 POV)
+    let mut results = (0, 0, 0); // (w,l,d) in the perspective of engine_0
     let mut counter = 0;
     loop {
         let msg = receiver.recv().unwrap();
@@ -229,9 +218,11 @@ fn collector_main(
             CollectorMessage::ExecutorStatistics(_) => {
                 panic!("not possible! this is to test engine changes");
             }
-            CollectorMessage::GameResult(result) => {
+            CollectorMessage::GameResult(_) => {
+                panic!("not possible! this is to test engine changes");
+            }
+            CollectorMessage::TestingResult(result) => {
                 if counter == games {
-                    // print elo stats
                     let (elo_min, elo_actual, elo_max) = elo_wld(results.0, results.1, results.2);
                     println!("===");
                     println!("{} vs {}", engine_0_path, engine_1_path);
@@ -245,19 +236,16 @@ fn collector_main(
                         elo_max - elo_min
                     );
                     println!("===");
-                    ctrl_sender.send(Message::StopServer()).unwrap();
+                    ctrl_sender.send(Message::StopServer).unwrap();
                     process::exit(0)
                 } else {
-                    // print elo stats
-
                     match result {
-                        Some(colour) => match colour {
-                            Color::White => results.0 += 1,
-                            Color::Black => results.1 += 1,
+                        Some(winner) => match winner {
+                            true => results.0 += 1,
+                            false => results.1 += 1,
                         },
                         None => results.2 += 1,
                     }
-
                     let (elo_min, elo_actual, elo_max) = elo_wld(results.0, results.1, results.2);
                     println!("w: {}, l: {}, d: {}", results.0, results.1, results.2);
                     println!(

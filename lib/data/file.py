@@ -2,7 +2,7 @@ import json
 import os
 from pathlib import Path
 from threading import RLock
-from typing import BinaryIO, Sequence, overload, Union
+from typing import BinaryIO, Sequence, overload, Union, Optional
 
 import numpy as np
 
@@ -13,12 +13,27 @@ OFFSET_SIZE_IN_BYTES = 8
 
 
 class DataFileInfo:
-    def __init__(self, game: Game, meta: dict, bin_path: Path, off_path: Path, final_offset: int, timestamp: float):
+    def __init__(
+        self,
+        game: Optional[Game],
+        meta: dict,
+        bin_path: Path,
+        off_path: Path,
+        final_offset: int,
+        timestamp: float,
+    ):
         actual_game = meta.pop("game")
-        assert actual_game == game.name, f"Expected game {game.name}, got {actual_game}"
-        assert meta.pop("input_bool_shape") == list(game.input_bool_shape)
-        assert meta.pop("input_scalar_count") == game.input_scalar_channels
-        assert meta.pop("policy_shape") == list(game.policy_shape)
+        actual_input_bool_shape = meta.pop("input_bool_shape")
+        actual_input_scalar_count = meta.pop("input_scalar_count")
+        actual_policy_shape = meta.pop("policy_shape")
+
+        if game is not None:
+            assert (
+                actual_game == game.name
+            ), f"Expected game {game.name}, got {actual_game}"
+            assert actual_input_bool_shape == list(game.input_bool_shape)
+            assert actual_input_scalar_count == game.input_scalar_channels
+            assert actual_policy_shape == list(game.policy_shape)
 
         self.game = game
         self.bin_path = bin_path
@@ -33,9 +48,13 @@ class DataFileInfo:
         self.max_simulation_length = meta.pop("max_game_length")
         self.root_wdl = meta.pop("root_wdl", None)
         self.hit_move_limit = meta.pop("hit_move_limit", None)
-        self.includes_simulation_start_indices = meta.pop("includes_game_start_indices", False)
+        self.includes_simulation_start_indices = meta.pop(
+            "includes_game_start_indices", False
+        )
 
-        total_move_count = self.position_count - self.includes_final_positions * self.simulation_count
+        total_move_count = (
+            self.position_count - self.includes_final_positions * self.simulation_count
+        )
         self.mean_simulation_length = total_move_count / self.simulation_count
 
         self.scalar_names = meta.pop("scalar_names")
@@ -59,7 +78,7 @@ class DataFile:
         self._cached_simulation_start_indices = None
 
     @staticmethod
-    def open(game: Game, path: str) -> 'DataFile':
+    def open(game: Optional[Game], path: str) -> "DataFile":
         path = Path(path)
         json_path = path.with_suffix(".json").absolute()
         bin_path = path.with_suffix(".bin").absolute()
@@ -86,14 +105,18 @@ class DataFile:
         info = DataFileInfo(game, meta, bin_path, off_path, final_offset, timestamp)
 
         if info.includes_simulation_start_indices:
-            expected_off_len_bytes = OFFSET_SIZE_IN_BYTES * (info.position_count + info.simulation_count)
+            expected_off_len_bytes = OFFSET_SIZE_IN_BYTES * (
+                info.position_count + info.simulation_count
+            )
         else:
             expected_off_len_bytes = OFFSET_SIZE_IN_BYTES * info.position_count
-        assert expected_off_len_bytes == off_len_bytes, f"Mismatch in offset size, expected {expected_off_len_bytes} but got {off_len_bytes}"
+        assert (
+            expected_off_len_bytes == off_len_bytes
+        ), f"Mismatch in offset size, expected {expected_off_len_bytes} but got {off_len_bytes}"
 
         return DataFile(info, bin_handle, off_handle)
 
-    def with_new_handles(self) -> 'DataFile':
+    def with_new_handles(self) -> "DataFile":
         # TODO do we actually need any of this?
         #   typically we're sampling from many files at once so there shouldn't be too much locking
         return DataFile(
@@ -112,7 +135,9 @@ class DataFile:
                 end_offset = self.info.final_offset
             else:
                 off_bytes = self.off_handle.read(2 * OFFSET_SIZE_IN_BYTES)
-                start_offset = int.from_bytes(off_bytes[:OFFSET_SIZE_IN_BYTES], "little")
+                start_offset = int.from_bytes(
+                    off_bytes[:OFFSET_SIZE_IN_BYTES], "little"
+                )
                 end_offset = int.from_bytes(off_bytes[OFFSET_SIZE_IN_BYTES:], "little")
 
             self.bin_handle.seek(start_offset)
@@ -124,7 +149,7 @@ class DataFile:
             includes_final=self.info.includes_final_positions,
             scalar_names=self.info.scalar_names,
             data=data,
-            final_position=None
+            final_position=None,
         )
 
     def load_simulation(self, si: int) -> Simulation:
@@ -132,7 +157,9 @@ class DataFile:
 
         with self.lock:
             if self.info.includes_simulation_start_indices:
-                self.off_handle.seek((self.info.position_count + si) * OFFSET_SIZE_IN_BYTES)
+                self.off_handle.seek(
+                    (self.info.position_count + si) * OFFSET_SIZE_IN_BYTES
+                )
 
                 if is_final_simulation:
                     index_bytes = self.off_handle.read(OFFSET_SIZE_IN_BYTES)
@@ -140,8 +167,12 @@ class DataFile:
                     end_pi = self.info.position_count - 1
                 else:
                     index_bytes = self.off_handle.read(OFFSET_SIZE_IN_BYTES * 2)
-                    start_pi = int.from_bytes(index_bytes[:OFFSET_SIZE_IN_BYTES], "little")
-                    end_pi = int.from_bytes(index_bytes[OFFSET_SIZE_IN_BYTES:], "little") - 1
+                    start_pi = int.from_bytes(
+                        index_bytes[:OFFSET_SIZE_IN_BYTES], "little"
+                    )
+                    end_pi = (
+                        int.from_bytes(index_bytes[OFFSET_SIZE_IN_BYTES:], "little") - 1
+                    )
             else:
                 start_indices = self._simulation_start_indices()
 
@@ -201,18 +232,22 @@ class FileSimulationsView(Sequence[Simulation]):
         pass
 
     @overload
-    def __getitem__(self, si_slice: slice) -> 'FileSimulationsView':
+    def __getitem__(self, si_slice: slice) -> "FileSimulationsView":
         pass
 
     @property
-    def positions(self) -> 'FilePositionsView':
+    def positions(self) -> "FilePositionsView":
         if self._positions is not None:
             return self._positions
 
-        assert self.si_range.step == 1, "Cannot get positions for simulation slice with step, since it would be non-affine"
+        assert (
+            self.si_range.step == 1
+        ), "Cannot get positions for simulation slice with step, since it would be non-affine"
 
         if len(self) == 0:
-            return FilePositionsView(self.file, range(self.si_range.start, self.si_range.start))
+            return FilePositionsView(
+                self.file, range(self.si_range.start, self.si_range.start)
+            )
 
         start_pi = self[0].start_file_pi
         end_pi = self[-1].end_file_pi
@@ -221,7 +256,9 @@ class FileSimulationsView(Sequence[Simulation]):
         self._positions = positions
         return positions
 
-    def __getitem__(self, item: Union[int, slice]) -> Union[Simulation, 'FileSimulationsView']:
+    def __getitem__(
+        self, item: Union[int, slice]
+    ) -> Union[Simulation, "FileSimulationsView"]:
         if isinstance(item, slice):
             return FileSimulationsView(self.file, self.si_range[item])
 
@@ -229,7 +266,7 @@ class FileSimulationsView(Sequence[Simulation]):
             raise IndexError(f"Index {item} out of bounds for {len(self)} simulations")
         return self.file.load_simulation(self.si_range[item])
 
-    def with_new_handles(self) -> 'FileSimulationsView':
+    def with_new_handles(self) -> "FileSimulationsView":
         return FileSimulationsView(self.file.with_new_handles(), self.si_range)
 
 
@@ -246,10 +283,12 @@ class FilePositionsView(Sequence[Position]):
         pass
 
     @overload
-    def __getitem__(self, pi_slice: slice) -> 'FilePositionsView':
+    def __getitem__(self, pi_slice: slice) -> "FilePositionsView":
         pass
 
-    def __getitem__(self, item: Union[int, slice]) -> Union[Position, 'FilePositionsView']:
+    def __getitem__(
+        self, item: Union[int, slice]
+    ) -> Union[Position, "FilePositionsView"]:
         if isinstance(item, slice):
             return FilePositionsView(self.file, self.pi_range[item])
 
@@ -257,7 +296,7 @@ class FilePositionsView(Sequence[Position]):
             raise IndexError(f"Index {item} out of bounds for {len(self)} positions")
         return self.file.load_position(self.pi_range[item])
 
-    def with_new_handles(self) -> 'FilePositionsView':
+    def with_new_handles(self) -> "FilePositionsView":
         return FilePositionsView(self.file.with_new_handles(), self.pi_range)
 
 

@@ -5,8 +5,12 @@ from typing import Tuple, Optional, Callable, Sequence
 
 import numpy as np
 
-from lib.mapping.mapping import CHESS_FLAT_TO_MOVE_INPUT, ATAXX_VALID_MOVES, ATAXX_INDEX_TO_MOVE_INPUT, \
-    get_ataxx_symmetry_data
+from lib.mapping.mapping import (
+    CHESS_FLAT_TO_MOVE_INPUT,
+    ATAXX_VALID_MOVES,
+    ATAXX_INDEX_TO_MOVE_INPUT,
+    get_ataxx_symmetry_data,
+)
 from lib.util import prod
 
 
@@ -52,14 +56,30 @@ class Game:
     symmetry: Symmetry
 
     def __post_init__(self):
-        self.input_bool_shape = (self.input_bool_channels, self.board_size, self.board_size)
-        self.input_scalar_shape = (self.input_scalar_channels, self.board_size, self.board_size)
+        self.input_bool_shape = (
+            self.input_bool_channels,
+            self.board_size,
+            self.board_size,
+        )
+        self.input_scalar_shape = (
+            self.input_scalar_channels,
+            self.board_size,
+            self.board_size,
+        )
 
         self.full_input_channels = self.input_bool_channels + self.input_scalar_channels
-        self.full_input_shape = (self.full_input_channels, self.board_size, self.board_size)
+        self.full_input_shape = (
+            self.full_input_channels,
+            self.board_size,
+            self.board_size,
+        )
 
         if self.input_mv_channels is not None:
-            self.input_mv_shape = (self.input_mv_channels, self.board_size, self.board_size)
+            self.input_mv_shape = (
+                self.input_mv_channels,
+                self.board_size,
+                self.board_size,
+            )
         else:
             self.input_mv_shape = None
 
@@ -134,7 +154,9 @@ class AtaxxSymmetry(Symmetry):
         assert index < len(self)
         data = get_ataxx_symmetry_data(self.size, index)
 
-        assert np.all((0 <= moves) & (moves <= len(data.map_mv))), "Got invalid input move"
+        assert np.all(
+            (0 <= moves) & (moves <= len(data.map_mv))
+        ), "Got invalid input move"
         moves_mapped = data.map_mv[moves]
         assert np.all(0 <= moves_mapped), "Got invalid output move"
 
@@ -280,5 +302,5 @@ GAMES = {
         encode_mv=None,
         possible_mvs=range(1 + 6 + 256),
         symmetry=UnitSymmetry(),
-    )
+    ),
 }

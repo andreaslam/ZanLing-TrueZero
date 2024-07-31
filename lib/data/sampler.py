@@ -10,19 +10,21 @@ from lib.util import PIN_MEMORY
 
 class PositionSampler:
     def __init__(
-            self,
-            group: DataGroup,
-            batch_size: int,
-            unroll_steps: Optional[int],
-            include_final: bool,
-            include_final_for_each: bool,
-            random_symmetries: bool,
-            threads: int,
+        self,
+        group: DataGroup,
+        batch_size: int,
+        unroll_steps: Optional[int],
+        include_final: bool,
+        include_final_for_each: bool,
+        random_symmetries: bool,
+        threads: int,
     ):
         self.group = group
 
         if random_symmetries:
-            assert unroll_steps is None, "Random symmetries not yet supported for unrolled sampling"
+            assert (
+                unroll_steps is None
+            ), "Random symmetries not yet supported for unrolled sampling"
 
         self.batch_size = batch_size
         self.unroll_steps = unroll_steps
@@ -53,7 +55,9 @@ class PositionSampler:
         return self.queue.pop_blocking()
 
     def next_unrolled_batch(self) -> UnrolledPositionBatch:
-        assert self.unroll_steps is not None, "This sampler does not sample unrolled batches"
+        assert (
+            self.unroll_steps is not None
+        ), "This sampler does not sample unrolled batches"
         return self.queue.pop_blocking()
 
 
@@ -66,7 +70,9 @@ def thread_main(sampler: PositionSampler):
             if unroll_steps is None:
                 sampler.queue.push_blocking(collect_simple_batch(sampler, group))
             else:
-                sampler.queue.push_blocking(collect_unrolled_batch(sampler, group, unroll_steps))
+                sampler.queue.push_blocking(
+                    collect_unrolled_batch(sampler, group, unroll_steps)
+                )
 
     except CQueueClosed:
         group.close()
@@ -76,7 +82,9 @@ def collect_simple_batch(sampler: PositionSampler, group: DataGroup):
     positions = []
 
     for _ in range(sampler.batch_size):
-        _, p = sample_position(group, sampler.include_final, sampler.include_final_for_each)
+        _, p = sample_position(
+            group, sampler.include_final, sampler.include_final_for_each
+        )
 
         if sampler.random_symmetries:
             index = random.randrange(len(p.game.symmetry))
@@ -84,16 +92,22 @@ def collect_simple_batch(sampler: PositionSampler, group: DataGroup):
 
         positions.append(p)
 
-    return PositionBatch(group.game, positions, sampler.include_final_for_each, PIN_MEMORY)
+    return PositionBatch(
+        group.game, positions, sampler.include_final_for_each, PIN_MEMORY
+    )
 
 
-def collect_unrolled_batch(sampler: PositionSampler, group: DataGroup, unroll_steps: int):
+def collect_unrolled_batch(
+    sampler: PositionSampler, group: DataGroup, unroll_steps: int
+):
     assert not sampler.random_symmetries
 
     chains = []
 
     for _ in range(sampler.batch_size):
-        (first_pi, first_position) = sample_position(group, sampler.include_final, sampler.include_final_for_each)
+        (first_pi, first_position) = sample_position(
+            group, sampler.include_final, sampler.include_final_for_each
+        )
         chain = [first_position]
 
         for ri in range(unroll_steps):
@@ -126,12 +140,17 @@ def collect_unrolled_batch(sampler: PositionSampler, group: DataGroup, unroll_st
 
     return UnrolledPositionBatch(
         group.game,
-        unroll_steps, sampler.include_final_for_each, sampler.batch_size,
-        chains, PIN_MEMORY
+        unroll_steps,
+        sampler.include_final_for_each,
+        sampler.batch_size,
+        chains,
+        PIN_MEMORY,
     )
 
 
-def sample_position(group: DataGroup, include_final: bool, include_final_for_each: bool) -> (int, Position):
+def sample_position(
+    group: DataGroup, include_final: bool, include_final_for_each: bool
+) -> (int, Position):
     while True:
         pi = random.randrange(len(group.positions))
         pos = group.positions[pi]
@@ -140,7 +159,9 @@ def sample_position(group: DataGroup, include_final: bool, include_final_for_eac
             continue
 
         if include_final_for_each:
-            assert pos.simulation.includes_final, "Cannot include final position for file without any"
+            assert (
+                pos.simulation.includes_final
+            ), "Cannot include final position for file without any"
             final_pos = group.positions[pi + int(pos.final_moves_left) - 1]
             pos.final_position = final_pos
 

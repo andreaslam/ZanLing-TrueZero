@@ -40,8 +40,7 @@ CHESS_FLAT_TO_ATT = load_file_lines_to_tensor("chess_flat_to_att.txt")
 assert CHESS_FLAT_TO_CONV.shape == (1880,), CHESS_FLAT_TO_CONV.shape
 
 CHESS_FLAT_TO_MOVE_INPUT = np.genfromtxt(
-    rel_path("chess_flat_to_move_input.txt"),
-    delimiter=",", dtype=np.int32
+    rel_path("chess_flat_to_move_input.txt"), delimiter=",", dtype=np.int32
 )[:, :-1]
 assert CHESS_FLAT_TO_MOVE_INPUT.shape == (1880, 8), CHESS_FLAT_TO_MOVE_INPUT.shape
 
@@ -65,7 +64,9 @@ def load_ataxx_index_to_move_input(name: str):
     return blocks
 
 
-ATAXX_INDEX_TO_MOVE_INPUT = load_ataxx_index_to_move_input("ataxx_index_to_move_input.txt")
+ATAXX_INDEX_TO_MOVE_INPUT = load_ataxx_index_to_move_input(
+    "ataxx_index_to_move_input.txt"
+)
 
 
 @dataclass

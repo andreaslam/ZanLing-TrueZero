@@ -5,6 +5,7 @@ import torchvision
 import math
 import decoder
 
+
 class Node:
     def __init__(self, board, policy, parent, move_name):
         self.parent = parent  # Node
@@ -59,42 +60,48 @@ class Node:
     #     + ", len_children="
     #     + str(len(self.children))
     #     + ")")
-    
 
     def __str__(self) -> str:
         if self.parent != None:
-            u = 2 * self.policy * (math.sqrt(self.parent.visits - 1)) / (1 + self.visits)
+            u = (
+                2
+                * self.policy
+                * (math.sqrt(self.parent.visits - 1))
+                / (1 + self.visits)
+            )
             puct = self.puct_formula(self.parent.visits)
         else:
             u = "NaN"
             puct = "NaN"
-        return ('Node(action="'
-        + str(self.move_name)
-        + '" V='
-        + str(self.eval_score)
-        + ", N="
-        + str(self.visits)
-        + ", W="
-        + str(self.total_action_value)
-        + ", P="
-        + str(self.policy)
-        + ", Q="
-        + str(self.get_q_val())
-        + ", U="
-        + str(u)
-        + ", PUCT="
-        + str(puct)
-        + ", len_children="
-        + str(len(self.children))
-        + ")")
+        return (
+            'Node(action="'
+            + str(self.move_name)
+            + '" V='
+            + str(self.eval_score)
+            + ", N="
+            + str(self.visits)
+            + ", W="
+            + str(self.total_action_value)
+            + ", P="
+            + str(self.policy)
+            + ", Q="
+            + str(self.get_q_val())
+            + ", U="
+            + str(u)
+            + ", PUCT="
+            + str(puct)
+            + ", len_children="
+            + str(len(self.children))
+            + ")"
+        )
 
     def layer_p(self, depth, MAX_TREE_PRINT_DEPTH):
         indent_count = depth + 2
-        if depth <= MAX_TREE_PRINT_DEPTH: 
+        if depth <= MAX_TREE_PRINT_DEPTH:
             if self.children:
                 for c in self.children:
-                    print("    " * indent_count ,c)
-                    c.layer_p(depth+1, MAX_TREE_PRINT_DEPTH)
+                    print("    " * indent_count, c)
+                    c.layer_p(depth + 1, MAX_TREE_PRINT_DEPTH)
 
     def eval_and_expand(self, board, bigl):
         # print(board)
@@ -153,7 +160,7 @@ class Tree:
         # print("    children:")
         MAX_TREE_PRINT_DEPTH = 10
         print("    ", self.root_node)
-        self.root_node.layer_p(0,MAX_TREE_PRINT_DEPTH)
+        self.root_node.layer_p(0, MAX_TREE_PRINT_DEPTH)
 
     def step(self, bigl):
         print("    root node:", self.root_node)
@@ -161,9 +168,7 @@ class Tree:
         selected_node = self.select()
         # self.display_full_tree()
         if not selected_node.is_terminal(board):
-            bigl = selected_node.eval_and_expand(
-                selected_node.board, bigl
-            )
+            bigl = selected_node.eval_and_expand(selected_node.board, bigl)
             # self.display_full_tree()
         # print("        root node:", self.root_node)
         self.backpropagate(selected_node)
