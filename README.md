@@ -181,4 +181,4 @@ Portions/entire files of code from [KZero](https://github.com/KarelPeeters/kZero
 - `src/dataformat.rs`
 - the `lib` folder used for reading KZero's custom data format and training
 
-The [UCI code](https://github.com/andreaslam/ZanLing-TrueZero/blob/main/src/uci.rs) is modified from JW's (monty)[https://github.com/jw1912/monty] engine.
+The [UCI code](https://github.com/andreaslam/ZanLing-TrueZero/blob/main/src/uci.rs) is modified from JW's [monty](https://github.com/jw1912/monty) engine.
