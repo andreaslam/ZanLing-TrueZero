@@ -33,16 +33,16 @@ fn main() {
     //     false,
     // )
     // .unwrap(); // black M2
-    let board = Board::from_fen(
-        "r1b3k1/pp5p/3bppp1/2q4n/4B3/2P2P2/P4P1P/2RQ1RK1 w - - 3 22",
-        false,
-    )
-    .unwrap(); // white M2
-               // let board = Board::from_fen(
-               //     "rnbqkbnr/pppp1p1p/6p1/4p2Q/4P3/8/PPPP1PPP/RNB1KBNR w KQkq - 0 3",
-               //     false,
-               // )
-               // .unwrap();
+    // let board = Board::from_fen(
+    //     "r1b3k1/pp5p/3bppp1/2q4n/4B3/2P2P2/P4P1P/2RQ1RK1 w - - 3 22",
+    //     false,
+    // )
+    // .unwrap(); // white M2
+    // let board = Board::from_fen(
+    //     "rnbqkbnr/pppp1p1p/6p1/4p2Q/4P3/8/PPPP1PPP/RNB1KBNR w KQkq - 0 3",
+    //     false,
+    // )
+    // .unwrap();
     let mut move_list = Vec::new();
     board.generate_moves(|moves| {
         // Unpack dense move set into move list
@@ -82,7 +82,7 @@ fn main() {
             wdl: EvalMode::Wdl,
             moves_left: Some(m_settings),
             c_puct: 2.0,
-            max_nodes: 1000,
+            max_nodes: 100,
             alpha: 0.03,
             eps: 0.25,
             search_type: NonTrainerSearch,

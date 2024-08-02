@@ -144,7 +144,7 @@ async fn generator_main(
         wdl: EvalMode::Wdl,
         moves_left: Some(m_settings),
         c_puct: 3.0,
-        max_nodes: 1600,
+        max_nodes: 400,
         alpha: 0.03,
         eps: 0.25,
         search_type: TrainerSearch(None),
