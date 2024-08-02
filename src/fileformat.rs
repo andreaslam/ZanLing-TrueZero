@@ -1,5 +1,3 @@
-// REVERTED
-
 use bytemuck::cast_slice;
 use cozy_chess::{Color, GameStatus, Move};
 use serde::Serialize;
@@ -197,18 +195,31 @@ impl BinaryOutput {
             let stored_policy = &zero_evaluation.policy;
 
             let final_values = match outcome {
-                Some(Color::White) => net_evaluation.values,
-                Some(Color::Black) => ZeroValuesPov {
-                    value: -net_evaluation.values.value,
+                Some(colour) => {
+                    if board.board().side_to_move() == colour {
+                        ZeroValuesPov {
+                    value: 1.0,
                     wdl: Wdl {
-                        w: net_evaluation.values.wdl.l,
-                        d: net_evaluation.values.wdl.d,
-                        l: net_evaluation.values.wdl.w,
+                        w: 1.0,
+                        d: 0.0,
+                        l: 0.0,
                     },
                     moves_left,
+                }
+                    } else {
+                        ZeroValuesPov {
+                    value: -1.0,
+                    wdl: Wdl {
+                        w: 0.0,
+                        d: 0.0,
+                        l: 1.0,
+                    },
+                    moves_left,
+                }
+                    }
                 },
                 None => ZeroValuesPov {
-                    value: net_evaluation.values.value,
+                    value: 0.0,
                     wdl: Wdl {
                         w: 0.0,
                         d: 1.0,
