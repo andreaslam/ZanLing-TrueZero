@@ -24,6 +24,7 @@ use tz_rust::{
     settings::SearchSettings,
     utils::TimeStampDebugger,
 };
+
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
     panic::set_hook(Box::new(|panic_info| {
@@ -41,7 +42,7 @@ fn main() {
                                                                     // let engine_1: String = "tz_6515.pt".to_string();
     let num_executors = 2; // always be 2, 2 players, one each (one for each neural net)
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
-
+    let pool = ThreadPool::builder().pool_size(6).create().unwrap();
     thread::scope(|s| {
         let mut vec_communicate_exe_send: Vec<Sender<String>> = Vec::new();
         let mut vec_communicate_exe_recv: Vec<Receiver<String>> = Vec::new();
@@ -73,6 +74,7 @@ fn main() {
         s.builder()
             .name("collector".to_string())
             .spawn(|_| {
+                debug_print!("Spawning collector thread");
                 collector_main(
                     &game_receiver,
                     num_games,
@@ -91,6 +93,7 @@ fn main() {
         s.builder()
             .name("executor_0".to_string())
             .spawn(move |_| {
+                debug_print!("Spawning executor_0 thread");
                 executor_static(
                     engine_0_clone,
                     tensor_exe_recv_0,
@@ -103,6 +106,7 @@ fn main() {
         s.builder()
             .name("executor_1".to_string())
             .spawn(move |_| {
+                debug_print!("Spawning executor_1 thread");
                 executor_static(
                     engine_1_clone,
                     tensor_exe_recv_1,
@@ -116,16 +120,18 @@ fn main() {
 }
 
 fn read_epd_file(file_path: &str) -> io::Result<Vec<String>> {
+    debug_print!("Reading EPD file: {}", file_path);
     let file = File::open(file_path)?;
     let reader = io::BufReader::new(file);
     let positions: Vec<String> = reader.lines().filter_map(|line| line.ok()).collect();
     Ok(positions)
 }
 
-fn generator_main(
+async fn generator_main(
     sender_collector: &Sender<CollectorMessage>,
     tensor_exe_send_0: Sender<Packet>,
     tensor_exe_send_1: Sender<Packet>,
+    generator_id: usize,
 ) {
     let m_settings = MovesLeftSettings {
         moves_left_weight: 0.03,
@@ -144,6 +150,8 @@ fn generator_main(
         search_type: NonTrainerSearch,
         pst: 0.0,
     };
+    let thread_name = format!("sprt-generator-{}", generator_id);
+    debug_print!("{} Generator settings initialized", thread_name,);
 
     let openings = read_epd_file("./8moves_v3.epd").unwrap();
     let engines = vec![tensor_exe_send_0.clone(), tensor_exe_send_1.clone()];
@@ -206,10 +214,16 @@ fn collector_main(
 ) {
     let mut results = (0, 0, 0); // (w,l,d) in the perspective of engine_0
     let mut counter = 0;
+
+    debug_print!("Collector main started");
+
     loop {
         let msg = receiver.recv().unwrap();
         match msg {
-            CollectorMessage::FinishedGame(_) => {
+            CollectorMessage::FinishedGame(_)
+            | CollectorMessage::GeneratorStatistics(_)
+            | CollectorMessage::ExecutorStatistics(_)
+            | CollectorMessage::GameResult(_) => {
                 panic!("not possible! this is to test engine changes");
             }
             CollectorMessage::GeneratorStatistics(_) => {

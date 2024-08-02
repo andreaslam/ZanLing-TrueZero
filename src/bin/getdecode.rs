@@ -1,6 +1,10 @@
 use cozy_chess::Board;
 use std::{env, time::Instant};
-use tz_rust::{boardmanager::BoardStack, decoder::convert_board};
+use tz_rust::{
+    boardmanager::BoardStack,
+    decoder::convert_board,
+    utils::{debug_print, TimeStampDebugger},
+};
 
 fn main() {
     // test board conversion
@@ -17,4 +21,8 @@ fn main() {
     println!("Elapsed time: {}ms", sw.elapsed().as_nanos() as f32 / 1e6);
     let converted_tensor = converted_tensor.reshape([-1]);
     converted_tensor.print();
+    debug_print(&format!(
+        "Elapsed time: {}ms",
+        sw.elapsed().as_nanos() as f32 / 1e6
+    ));
 }

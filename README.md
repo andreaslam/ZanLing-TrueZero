@@ -1,7 +1,8 @@
 
 <div align="center">
 
-# TrueZero
+<img src="https://github.com/andreaslam/ZanLing-TrueZero/blob/main/TrueZero.png" alt="TrueZero logo">
+
 ### A Python and Rust chess engine that starts from Zero.
 <img src="https://img.shields.io/badge/Powered%20by-Rust-b7410e" alt="Powered by Rust">
 <img src="https://img.shields.io/badge/Powered%20by-Python-306998" alt="Powered by Python">
@@ -63,11 +64,10 @@ cd app
 ## Setting environment variables
 
 
-Set the following environment variables to configure `tch-rs` before running anything. This assumes you use PyTorch to set up. 
+Set the following environment variables to configure `tch-rs` before running anything. This assumes you use PyTorch version 2.1 to use and set up. Use a [virtual environment if neeeded](https://docs.python.org/3/library/venv.html). 
 
 ```
 export LIBTORCH_USE_PYTORCH=1
-export LIBTORCH_BYPASS_VERSION_CHECK=1 
 PYTORCH_PATH=$(python3 -c "import torch; print(torch.__path__[0])")
 export LD_LIBRARY_PATH="$PYTORCH_PATH/lib:$LD_LIBRARY_PATH"
 ```
@@ -76,7 +76,8 @@ On Windows, it's
 ```
 $env:LIBTORCH_USE_PYTORCH=1
 $PYTORCH_PATH = python -c "import torch; print(torch.__path__[0])"
-$env:LD_LIBRARY_PATH = "$PYTORCH_PATH\lib;$env:LD_LIBRARY_PATH"
+$env:PATH = "$PYTORCH_PATH\lib;$env:PATH"
+$env:LIBTORCH_BYPASS_VERSION_CHECK=1
 ```
 
 ## Running Data Generation and Training
@@ -111,14 +112,14 @@ cargo run --bin ucimain
 
 ## What each file does
 
-### Internal testing (non-UCI compliant)
+### Internal Engine testing (non-UCI compliant)
 - `getdecode.rs` - used for obtaining the encoded NN inputs.
 - `getmove.rs` - used for obtaining a single tree search.
 - `getgame.rs` - used for obtaining a game.
 - `getinferencetime.rs` - used for benchmarking inference times and batching effectiveness through calculating the nodes/s.
 
-### External testing (UCI compliant)
-- `uci.rs` - contains code for UCI implementation. Code currently work in progress.
+### External Engine testing (UCI compliant)
+- `uci.rs` - contains code for UCI implementation. Code modified from JW's [monty](https://github.com/jw1912/monty) engine
 - `ucimain.rs` - used for running games using UCI.
 
 ### Source code for the Engine
@@ -139,17 +140,26 @@ cargo run --bin ucimain
 - `server.rs` - a TCP server that co-ordinates Rust data generation and Python training. It sends each connected instance a unique identifier, broadcasts key information to different processes, which include statistics, Neural Network information and training settings.
 
 #### Python code
+
 - `client.py` - runs training and manages neural network training. Connects to `server.rs` via TCP to receive file paths for neural network training.
-- `visualiser.py` - visualises training data and progress.
+
+### Utility and visualisation code
+
+- `visualiser.py` - visualises training data and monitoring key performance indicators logged in `client.py`, where code from `lib/plotter.py`. For more details on the `lib` folder see [here](https://github.com/andreaslam/ZanLing-TrueZero?tab=readme-ov-file#credits-and-acknowledgements).
+- `visualisenet.py` - code that allows visualisation of neural network activations. Generates a `.gif` file for an animation of a policy-only game.
+- `scheduler.py` - code for TrueScheduler, an experiment scheduler for scheduling experiments and monitoring server controls. This GUI also supports remote SSH logins to schedule experiments on external devices. 
+- `gui.py` - GUI code for `scheduler.py`. Code is currently work in progress. Running this file directly launches a demo version without server backend.
+- `experiment.py` - code that can convert data generated from `client.py` into TensorBoard-readable format. This is an alternative experiment visualiser. Additionally, the code supports remote visualisation if SSH port forwarding is enabled on your device.
+- `exec_plotter.py` - debugging code that shows the thread schedule. Useful for debugging async tasks (such as data generation code for the Engine)
+- `onnx_exporter.py` - contains code to convert `.pt` model weights to `.onnx`
 
 ## Libraries/technologies used 
-
+This Python and Rust Engine uses the following:
 ### Python 
 
-This Python and Rust Engine uses the following:
-- **Pytorch** - used for creating and training the Neural Network 
-- **Numpy** - used for processing data (chess board representation after one-hot encoding, handling final outcome and final game result
-
+- **PyTorch** - used for creating and training the Neural Network. Also used for visualising experiments through its TensorBoard API.
+- **Matplotlib** - used for plotting and creating animations and visualisations in `visualisenet.py`. 
+- **NumPy** - used for processing data (chess board representation after one-hot encoding, handling final outcome and final game result
 
 ### Rust
 
@@ -171,4 +181,4 @@ Portions/entire files of code from [KZero](https://github.com/KarelPeeters/kZero
 - `src/dataformat.rs`
 - the `lib` folder used for reading KZero's custom data format and training
 
-
+The [UCI code](https://github.com/andreaslam/ZanLing-TrueZero/blob/main/src/uci.rs) is modified from JW's (monty)[https://github.com/jw1912/monty] engine.

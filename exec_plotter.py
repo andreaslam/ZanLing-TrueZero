@@ -4,18 +4,23 @@ import re
 from concurrent.futures import ProcessPoolExecutor
 import functools
 
-
 def extract_data_fmt(input_string):
     # example entry
     # 1710608194100142900 1710608194400395200 executor_0 waiting_for_batch
     return re.findall(r"\d+\s\d+\s\S+\s\S+\s", input_string)
-
 
 def read_tasks_from_file(file_path):
     with io.open(file_path, "r", encoding="utf-16le") as f:
         tasks_data = f.read()
     return extract_data_fmt(tasks_data)
 
+def process_single_task(task, init_time):
+    return [
+        (int(task[0]) - init_time) / 1e9,
+        (int(task[1]) - init_time) / 1e9,
+        task[2],
+        task[3],
+    ]
 
 def process_single_task(task, init_time):
     return [
@@ -111,7 +116,6 @@ def plot_schedule(tasks):
     plt.tight_layout()
     plt.savefig("plt.png")
     # plt.show()
-
 
 if __name__ == "__main__":
     tasks = process_tasks(read_tasks_from_file("logs.txt"))

@@ -301,6 +301,56 @@ fn handle_client(
                     debug_print!("EvaluationRequest message received: {:?}", input_data);
                     // TODO: process evaluation requests
                 }
+                MessageType::TBLink(ref msg) => {
+                    *tb_link = Some(msg.clone());
+                    // println!("[Server] TensorBoard Link: {:?}", msg);
+                    if needs_tb_link {
+                        // send extra link to client
+
+                        let tb_link_msg = MessageServer {
+                            // purpose: MessageType::NewNetworkPath(path.clone()),
+                            purpose: MessageType::TBLink(msg.clone()),
+                        };
+                        let mut serialised =
+                            serde_json::to_string(&tb_link_msg).expect("serialisation failed");
+                        serialised += "\n";
+                        if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
+                            eprintln!("Error sending TensorBoard link! {}", msg);
+                            break;
+                        } else {
+                        }
+                        needs_tb_link = false;
+                    }
+                }
+                MessageType::CreateTB => {
+                    needs_tb_link = true;
+                }
+                MessageType::RequestingTBLink => {
+                    match *tb_link {
+                        Some(ref link) => {
+                            let tb_link_msg = MessageServer {
+                                // purpose: MessageType::NewNetworkPath(path.clone()),
+                                purpose: MessageType::TBLink(link.clone()),
+                            };
+                            println!("[Server] TensorBoard Link: {:?}", tb_link_msg);
+                            let mut serialised =
+                                serde_json::to_string(&tb_link_msg).expect("serialisation failed");
+                            serialised += "\n";
+                            if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
+                                eprintln!("Error sending TensorBoard link! {}", msg);
+                                break;
+                            } else {
+                            }
+                            needs_tb_link = false;
+                        }
+                        None => {
+                            needs_tb_link = true;
+                        }
+                    }
+                }
+                MessageType::EvaluationRequest(input_data) => {
+                    // TODO: process evaluation requests
+                }
             }
 
             let all_clients = clients.lock().unwrap();

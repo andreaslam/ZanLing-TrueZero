@@ -134,6 +134,7 @@ pub async fn get_move(
         values: v_p_vals,
         policy: all_pol,
     };
+    debug_print!("Debug: ZeroEvaluation v_p created");
 
     let search_data_vals = ZeroValuesPov {
         value: match tree.board.board().side_to_move() {
@@ -160,6 +161,7 @@ pub async fn get_move(
         values: search_data_vals,
         policy: pi,
     };
+    debug_print!("Debug: ZeroEvaluation search_data created");
 
     debug_print!("Debug: ZeroEvaluation search_data created");
 
