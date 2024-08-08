@@ -23,7 +23,7 @@ mod tests {
     use super::*;
 
     use boardmanager::BoardStack;
-    use cozy_chess::{Board, GameStatus};
+    use cozy_chess::{Board, Color, GameStatus};
     use executor::Packet;
     use lru::LruCache;
     use mcts_trainer::{EvalMode, Node, Tree, TypeRequest};
@@ -118,7 +118,7 @@ mod tests {
         assert!(node.parent.is_none());
         assert!(node.mv.is_none());
         assert_eq!(node.visits, 0);
-        assert_eq!(node.value.is_nan(), true);
+        assert_eq!(node.net_evaluation.value.is_nan(), true);
     }
 
     /// test node selection
@@ -139,7 +139,7 @@ mod tests {
         let mut tree = Tree::new(board_stack, settings);
         let node = Node::new(0.5, None, None);
         tree.nodes.push(node);
-        tree.backpropagate(1);
+        tree.backpropagate(1, Color::White);
         assert_eq!(tree.nodes[1].visits, 1);
     }
 }

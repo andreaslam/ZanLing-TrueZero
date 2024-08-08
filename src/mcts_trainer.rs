@@ -1,7 +1,7 @@
 use crate::{
     boardmanager::BoardStack,
-    cache::{CacheEntryKey, CacheEntryValue},
-    dataformat::{ZeroEvaluation, ZeroValuesPov},
+    cache::CacheEntryKey,
+    dataformat::{ZeroEvaluationAbs, ZeroValuesAbs},
     debug_print,
     decoder::{convert_board, extract_policy, process_board_output},
     dirichlet::StableDirichlet,
@@ -93,7 +93,7 @@ impl Net {
         } else {
             Device::Cpu
         };
-
+        // let device = Device::Cpu;
         let mut net = tch::CModule::load_on_device(path, device).expect("ERROR");
         net.set_eval();
 
@@ -104,7 +104,7 @@ impl Net {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(Debug)]
 pub struct Tree {
     pub board: BoardStack,
     pub nodes: Vec<Node>, // this is where all the `Nodes` are stored, as opposed to storing them individually in `Node.children`
@@ -134,7 +134,7 @@ impl Tree {
         tensor_exe_send: &Sender<Packet>, // sender to send tensors to `executor.rs``, which gathers MCTS simulations to execute in a batch
         sw: Instant,                      // timer for UCI
         id: usize,                        // unique ID assigned to each thread for debugging
-        cache: &mut LruCache<CacheEntryKey, CacheEntryValue>,
+        cache: &mut LruCache<CacheEntryKey, ZeroEvaluationAbs>,
     ) {
         let thread_name = format!("generator-{}", id);
         let step_debugger = TimeStampDebugger::create_debug();
@@ -163,10 +163,10 @@ impl Tree {
                 Some(packet) => {
                     // retrieve non-policy data
                     let ct = self.nodes.len();
-
-                    self.nodes[selected_node].value = packet.eval_score;
-                    self.nodes[selected_node].wdl = packet.wdl;
-                    self.nodes[selected_node].moves_left = packet.moves_left;
+                    self.nodes[selected_node].net_evaluation = packet.values;
+                    // self.nodes[selected_node].value = packet.eval_score;
+                    // self.nodes[selected_node].wdl = packet.wdl;
+                    // self.nodes[selected_node].moves_left = packet.moves_left;
 
                     // retrieve policy data and children
 
@@ -249,12 +249,13 @@ impl Tree {
                     unreachable!()
                 }
             };
-            self.nodes[selected_node].value = wdl.w - wdl.l;
-            self.nodes[selected_node].wdl = wdl;
-            self.nodes[selected_node].moves_left = 0.0;
+            debug_print!("terminal! {:#} {:?}", input_b.board(), wdl);
+            self.nodes[selected_node].net_evaluation.value = wdl.w - wdl.l;
+            self.nodes[selected_node].net_evaluation.wdl = wdl;
+            self.nodes[selected_node].net_evaluation.moves_left = 0.0;
         }
 
-        self.backpropagate(selected_node);
+        self.backpropagate(selected_node, input_b.board().side_to_move());
         let backprop_debug = TimeStampDebugger::create_debug();
         if id % 512 == 0 {
             backprop_debug.record("backpropagation", &thread_name);
@@ -267,10 +268,10 @@ impl Tree {
             let display_str = self.display_node(child);
             debug_print!("        {}", &format!("{}", &display_str));
         }
-        debug_print!("    full tree:");
-        self.nodes[0].display_full_tree(self);
+        // debug_print!("    full tree:");
+        // self.nodes[0].display_full_tree(self);
         if let TypeRequest::UCISearch = self.settings.search_type {
-            let cp_eval = eval_in_cp(self.nodes[selected_node].value);
+            let cp_eval = eval_in_cp(self.nodes[selected_node].net_evaluation.value);
             let elapsed_ms = sw.elapsed().as_nanos() as f32 / 1e6;
             let nps = self.nodes[0].visits as f32 / (sw.elapsed().as_nanos() as f32 / 1e9 as f32);
             let (pv, mate) = self.get_pv();
@@ -383,13 +384,13 @@ impl Tree {
                     let b_node = &self.nodes[*b];
                     let a_puct = a_node.puct_formula(
                         curr_node.visits,
-                        curr_node.moves_left,
+                        curr_node.net_evaluation.moves_left,
                         input_b.board().side_to_move(),
                         self.settings,
                     );
                     let b_puct = b_node.puct_formula(
                         curr_node.visits,
-                        curr_node.moves_left,
+                        curr_node.net_evaluation.moves_left,
                         input_b.board().side_to_move(),
                         self.settings,
                     );
@@ -403,7 +404,6 @@ impl Tree {
                         let b_policy = b_node.policy;
                         a_policy.partial_cmp(&b_policy).unwrap()
                     } else {
-                        debug_print!("{} {}", a_puct, b_puct);
                         a_puct.partial_cmp(&b_puct).unwrap()
                     }
                 })
@@ -439,7 +439,7 @@ impl Tree {
         bs: &BoardStack,
         tensor_exe_send: &Sender<Packet>,
         id: usize,
-        cache: &mut LruCache<CacheEntryKey, CacheEntryValue>,
+        cache: &mut LruCache<CacheEntryKey, ZeroEvaluationAbs>,
     ) -> Vec<usize> {
         debug_print!("    eval_and_expand:");
 
@@ -477,21 +477,26 @@ impl Tree {
     }
 
     /// backpropagates the evaluation results up the tree
-    pub fn backpropagate(&mut self, node: usize) {
+    pub fn backpropagate(&mut self, node: usize, player: Color) {
         debug_print!("{}", &format!("    backpropagation:"));
-        let value = self.nodes[node].value;
+        let value = self.nodes[node].net_evaluation.value;
         let mut curr: Option<usize> = Some(node);
-        let wdl = self.nodes[node].wdl;
-        let mut moves_left = self.nodes[node].moves_left;
+        let wdl = self.nodes[node].net_evaluation.wdl;
+        let mut moves_left = self.nodes[node].net_evaluation.moves_left;
         let mut backprop_nodes_vec: Vec<usize> = Vec::new(); // keep track of the vecs used for backpropagation
+        let mut curr_player = !player;
         while let Some(current) = curr {
+            let mut curr_pov = self.nodes[current]
+                .total_evaluation
+                .to_relative(!curr_player);
             self.nodes[current].visits += 1;
-            self.nodes[current].total_action_value += value;
-            self.nodes[current].total_wdl += wdl;
-            self.nodes[current].moves_left_total += moves_left;
+            curr_pov.value += value;
+            curr_pov.wdl += wdl;
+            curr_pov.moves_left += moves_left;
             moves_left += 1.0;
             backprop_nodes_vec.push(current);
             curr = self.nodes[current].parent;
+            curr_player = player
         }
 
         for current in backprop_nodes_vec {
@@ -531,7 +536,7 @@ impl Tree {
                         u = self.nodes[id].get_u_val(self.nodes[*parent].visits, self.settings);
                         puct = self.nodes[id].puct_formula(
                             self.nodes[*parent].visits,
-                            self.nodes[*parent].moves_left,
+                            self.nodes[*parent].net_evaluation.moves_left,
                             !bs_clone.board().side_to_move(),
                             self.settings,
                         );
@@ -555,20 +560,20 @@ impl Tree {
             format!(
                 "Node(action= {}, V= {}, N={}, W={}, P={}, Q={}, U={}, PUCT={}, len_children={}, wdl={}, w={}, d={}, l={}, M={}, M_total={})",
                 mv_n,
-                self.nodes[id].value,
+                self.nodes[id].net_evaluation.value,
                 self.nodes[id].visits,
-                self.nodes[id].total_action_value,
+                self.nodes[id].total_evaluation.value,
                 self.nodes[id].policy,
-                self.nodes[id].get_q_val(self.settings),
+                self.nodes[id].get_q_val(self.settings,!bs_clone.board().side_to_move()),
                 u,
                 puct,
                 self.nodes[id].children.len(),
-                self.nodes[id].wdl.w - self.nodes[id].wdl.l,
-                self.nodes[id].wdl.w,
-                self.nodes[id].wdl.d,
-                self.nodes[id].wdl.l,
-                self.nodes[id].moves_left,
-                self.nodes[id].moves_left_total,
+                self.nodes[id].net_evaluation.wdl.w - self.nodes[id].net_evaluation.wdl.l,
+                self.nodes[id].net_evaluation.wdl.w,
+                self.nodes[id].net_evaluation.wdl.d,
+                self.nodes[id].net_evaluation.wdl.l,
+                self.nodes[id].net_evaluation.moves_left,
+                self.nodes[id].total_evaluation.moves_left,
             )
         } else {
             String::new()
@@ -593,55 +598,38 @@ impl fmt::Display for Tree {
     }
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct Node {
     pub parent: Option<usize>,
     pub children: Range<usize>,
     pub policy: f32,
     pub visits: u32,
-    pub value: f32, // -1 for black and 1 for white
-    pub total_action_value: f32,
-    pub wdl: Wdl,
-    pub total_wdl: Wdl,
+    pub net_evaluation: ZeroValuesAbs,
+    pub total_evaluation: ZeroValuesAbs,
     pub mv: Option<Move>,
-    pub moves_left: f32,
-    pub moves_left_total: f32,
     pub move_idx: Option<Vec<usize>>,
 }
 
-#[derive(PartialEq, Clone, Debug, Copy, Default)]
-pub struct Wdl {
-    pub w: f32,
-    pub d: f32,
-    pub l: f32,
-}
-
-impl Wdl {
-    /// utility function that inverts the winning and losing probabilities
-    pub fn flip(self) -> Self {
-        Wdl {
-            w: self.l,
-            d: self.d,
-            l: self.w,
+impl Node {
+    pub fn new(policy: f32, parent: Option<usize>, mv: Option<cozy_chess::Move>) -> Node {
+        Node {
+            parent,
+            children: 0..0,
+            policy,
+            visits: 0,
+            net_evaluation: ZeroValuesAbs::nan(),
+            total_evaluation: ZeroValuesAbs::zeros(),
+            mv,
+            move_idx: None,
         }
     }
-}
-
-impl std::ops::AddAssign for Wdl {
-    fn add_assign(&mut self, rhs: Self) {
-        self.w += rhs.w;
-        self.d += rhs.d;
-        self.l += rhs.l;
-    }
-}
-
-impl Node {
-    pub fn get_q_val(&self, settings: SearchSettings) -> f32 {
+    pub fn get_q_val(&self, settings: SearchSettings, player: Color) -> f32 {
+        let relative_evaluation = self.total_evaluation.to_relative(player);
         let fpu = settings.fpu; // First Player Urgency
         if self.visits > 0 {
             let total = match settings.wdl {
-                EvalMode::Wdl => self.total_wdl.w - self.total_wdl.l,
-                EvalMode::Value => self.total_action_value,
+                EvalMode::Wdl => relative_evaluation.wdl.w - relative_evaluation.wdl.l,
+                EvalMode::Value => relative_evaluation.value,
             };
             total / (self.visits as f32)
         } else {
@@ -664,12 +652,12 @@ impl Node {
         assert!(self.visits < parent_visits);
 
         let u = self.get_u_val(parent_visits, settings);
-        let q = self.get_q_val(settings);
+        let q = self.get_q_val(settings, player);
         let puct_logit = if let Some(weights) = settings.moves_left {
             let m = if self.visits == 0 {
                 0.0
             } else {
-                self.moves_left - (parent_moves_left - 1.0)
+                self.net_evaluation.moves_left - (parent_moves_left - 1.0)
             };
             let m_unit = if weights.moves_left_weight == 0.0 {
                 0.0
@@ -677,58 +665,16 @@ impl Node {
                 let m_clipped = m.clamp(-weights.moves_left_clip, weights.moves_left_clip);
                 (weights.moves_left_sharpness * m_clipped * -q).clamp(-1.0, 1.0)
             };
+
             // debug_print!("{:?}, self {:?}, {}", player, self, q + u + weights.moves_left_weight * m_unit);
             // debug_print!("moves_left_weight={} m_unit={}, m={}", weights.moves_left_weight, m_unit, m);
-            // println!("{:?}", player);
+            // debug_print!("{:?}", player);
 
-            match player {
-                Color::Black => {
-                    if self.visits > 0 {
-                        -q + u - weights.moves_left_weight * m_unit
-                    } else {
-                        q + u - weights.moves_left_weight
-                    }
-                }
-                Color::White => q + u + weights.moves_left_weight * m_unit,
-            }
+            q + u + weights.moves_left_weight * m_unit
         } else {
-            match player {
-                Color::Black => {
-                    if self.visits > 0 {
-                        -q + u
-                    } else {
-                        q + u
-                    }
-                }
-                Color::White => q + u,
-            }
+            q + u
         };
         puct_logit
-    }
-
-    pub fn new(policy: f32, parent: Option<usize>, mv: Option<cozy_chess::Move>) -> Node {
-        Node {
-            parent,
-            children: 0..0,
-            policy,
-            visits: 0,
-            value: f32::NAN,
-            total_action_value: 0.0,
-            mv,
-            move_idx: None,
-            wdl: Wdl {
-                w: f32::NAN,
-                d: f32::NAN,
-                l: f32::NAN,
-            },
-            total_wdl: Wdl {
-                w: 0.0,
-                d: 0.0,
-                l: 0.0,
-            },
-            moves_left: f32::NAN,
-            moves_left_total: 0.0,
-        }
     }
 
     /// recursively prints the tree containing information about each node (debug)
@@ -761,19 +707,61 @@ impl Node {
     }
 }
 
+#[derive(PartialEq, Clone, Debug, Copy, Default)]
+pub struct Wdl {
+    pub w: f32,
+    pub d: f32,
+    pub l: f32,
+}
+
+impl Wdl {
+    /// utility function that inverts the winning and losing probabilities
+    pub fn flip(self) -> Self {
+        Wdl {
+            w: self.l,
+            d: self.d,
+            l: self.w,
+        }
+    }
+    /// utility function that returns a `Wdl` struct with all values initialised as `f32::NAN`
+    pub fn nan() -> Self {
+        Wdl {
+            w: f32::NAN,
+            d: f32::NAN,
+            l: f32::NAN,
+        }
+    }
+    /// utility function that returns a `Wdl` struct with a win/loss value of 0.
+    pub fn zeros() -> Self {
+        Wdl {
+            w: 0.0,
+            d: 1.0,
+            l: 0.0,
+        }
+    }
+}
+
+impl std::ops::AddAssign for Wdl {
+    fn add_assign(&mut self, rhs: Self) {
+        self.w += rhs.w;
+        self.d += rhs.d;
+        self.l += rhs.l;
+    }
+}
+
 /// computes the best move using MCTS with nn given the number of total MCTS iteration. (handles tree creation as well).
-/// to reuse cache simply pass a mutable reference `&mut LruCache<CacheEntryKey, CacheEntryValue>` while repeatedly calling the function
+/// to reuse cache simply pass a mutable reference `&mut LruCache<CacheEntryKey, ZeroEvaluationAbs>` while repeatedly calling the function
 pub async fn get_move(
     bs: BoardStack,
     tensor_exe_send: &Sender<Packet>,
     settings: SearchSettings,
     id: usize,
-    cache: &mut LruCache<CacheEntryKey, CacheEntryValue>,
+    cache: &mut LruCache<CacheEntryKey, ZeroEvaluationAbs>,
 ) -> (
     Move,
-    ZeroEvaluation,
+    ZeroEvaluationAbs,
     Option<Vec<usize>>,
-    ZeroEvaluation,
+    ZeroEvaluationAbs,
     u32,
 ) {
     let sw_uci = Instant::now();
@@ -860,55 +848,30 @@ pub async fn get_move(
         let display_str = tree.display_node(child);
         debug_print!("{}", &format!("{}", display_str));
     }
+
     // tree.nodes[0].display_full_tree(&tree);
 
-    let mut all_pol = Vec::new();
+    let mut all_tree_pol = Vec::new();
 
     for child in tree.nodes[0].clone().children {
-        all_pol.push(tree.nodes[child].policy);
+        all_tree_pol.push(tree.nodes[child].policy);
     }
 
-    let v_p_vals = ZeroValuesPov {
-        value: tree.nodes[0].wdl.w - tree.nodes[0].wdl.l,
-        wdl: tree.nodes[0].wdl,
-        moves_left: tree.nodes[0].moves_left,
-    };
-
-    let v_p = ZeroEvaluation {
+    let net_evaluation = ZeroEvaluationAbs {
         // network evaluation, NOT search/empirical data
-        values: v_p_vals,
-        policy: all_pol,
+        values: tree.nodes[0].net_evaluation,
+        policy: all_tree_pol,
     };
 
-    let search_data_vals = ZeroValuesPov {
-        value: match tree.board.board().side_to_move() {
-            Color::White => tree.nodes[0].get_q_val(tree.settings),
-            Color::Black => -tree.nodes[0].get_q_val(tree.settings),
-        },
-        wdl: match tree.board.board().side_to_move() {
-            Color::White => Wdl {
-                w: tree.nodes[0].total_wdl.w / tree.nodes[0].visits as f32,
-                d: tree.nodes[0].total_wdl.d / tree.nodes[0].visits as f32,
-                l: tree.nodes[0].total_wdl.l / tree.nodes[0].visits as f32,
-            },
-            Color::Black => Wdl {
-                w: tree.nodes[0].total_wdl.l / tree.nodes[0].visits as f32,
-                d: tree.nodes[0].total_wdl.d / tree.nodes[0].visits as f32,
-                l: tree.nodes[0].total_wdl.w / tree.nodes[0].visits as f32,
-            },
-        },
-        moves_left: tree.nodes[0].moves_left_total / tree.nodes[0].visits as f32,
-    };
-
-    let search_data = ZeroEvaluation {
+    let search_data = ZeroEvaluationAbs {
         // search data
-        values: search_data_vals,
+        values: tree.nodes[0].total_evaluation,
         policy: pi,
     };
 
     (
         best_move.expect("Error"),
-        v_p,
+        net_evaluation,
         tree.nodes[0].clone().move_idx,
         search_data,
         tree.nodes[0].visits,

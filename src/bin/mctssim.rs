@@ -11,8 +11,8 @@ use std::{
     time::{Duration, Instant},
 };
 use tch::Tensor;
-use tz_rust::debug_print;
-use tz_rust::{
+use tzrust::debug_print;
+use tzrust::{
     boardmanager::BoardStack,
     decoder::eval_state,
     executor::{Packet, ReturnMessage, ReturnPacket},

@@ -1,6 +1,7 @@
 use cozy_chess::{Board, Color, GameStatus, Move};
 use crossbeam::thread;
 use flume::{Receiver, Sender};
+use futures::executor::ThreadPool;
 use lru::LruCache;
 use rand::seq::SliceRandom;
 use std::{
@@ -11,19 +12,18 @@ use std::{
     panic, process,
 };
 use tokio::runtime::Runtime;
-use tz_rust::debug_print;
-use tz_rust::settings::MovesLeftSettings;
-use tz_rust::{
+use tzrust::settings::MovesLeftSettings;
+use tzrust::{
     boardmanager::BoardStack,
-    cache::{CacheEntryKey, CacheEntryValue},
+    cache::CacheEntryKey,
     elo::elo_wld,
     executor::{executor_static, Message, Packet},
     mcts::get_move,
     mcts_trainer::{EvalMode, TypeRequest::NonTrainerSearch},
     selfplay::CollectorMessage,
     settings::SearchSettings,
-    utils::TimeStampDebugger,
 };
+use tzrust::{dataformat::ZeroEvaluationAbs, debug_print};
 
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
@@ -63,9 +63,10 @@ fn main() {
                 .name(format!("generator_{}", n.to_string()))
                 .spawn(move |_| {
                     generator_main(
-                        &sender_clone,
+                        sender_clone,
                         tensor_exe_send_clone_0.clone(),
                         tensor_exe_send_clone_1.clone(),
+                        n.clone(),
                     )
                 })
                 .unwrap();
@@ -128,7 +129,7 @@ fn read_epd_file(file_path: &str) -> io::Result<Vec<String>> {
 }
 
 async fn generator_main(
-    sender_collector: &Sender<CollectorMessage>,
+    sender_collector: Sender<CollectorMessage>,
     tensor_exe_send_0: Sender<Packet>,
     tensor_exe_send_1: Sender<Packet>,
     generator_id: usize,
@@ -167,9 +168,9 @@ async fn generator_main(
         let mut bs = BoardStack::new(board);
         let rt = Runtime::new().unwrap();
         let mut move_counter = swap_count % 2;
-        let mut cache_0: LruCache<CacheEntryKey, CacheEntryValue> =
+        let mut cache_0: LruCache<CacheEntryKey, ZeroEvaluationAbs> =
             LruCache::new(NonZeroUsize::new(settings.max_nodes as usize).unwrap());
-        let mut cache_1: LruCache<CacheEntryKey, CacheEntryValue> =
+        let mut cache_1: LruCache<CacheEntryKey, ZeroEvaluationAbs> =
             LruCache::new(NonZeroUsize::new(settings.max_nodes as usize).unwrap());
 
         let mut caches = vec![cache_0, cache_1];

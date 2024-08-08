@@ -13,8 +13,9 @@ use std::{
     path::Path,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-use tz_rust::{
-    cache::{CacheEntryKey, CacheEntryValue},
+use tzrust::{
+    cache::CacheEntryKey,
+    dataformat::ZeroEvaluationAbs,
     dummyreq::{send_request, send_request_async},
     executor::{executor_main, Packet},
     fileformat::BinaryOutput,
@@ -155,7 +156,7 @@ async fn generator_main(
 
     // implement caching
 
-    let mut cache: LruCache<CacheEntryKey, CacheEntryValue> =
+    let mut cache: LruCache<CacheEntryKey, ZeroEvaluationAbs> =
         LruCache::new(NonZeroUsize::new(settings.max_nodes as usize).unwrap());
 
     loop {
@@ -340,7 +341,7 @@ fn commander_main(
                 MessageType::Initialise(_) => {}
                 MessageType::JobSendPath(_) => {}
                 MessageType::StatisticsSend(_) => {}
-                MessageType::RequestingNet => {}
+                MessageType::RequestingNet() => {}
                 MessageType::NewNetworkPath(path) => {}
                 MessageType::IdentityConfirmation(_) => {}
                 MessageType::JobSendData(_) => {}
@@ -360,8 +361,8 @@ fn commander_main(
                     net_path_counter += 1;
                 }
                 MessageType::TBLink(_) => {}
-                MessageType::CreateTB => {}
-                MessageType::RequestingTBLink => {}
+                MessageType::CreateTB() => {}
+                MessageType::RequestingTBLink() => {}
                 MessageType::EvaluationRequest(_) => {}
             }
         } else {
@@ -369,7 +370,7 @@ fn commander_main(
                 MessageType::Initialise(_) => {}
                 MessageType::JobSendPath(_) => {}
                 MessageType::StatisticsSend(_) => {}
-                MessageType::RequestingNet => {}
+                MessageType::RequestingNet() => {}
                 MessageType::NewNetworkPath(_) => {}
                 MessageType::IdentityConfirmation((entity, id)) => match entity {
                     Entity::RustDataGen => {
@@ -390,8 +391,8 @@ fn commander_main(
                 MessageType::JobSendData(_) => {}
                 MessageType::NewNetworkData(_) => {}
                 MessageType::TBLink(_) => {}
-                MessageType::CreateTB => {}
-                MessageType::RequestingTBLink => {}
+                MessageType::CreateTB() => {}
+                MessageType::RequestingTBLink() => {}
                 MessageType::EvaluationRequest(_) => {}
             }
         }
@@ -421,7 +422,7 @@ fn commander_main(
             // actively request for net path
 
             let message = MessageServer {
-                purpose: MessageType::RequestingNet,
+                purpose: MessageType::RequestingNet(),
             };
             let mut serialised = serde_json::to_string(&message).expect("serialisation failed");
             serialised += "\n";

@@ -15,4 +15,6 @@ debug.txt
 8moves_v3.epd
 datafile.txt
 filedebug.txt
-/.vscode
+.vscode/
+.venv/
+traininglog.txt

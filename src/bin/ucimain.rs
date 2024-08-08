@@ -1,9 +1,9 @@
 use std::env;
 use tch::maybe_init_cuda;
-use tz_rust::uci::run_uci;
+use tzrust::uci::run_uci;
 
 fn main() {
     maybe_init_cuda();
     env::set_var("RUST_BACKTRACE", "1");
-    run_uci(r"nets/tz_25.pt");
+    run_uci(r"nets/tz_10.pt");
 }

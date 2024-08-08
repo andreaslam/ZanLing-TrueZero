@@ -1,8 +1,9 @@
+use crate::dataformat::ZeroEvaluationAbs;
 // UCI code based on https://github.com/jw1912/monty
 use crate::settings::MovesLeftSettings;
 use crate::{
     boardmanager::BoardStack,
-    cache::{CacheEntryKey, CacheEntryValue},
+    cache::CacheEntryKey,
     debug_print,
     decoder::{convert_board, eval_state},
     executor::{executor_static, Message, Packet},
@@ -36,7 +37,7 @@ pub fn eval_in_cp(eval: f32) -> f32 {
 
 fn mb_to_items(mb: usize) -> usize {
     let key_size = std::mem::size_of::<CacheEntryKey>();
-    let val_size = std::mem::size_of::<CacheEntryValue>();
+    let val_size = std::mem::size_of::<ZeroEvaluationAbs>();
     (mb * 1000000) / (key_size + val_size)
 }
 
@@ -321,7 +322,7 @@ pub fn handle_go(
                 executor_static(net_path.to_string(), tensor_exe_recv, ctrl_recv.clone(), 1)
             })
             .unwrap();
-        let mut cache: LruCache<CacheEntryKey, CacheEntryValue> =
+        let mut cache: LruCache<CacheEntryKey, ZeroEvaluationAbs> =
             LruCache::new(NonZeroUsize::new(1000000).unwrap());
         let (best_move, _, _, _, _) = rt.block_on(async {
             get_move(

@@ -1,6 +1,7 @@
 use crate::{
     boardmanager::BoardStack,
-    cache::{CacheEntryKey, CacheEntryValue},
+    cache::CacheEntryKey,
+    dataformat::{ZeroEvaluationAbs, ZeroValuesAbs, ZeroValuesPov},
     debug_print,
     mcts_trainer::{Net, Node, Tree, Wdl},
     mvs::get_contents,
@@ -36,7 +37,6 @@ pub fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> 
     // Move the results to CPU to reduce GPU memory usage
     let board_eval = board_eval.to(Device::Cpu);
     let policy = policy.to(Device::Cpu);
-
     // Drop the original GPU tensors to free memory
     drop(output_tensor);
 
@@ -148,111 +148,6 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
     all_data // all_data is 1d
 }
 
-/// processes the board output after nn evaluation and updates the tree with new nodes
-pub fn process_board_output(
-    output: (&Tensor, &Tensor),
-    selected_node_idx: &usize,
-    tree: &mut Tree,
-    bs: &BoardStack,
-    mut cache: &mut LruCache<CacheEntryKey, CacheEntryValue>,
-) -> Vec<usize> {
-    let contents = get_contents();
-    let (board_eval, policy) = output; // check policy, eval ordering!
-    let board_eval = board_eval.squeeze();
-
-    let board_evals: Vec<f32> = Vec::try_from(board_eval).expect("Error");
-
-    let value: f32 = board_evals[0].tanh();
-
-    let wdl_logits: Tensor = Tensor::from_slice(&board_evals[1..4]);
-
-    let wdl = Tensor::softmax(&wdl_logits, 0, Kind::Float);
-
-    let wdl: Vec<f32> = Vec::try_from(wdl).expect("Error");
-    let wdl = Wdl {
-        w: wdl[0],
-        d: wdl[1],
-        l: wdl[2],
-    };
-    let moves_left = board_evals[4];
-
-    let policy = policy.squeeze();
-    let policy: Vec<f32> = Vec::try_from(policy).expect("Error");
-    let value = f32::try_from(value).expect("Error");
-
-    let (value, wdl) = match bs.board().side_to_move() {
-        Color::Black => (-value, wdl.flip()),
-        Color::White => (value, wdl),
-    };
-
-    // step 1 - get the corresponding idx for legal moves
-
-    let (legal_moves, idx_li) = extract_policy(bs, contents);
-
-    // step 2 - using the idx in step 1, index all the policies involved
-    let mut pol_list: Vec<f32> = Vec::new();
-    for id in &idx_li {
-        pol_list.push(policy[*id]);
-    }
-
-    // step 3 - softmax
-
-    let sm = Tensor::from_slice(&pol_list);
-
-    let sm = Tensor::softmax(&sm, 0, Kind::Float);
-
-    let pol_list: Vec<f32> = Vec::try_from(sm).expect("Error");
-
-    // step 4 - iteratively append nodes into class
-    let mut counter = 0;
-
-    // ensure that moves_left is positive - there are no negative moves
-
-    let moves_left = 0.0_f32.max(moves_left);
-
-    tree.nodes[*selected_node_idx].moves_left = moves_left;
-
-    tree.nodes[*selected_node_idx].value = value;
-
-    tree.nodes[*selected_node_idx].wdl = wdl;
-
-    let ct = tree.nodes.len();
-    for (mv, pol) in legal_moves.iter().zip(pol_list.iter()) {
-        let fm: Move;
-        if bs.board().side_to_move() == Color::Black {
-            // flip move
-            fm = Move {
-                from: mv.from.flip_rank(),
-                to: mv.to.flip_rank(),
-                promotion: mv.promotion,
-            };
-        } else {
-            fm = *mv;
-        }
-        let child = Node::new(*pol, Some(*selected_node_idx), Some(fm));
-        tree.nodes.push(child); // push child to the tree Vec<Node>
-
-        counter += 1
-    }
-    tree.nodes[*selected_node_idx].children = ct..ct + counter;
-
-    cache.put(
-        CacheEntryKey {
-            hash: bs.board().hash(),
-            halfmove_clock: bs.board().halfmove_clock(),
-        },
-        CacheEntryValue {
-            eval_score: value,
-            policy: pol_list,
-            moves_left,
-            wdl,
-            mv: tree.nodes[*selected_node_idx].mv,
-        },
-    );
-
-    idx_li
-}
-
 /// extracts the policy indices from `mvs.rs` given board state in order to filter raw output from neural network
 pub fn extract_policy(bs: &BoardStack, contents: &'static [Move]) -> (Vec<Move>, Vec<usize>) {
     let mut legal_moves: Vec<Move> = Vec::new();
@@ -288,4 +183,101 @@ pub fn extract_policy(bs: &BoardStack, contents: &'static [Move]) -> (Vec<Move>,
     }
 
     (legal_moves, idx_li)
+}
+
+/// processes the board output after nn evaluation and updates the tree with new nodes
+pub fn process_board_output(
+    output: (&Tensor, &Tensor),
+    selected_node_idx: &usize,
+    tree: &mut Tree,
+    bs: &BoardStack,
+    mut cache: &mut LruCache<CacheEntryKey, ZeroEvaluationAbs>,
+) -> Vec<usize> {
+    let contents = get_contents();
+    let (board_eval, policy) = output; // check policy, eval ordering!
+    let board_eval = board_eval.squeeze();
+    let board_evals: Vec<f32> = Vec::try_from(board_eval).expect("Error");
+
+    let value: f32 = board_evals[0].tanh();
+
+    let wdl_logits: Tensor = Tensor::from_slice(&board_evals[1..4]);
+    let wdl = Tensor::softmax(&wdl_logits, 0, Kind::Float);
+
+    let wdl: Vec<f32> = Vec::try_from(wdl).expect("Error");
+    let wdl = Wdl {
+        w: wdl[0],
+        d: wdl[1],
+        l: wdl[2],
+    };
+    let moves_left = board_evals[4];
+
+    let policy = policy.squeeze();
+    let policy: Vec<f32> = Vec::try_from(policy).expect("Error");
+    let value = f32::try_from(value).expect("Error");
+
+    // step 1 - get the corresponding idx for legal moves
+
+    let (legal_moves, idx_li) = extract_policy(bs, contents);
+
+    // step 2 - using the idx in step 1, index all the policies involved
+    let mut pol_list: Vec<f32> = Vec::new();
+    for id in &idx_li {
+        pol_list.push(policy[*id]);
+    }
+
+    // step 3 - softmax
+
+    let sm = Tensor::from_slice(&pol_list);
+
+    let sm = Tensor::softmax(&sm, 0, Kind::Float);
+
+    let pol_list: Vec<f32> = Vec::try_from(sm).expect("Error");
+
+    // step 4 - iteratively append nodes into class
+    let mut counter = 0;
+
+    // ensure that moves_left is positive - there are no negative moves
+    let moves_left = 0.0_f32.max(moves_left);
+
+    let selected_node_net_evaluation = ZeroValuesPov {
+        value,
+        wdl,
+        moves_left,
+    }
+    .to_absolute(bs.board().side_to_move());
+    debug_print!("decoder {:?}", selected_node_net_evaluation);
+    tree.nodes[*selected_node_idx].net_evaluation = selected_node_net_evaluation;
+
+    let ct = tree.nodes.len();
+    for (mv, pol) in legal_moves.iter().zip(pol_list.iter()) {
+        let fm: Move;
+        if bs.board().side_to_move() == Color::Black {
+            // flip move
+            fm = Move {
+                from: mv.from.flip_rank(),
+                to: mv.to.flip_rank(),
+                promotion: mv.promotion,
+            };
+        } else {
+            fm = *mv;
+        }
+        let child = Node::new(*pol, Some(*selected_node_idx), Some(fm));
+        tree.nodes.push(child); // push child to the tree Vec<Node>
+
+        counter += 1
+    }
+    tree.nodes[*selected_node_idx].children = ct..ct + counter;
+
+    cache.put(
+        CacheEntryKey {
+            hash: bs.board().hash(),
+            halfmove_clock: bs.board().halfmove_clock(),
+        },
+        ZeroEvaluationAbs {
+            values: selected_node_net_evaluation,
+            policy: pol_list,
+        },
+    );
+
+    idx_li
 }

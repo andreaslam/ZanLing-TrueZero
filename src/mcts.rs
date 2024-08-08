@@ -1,7 +1,7 @@
 use crate::{
     boardmanager::BoardStack,
-    cache::{CacheEntryKey, CacheEntryValue},
-    dataformat::{ZeroEvaluation, ZeroValuesPov},
+    cache::CacheEntryKey,
+    dataformat::ZeroEvaluationAbs,
     debug_print,
     executor::Packet,
     mcts_trainer::{Tree, Wdl},
@@ -20,12 +20,12 @@ pub async fn get_move(
     tensor_exe_send: Sender<Packet>,
     settings: SearchSettings,
     stop_signal: Option<Receiver<UCIMsg>>,
-    mut cache: &mut LruCache<CacheEntryKey, CacheEntryValue>,
+    mut cache: &mut LruCache<CacheEntryKey, ZeroEvaluationAbs>,
 ) -> (
     Move,
-    ZeroEvaluation,
+    ZeroEvaluationAbs,
     Option<Vec<usize>>,
-    ZeroEvaluation,
+    ZeroEvaluationAbs,
     u32,
 ) {
     let sw = Instant::now();
@@ -68,14 +68,15 @@ pub async fn get_move(
     debug_print!("Debug: Tree search completed");
 
     let mut child_visits: Vec<u32> = Vec::new();
+
     for child in tree.nodes[0].children.clone() {
         child_visits.push(tree.nodes[child].visits);
     }
 
     let all_same = child_visits.iter().all(|&x| x == child_visits[0]);
-    debug_print!("Debug: All child visits same: {}", all_same);
 
     let best_move_node = if !all_same {
+        // if visits to nodes are the same eg max_nodes=1
         tree.nodes[0]
             .children
             .clone()
@@ -94,81 +95,63 @@ pub async fn get_move(
             })
             .expect("Error")
     };
-    debug_print!("Debug: Best move node selected: {}", best_move_node);
-
     let best_move = tree.nodes[best_move_node].mv;
-    debug_print!("Debug: Best move determined: {:?}", best_move);
     let mut total_visits_list = Vec::new();
+    debug_print!("{}", &format!("{:#}", best_move.unwrap()));
     for child in tree.nodes[0].children.clone() {
         total_visits_list.push(tree.nodes[child].visits);
         let msg = tree.display_node(child);
         debug_print!("{}", msg);
     }
-    debug_print!("Debug: Total visits list: {:?}", total_visits_list);
 
+    let display_str = tree.display_node(0);
+    debug_print!("{}", &format!("{}", display_str));
     let total_visits: u32 = total_visits_list.iter().sum();
-    debug_print!("Debug: Total visits: {}", total_visits);
 
     let mut pi: Vec<f32> = Vec::new();
+
+    debug_print!("{}", &format!("{:?}", &total_visits_list));
+
     for &t in &total_visits_list {
         let prob = t as f32 / total_visits as f32;
         pi.push(prob);
     }
-    debug_print!("Debug: Pi vector: {:?}", pi);
 
-    let mut all_pol = Vec::new();
-    for child in tree.nodes[0].clone().children {
-        all_pol.push(tree.nodes[child].policy);
+    debug_print!("{}", &format!("{:?}", &pi));
+    debug_print!("{}", &format!("{}", best_move.expect("Error").to_string()));
+    debug_print!(
+        "{}",
+        &format!("best move: {}", best_move.expect("Error").to_string())
+    );
+
+    for child in tree.nodes[0].children.clone() {
+        let display_str = tree.display_node(child);
+        debug_print!("{}", &format!("{}", display_str));
     }
 
-    debug_print!("Debug: All policies: {:?}", all_pol);
-    tree.nodes[0].display_full_tree(&tree);
-    let v_p_vals = ZeroValuesPov {
-        value: tree.nodes[0].wdl.w - tree.nodes[0].wdl.l,
-        wdl: tree.nodes[0].wdl,
-        moves_left: tree.nodes[0].moves_left,
-    };
+    // tree.nodes[0].display_full_tree(&tree);
 
-    let v_p = ZeroEvaluation {
+    let mut all_tree_pol = Vec::new();
+
+    for child in tree.nodes[0].clone().children {
+        all_tree_pol.push(tree.nodes[child].policy);
+    }
+
+    let net_evaluation = ZeroEvaluationAbs {
         // network evaluation, NOT search/empirical data
-        values: v_p_vals,
-        policy: all_pol,
-    };
-    debug_print!("Debug: ZeroEvaluation v_p created");
-
-    let search_data_vals = ZeroValuesPov {
-        value: match tree.board.board().side_to_move() {
-            Color::White => tree.nodes[0].get_q_val(tree.settings),
-            Color::Black => -tree.nodes[0].get_q_val(tree.settings),
-        },
-        wdl: match tree.board.board().side_to_move() {
-            Color::White => Wdl {
-                w: tree.nodes[0].total_wdl.w / tree.nodes[0].visits as f32,
-                d: tree.nodes[0].total_wdl.d / tree.nodes[0].visits as f32,
-                l: tree.nodes[0].total_wdl.l / tree.nodes[0].visits as f32,
-            },
-            Color::Black => Wdl {
-                w: tree.nodes[0].total_wdl.l / tree.nodes[0].visits as f32,
-                d: tree.nodes[0].total_wdl.d / tree.nodes[0].visits as f32,
-                l: tree.nodes[0].total_wdl.w / tree.nodes[0].visits as f32,
-            },
-        },
-        moves_left: tree.nodes[0].moves_left_total / tree.nodes[0].visits as f32,
+        values: tree.nodes[0].net_evaluation,
+        policy: all_tree_pol,
     };
 
-    let search_data = ZeroEvaluation {
+    let search_data = ZeroEvaluationAbs {
         // search data
-        values: search_data_vals,
+        values: tree.nodes[0].total_evaluation,
         policy: pi,
     };
-    debug_print!("Debug: ZeroEvaluation search_data created");
 
-    debug_print!("Debug: ZeroEvaluation search_data created");
-
-    debug_print!("Debug: End of get_move function");
     (
         best_move.expect("Error"),
-        v_p,
+        net_evaluation,
         tree.nodes[0].clone().move_idx,
         search_data,
         tree.nodes[0].visits,

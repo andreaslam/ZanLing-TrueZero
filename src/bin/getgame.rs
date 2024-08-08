@@ -4,9 +4,9 @@ use flume::Sender;
 use lru::LruCache;
 use std::{env, num::NonZeroUsize, panic};
 use tokio::runtime::Runtime;
-use tz_rust::mcts_trainer::TypeRequest::TrainerSearch;
-use tz_rust::settings::MovesLeftSettings;
-use tz_rust::{
+use tzrust::mcts_trainer::TypeRequest::TrainerSearch;
+use tzrust::settings::MovesLeftSettings;
+use tzrust::{
     boardmanager::BoardStack,
     executor::{
         executor_static,

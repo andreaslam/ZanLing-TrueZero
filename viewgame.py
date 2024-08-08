@@ -3,7 +3,7 @@ from lib.games import Game
 
 data = DataFile.open(
     Game.find("chess"),
-    r"python_client_games/temp_games_1722461512",
+    r"games\gen_2_games_1722951175875814700",
 )
 
 all_game_moves = []
@@ -71,4 +71,4 @@ for game_index, (moves, zero_data, net_data, final_data, game_no) in enumerate(
         print(
             f"move: {mv}, zero (v, m, n, wdl): {position_zero_data}, net (v, m, wdl): {position_net_data}, final (v, m, wdl): {position_final_data}"
         )
-    print()  
+    print()

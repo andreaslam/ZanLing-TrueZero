@@ -3,9 +3,10 @@ use crossbeam::thread;
 use lru::LruCache;
 use std::{env, io, num::NonZeroUsize, panic, str::FromStr};
 use tokio::runtime::Runtime;
-use tz_rust::{
+use tzrust::{
     boardmanager::BoardStack,
-    cache::{CacheEntryKey, CacheEntryValue},
+    cache::CacheEntryKey,
+    dataformat::ZeroEvaluationAbs,
     executor::{
         executor_static,
         Message::{self, StopServer},
@@ -103,7 +104,7 @@ fn main() {
             .read_line(&mut input)
             .expect("Failed to read line");
         let input = input.replace("\r\n", "");
-        let mut cache: LruCache<CacheEntryKey, CacheEntryValue> =
+        let mut cache: LruCache<CacheEntryKey, ZeroEvaluationAbs> =
             LruCache::new(NonZeroUsize::new(10000).unwrap());
         if input == "p".to_string() {
             while bs.status() == GameStatus::Ongoing {

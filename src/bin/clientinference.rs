@@ -14,8 +14,8 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tch::Tensor;
-use tz_rust::{
-    cache::{CacheEntryKey, CacheEntryValue},
+use tzrust::{
+    cache::CacheEntryKey,
     executor::{executor_main, Packet},
     fileformat::BinaryOutput,
     mcts_trainer::{EvalMode, TypeRequest::TrainerSearch},
@@ -166,7 +166,7 @@ fn commander_executor(
                 MessageType::Initialise(_) => {}
                 MessageType::JobSendPath(_) => {}
                 MessageType::StatisticsSend(_) => {}
-                MessageType::RequestingNet => {}
+                MessageType::RequestingNet() => {}
                 MessageType::NewNetworkPath(path) => {}
                 MessageType::IdentityConfirmation(_) => {}
                 MessageType::JobSendData(_) => {}
@@ -178,8 +178,8 @@ fn commander_executor(
                     net_path_counter += 1;
                 }
                 MessageType::TBLink(_) => {}
-                MessageType::CreateTB => {}
-                MessageType::RequestingTBLink => {}
+                MessageType::CreateTB() => {}
+                MessageType::RequestingTBLink() => {}
                 MessageType::EvaluationRequest(input_data) => {
                     let tensor_packet = Packet {
                         job: Tensor::from_slice(&input_data.data),
@@ -193,7 +193,7 @@ fn commander_executor(
                 MessageType::Initialise(_) => {}
                 MessageType::JobSendPath(_) => {}
                 MessageType::StatisticsSend(_) => {}
-                MessageType::RequestingNet => {}
+                MessageType::RequestingNet() => {}
                 MessageType::NewNetworkPath(_) => {}
                 MessageType::IdentityConfirmation((entity, id)) => match entity {
                     Entity::RustDataGen => {
@@ -214,8 +214,8 @@ fn commander_executor(
                 MessageType::JobSendData(_) => {}
                 MessageType::NewNetworkData(_) => {}
                 MessageType::TBLink(_) => {}
-                MessageType::CreateTB => {}
-                MessageType::RequestingTBLink => {}
+                MessageType::CreateTB() => {}
+                MessageType::RequestingTBLink() => {}
                 MessageType::EvaluationRequest(_) => {}
             }
         }
@@ -244,7 +244,7 @@ fn commander_executor(
             // actively request for net path
 
             let message = MessageServer {
-                purpose: MessageType::RequestingNet,
+                purpose: MessageType::RequestingNet(),
             };
             let mut serialised = serde_json::to_string(&message).expect("serialisation failed");
             serialised += "\n";

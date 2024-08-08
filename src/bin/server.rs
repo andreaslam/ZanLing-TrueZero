@@ -6,7 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tz_rust::{
+use tzrust::{
     debug_print,
     message_types::{Entity, MessageServer, MessageType},
 };
@@ -86,7 +86,7 @@ fn handle_client(
                             };
                             if !has_net {
                                 let extra_request = MessageServer {
-                                    purpose: MessageType::RequestingNet,
+                                    purpose: MessageType::RequestingNet(),
                                 };
                                 let mut serialised = serde_json::to_string(&extra_request)
                                     .expect("serialisation failed");
@@ -127,7 +127,7 @@ fn handle_client(
                                 purpose: MessageType::IdentityConfirmation((entity, id)),
                             };
                             let tb_link_request = MessageServer {
-                                purpose: MessageType::RequestingTBLink,
+                                purpose: MessageType::RequestingTBLink(),
                             };
 
                             println!("[Server] Requested TensorBoard link");
@@ -162,7 +162,7 @@ fn handle_client(
                 MessageType::JobSendPath(_) => {
                     debug_print!("JobSendPath message received");
                     let refresh_msg = MessageServer {
-                        purpose: MessageType::RequestingTBLink,
+                        purpose: MessageType::RequestingTBLink(),
                     };
                     let mut serialised =
                         serde_json::to_string(&refresh_msg).expect("serialisation failed");
@@ -178,10 +178,10 @@ fn handle_client(
                     let mut start_time = start_time.lock().unwrap_or_else(|e| e.into_inner());
                     let elapsed = start_time.elapsed().as_secs_f32() as usize;
                     match statistics {
-                        tz_rust::message_types::Statistics::NodesPerSecond(nps) => {
+                        tzrust::message_types::Statistics::NodesPerSecond(nps) => {
                             stats.0 += nps;
                         }
-                        tz_rust::message_types::Statistics::EvalsPerSecond(evals_per_sec) => {
+                        tzrust::message_types::Statistics::EvalsPerSecond(evals_per_sec) => {
                             stats.1 += evals_per_sec;
                         }
                     }
@@ -194,7 +194,7 @@ fn handle_client(
                     recv_msg.clear();
                     continue;
                 }
-                MessageType::RequestingNet => {
+                MessageType::RequestingNet() => {
                     debug_print!("RequestingNet message received");
                     if !has_net {
                         match *net_data {
@@ -228,7 +228,7 @@ fn handle_client(
                 MessageType::JobSendData(_) => {
                     debug_print!("JobSendData message received");
                     let refresh_msg = MessageServer {
-                        purpose: MessageType::RequestingTBLink,
+                        purpose: MessageType::RequestingTBLink(),
                     };
                     let mut serialised =
                         serde_json::to_string(&refresh_msg).expect("serialisation failed");
@@ -274,11 +274,11 @@ fn handle_client(
                         needs_tb_link = false;
                     }
                 }
-                MessageType::CreateTB => {
+                MessageType::CreateTB() => {
                     debug_print!("CreateTB message received");
                     needs_tb_link = true;
                 }
-                MessageType::RequestingTBLink => match *tb_link {
+                MessageType::RequestingTBLink() => match *tb_link {
                     Some(ref link) => {
                         let tb_link_msg = MessageServer {
                             purpose: MessageType::TBLink(link.clone()),
@@ -322,10 +322,10 @@ fn handle_client(
                         needs_tb_link = false;
                     }
                 }
-                MessageType::CreateTB => {
+                MessageType::CreateTB() => {
                     needs_tb_link = true;
                 }
-                MessageType::RequestingTBLink => {
+                MessageType::RequestingTBLink() => {
                     match *tb_link {
                         Some(ref link) => {
                             let tb_link_msg = MessageServer {

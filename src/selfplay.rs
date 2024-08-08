@@ -1,7 +1,7 @@
 use crate::{
     boardmanager::BoardStack,
-    cache::{CacheEntryKey, CacheEntryValue},
-    dataformat::{Position, Simulation},
+    cache::CacheEntryKey,
+    dataformat::{Position, Simulation, ZeroEvaluationAbs},
     debug_print,
     executor::{Packet, ReturnMessage},
     mcts_trainer::{get_move, ExpansionType, TypeRequest},
@@ -38,7 +38,7 @@ impl DataGen {
         nps_sender: &Sender<CollectorMessage>,
         settings: &SearchSettings,
         id: usize,
-        mut cache: &mut LruCache<CacheEntryKey, CacheEntryValue>,
+        mut cache: &mut LruCache<CacheEntryKey, ZeroEvaluationAbs>,
     ) -> Simulation {
         let sw = Instant::now();
         let mut bs = BoardStack::new(Board::default());

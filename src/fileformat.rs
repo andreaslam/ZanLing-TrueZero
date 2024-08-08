@@ -138,17 +138,16 @@ impl BinaryOutput {
             self.min_game_length.unwrap_or(i32::MAX),
         ));
 
-        let outcome: Option<Color> = match final_board.status() {
+        let winner: Option<Color> = match final_board.status() {
             GameStatus::Drawn => None,
             GameStatus::Won => Some(!final_board.board().side_to_move()),
             GameStatus::Ongoing => panic!("Game is still ongoing!"),
         }; // colour (if any) that won the game
 
-        let pov_player = !simulation.positions[0].board.board().side_to_move();
-
-        match outcome {
+        // idk i cant have wdl in total_root_wdl to be constantly changing between the winners of each game
+        match winner {
             Some(player) => {
-                if player == pov_player {
+                if player == Color::White {
                     self.total_root_wdl[2] += 1;
                 } else {
                     self.total_root_wdl[0] += 1;
@@ -157,9 +156,10 @@ impl BinaryOutput {
             None => self.total_root_wdl[1] += 1,
         }
 
-        self.total_root_wdl[0] += positions[0].zero_evaluation.values.wdl.w as u64;
-        self.total_root_wdl[1] += positions[0].zero_evaluation.values.wdl.d as u64;
-        self.total_root_wdl[2] += positions[0].zero_evaluation.values.wdl.l as u64;
+        // is this redundant???
+        // self.total_root_wdl[0] += positions[0].zero_evaluation.values.wdl.w as u64;
+        // self.total_root_wdl[1] += positions[0].zero_evaluation.values.wdl.d as u64;
+        // self.total_root_wdl[2] += positions[0].zero_evaluation.values.wdl.l as u64;
         // self.hit_move_limit_count += final_board.outcome().is_none() as u8 as u64;
         // write the positions
         for (pos_index, position) in positions.iter().enumerate() {
@@ -191,33 +191,33 @@ impl BinaryOutput {
             // let played_mv_index = self.mapper.move_to_index(board, played_mv);
             // let kdl_policy = kdl_divergence(&zero_evaluation.policy, &net_evaluation.policy);
             let kdl_policy = f32::NAN;
-            let moves_left = game_length as f32 + 1.0 - pos_index as f32;
+            let moves_left = game_length as f32 - pos_index as f32;
             let stored_policy = &zero_evaluation.policy;
 
-            let final_values = match outcome {
-                Some(colour) => {
-                    if board.board().side_to_move() == colour {
+            let final_values = match winner {
+                Some(colour_of_winner) => {
+                    if board.board().side_to_move() == colour_of_winner {
                         ZeroValuesPov {
-                    value: 1.0,
-                    wdl: Wdl {
-                        w: 1.0,
-                        d: 0.0,
-                        l: 0.0,
-                    },
-                    moves_left,
-                }
+                            value: 1.0,
+                            wdl: Wdl {
+                                w: 1.0,
+                                d: 0.0,
+                                l: 0.0,
+                            },
+                            moves_left,
+                        }
                     } else {
                         ZeroValuesPov {
-                    value: -1.0,
-                    wdl: Wdl {
-                        w: 0.0,
-                        d: 0.0,
-                        l: 1.0,
-                    },
-                    moves_left,
-                }
+                            value: -1.0,
+                            wdl: Wdl {
+                                w: 0.0,
+                                d: 0.0,
+                                l: 1.0,
+                            },
+                            moves_left,
+                        }
                     }
-                },
+                }
                 None => ZeroValuesPov {
                     value: 0.0,
                     wdl: Wdl {
@@ -242,14 +242,18 @@ impl BinaryOutput {
                 played_mv: played_mv_index as isize,
                 kdl_policy,
                 final_values,
-                zero_values: zero_evaluation.values,
-                net_values: net_evaluation.values,
+                zero_values: zero_evaluation
+                    .values
+                    .to_relative(board.board().side_to_move()),
+                net_values: net_evaluation
+                    .values
+                    .to_relative(board.board().side_to_move()),
             };
 
             self.append_position(board, &scalars, &policy_indices, stored_policy)?;
         }
 
-        let final_wdl = match outcome {
+        let final_wdl = match winner {
             Some(player) => match player {
                 Color::White => Wdl {
                     w: 1.0,

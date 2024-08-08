@@ -10,7 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tch::Tensor;
-use tz_rust::{decoder::eval_state, mcts_trainer::Net, utils::TimeStampDebugger};
+use tzrust::{decoder::eval_state, mcts_trainer::Net, utils::TimeStampDebugger};
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
     const BATCH_SIZE: usize = 512;
