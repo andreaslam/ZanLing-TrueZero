@@ -245,7 +245,7 @@ pub fn process_board_output(
         moves_left,
     }
     .to_absolute(bs.board().side_to_move());
-    debug_print!("decoder {:?}", selected_node_net_evaluation);
+    // debug_print!("decoder {:?}", selected_node_net_evaluation);
     tree.nodes[*selected_node_idx].net_evaluation = selected_node_net_evaluation;
 
     let ct = tree.nodes.len();

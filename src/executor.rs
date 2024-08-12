@@ -3,7 +3,7 @@ use crate::{
     decoder::eval_state,
     mcts_trainer::Net,
     selfplay::CollectorMessage,
-    superluminal::{CL_BLUE, CL_ORANGE, CL_RED},
+    // superluminal::{CL_BLUE, CL_ORANGE, CL_RED},
     utils::TimeStampDebugger,
 };
 
@@ -11,7 +11,7 @@ use crossbeam::thread;
 
 use flume::{Receiver, RecvError, Selector, Sender};
 use std::{cmp::min, collections::VecDeque, process, time::Instant};
-use superluminal_perf::{begin_event_with_color, end_event};
+// use superluminal_perf::{ begin_event_with_color,  end_event};
 use tch::Tensor;
 
 pub struct Packet {
@@ -114,7 +114,7 @@ pub fn executor_main(
 
         loop {
             let mut selector = Selector::new();
-            begin_event_with_color("waiting_for_job", CL_ORANGE);
+            // begin_event_with_color("waiting_for_job", CL_ORANGE);
             let sw = Instant::now();
             assert!(network.is_some() || !graph_disconnected);
 
@@ -131,7 +131,7 @@ pub fn executor_main(
             }
 
             let message = selector.wait();
-            end_event();
+            // end_event();
 
             match message {
                 Message::StopServer => break,
@@ -150,17 +150,17 @@ pub fn executor_main(
                     let i_v = input_vec.make_contiguous();
                     let input_tensors = Tensor::cat(&i_v, 0);
 
-                    begin_event_with_color("eval", CL_BLUE);
+                    // begin_event_with_color("eval", CL_BLUE);
                     evaluation_time_taken_debugger.reset();
                     let (board_eval, policy) =
                         eval_state(input_tensors, network).expect("Evaluation failed");
-                    end_event();
+                    // end_event();
                     evaluation_time_taken_debugger.record("evaluation_time_taken", &thread_name);
                     evaluation_time_taken_debugger.reset();
                     let _ =
                         evals_per_sec_sender.send(CollectorMessage::ExecutorStatistics(batch_size));
 
-                    begin_event_with_color("packing", CL_RED);
+                    // begin_event_with_color("packing", CL_RED);
                     packing_time_debugger.reset();
                     for i in 0..batch_size {
                         let sender: Sender<ReturnMessage> = output_senders
@@ -175,7 +175,7 @@ pub fn executor_main(
                             .send(ReturnMessage::ReturnMessage(Ok(return_pack)))
                             .expect("Should be able to send the result");
                     }
-                    end_event();
+                    // end_event();
 
                     packing_time_debugger.record("packing_time", &thread_name);
 

@@ -1,7 +1,7 @@
 use crate::{
     boardmanager::BoardStack,
     cache::CacheEntryKey,
-    dataformat::{ZeroEvaluationAbs, ZeroValuesAbs},
+    dataformat::{ZeroEvaluationAbs, ZeroValuesAbs, ZeroValuesPov},
     debug_print,
     decoder::{convert_board, extract_policy, process_board_output},
     dirichlet::StableDirichlet,
@@ -57,7 +57,7 @@ pub struct Net {
 impl Net {
     /// creates a new `Net` instance by loading a model from the specified path
     pub fn new(path: &str) -> Self {
-        maybe_init_cuda();
+        // maybe_init_cuda();
         let device = if has_cuda() {
             if Cuda::cudnn_is_available() {
                 Cuda::cudnn_set_benchmark(true);
@@ -77,7 +77,7 @@ impl Net {
     }
     /// creates a new `Net` instance with a specified device ID (supports only CUDA)
     pub fn new_with_device_id(path: &str, id: usize) -> Self {
-        maybe_init_cuda();
+        // maybe_init_cuda();
         let device = if has_cuda() {
             if Cuda::cudnn_is_available() {
                 Cuda::cudnn_set_benchmark(true);
@@ -395,9 +395,6 @@ impl Tree {
                         self.settings,
                     );
 
-                    let msg = self.display_node(*a);
-
-                    let msg = self.display_node(*b);
                     if a_puct == b_puct || curr_node.visits == 0 {
                         // if PUCT values are equal or parent visits == 0, use largest policy as tiebreaker
                         let a_policy = a_node.policy;
@@ -479,23 +476,28 @@ impl Tree {
     /// backpropagates the evaluation results up the tree
     pub fn backpropagate(&mut self, node: usize, player: Color) {
         debug_print!("{}", &format!("    backpropagation:"));
-        let value = self.nodes[node].net_evaluation.value;
+        self.nodes[node].total_evaluation = self.nodes[node].net_evaluation;
+        let child_zero_evaluation = self.nodes[node].total_evaluation;
+
+        let value = child_zero_evaluation.value;
         let mut curr: Option<usize> = Some(node);
-        let wdl = self.nodes[node].net_evaluation.wdl;
-        let mut moves_left = self.nodes[node].net_evaluation.moves_left;
+        let wdl = child_zero_evaluation.wdl;
+        let mut moves_left = child_zero_evaluation.moves_left;
         let mut backprop_nodes_vec: Vec<usize> = Vec::new(); // keep track of the vecs used for backpropagation
         let mut curr_player = !player;
         while let Some(current) = curr {
-            let mut curr_pov = self.nodes[current]
-                .total_evaluation
-                .to_relative(!curr_player);
+            let mut parent_node = self.nodes[current].total_evaluation;
+            // let mut curr_pov = self.nodes[current]
+            //     .total_evaluation
+            //     .to_relative(!curr_player);
             self.nodes[current].visits += 1;
-            curr_pov.value += value;
-            curr_pov.wdl += wdl;
-            curr_pov.moves_left += moves_left;
+            parent_node.value += value;
+            parent_node.wdl += wdl;
+            parent_node.moves_left += moves_left;
             moves_left += 1.0;
             backprop_nodes_vec.push(current);
             curr = self.nodes[current].parent;
+            debug_print!("{:?}", parent_node);
             curr_player = player
         }
 
@@ -556,7 +558,7 @@ impl Tree {
                     mv_n = "Null".to_string();
                 }
             }
-
+            let relative_evaluation = self.nodes[id].total_evaluation.to_relative(!bs_clone.board().side_to_move());
             format!(
                 "Node(action= {}, V= {}, N={}, W={}, P={}, Q={}, U={}, PUCT={}, len_children={}, wdl={}, w={}, d={}, l={}, M={}, M_total={})",
                 mv_n,
@@ -564,7 +566,7 @@ impl Tree {
                 self.nodes[id].visits,
                 self.nodes[id].total_evaluation.value,
                 self.nodes[id].policy,
-                self.nodes[id].get_q_val(self.settings,!bs_clone.board().side_to_move()),
+                self.nodes[id].get_q_val(self.settings, relative_evaluation),
                 u,
                 puct,
                 self.nodes[id].children.len(),
@@ -623,8 +625,7 @@ impl Node {
             move_idx: None,
         }
     }
-    pub fn get_q_val(&self, settings: SearchSettings, player: Color) -> f32 {
-        let relative_evaluation = self.total_evaluation.to_relative(player);
+    pub fn get_q_val(&self, settings: SearchSettings, relative_evaluation: ZeroValuesPov) -> f32 {
         let fpu = settings.fpu; // First Player Urgency
         if self.visits > 0 {
             let total = match settings.wdl {
@@ -651,13 +652,15 @@ impl Node {
     ) -> f32 {
         assert!(self.visits < parent_visits);
 
+        let relative_evaluation = self.total_evaluation.to_relative(player);
         let u = self.get_u_val(parent_visits, settings);
-        let q = self.get_q_val(settings, player);
+        let q = self.get_q_val(settings, relative_evaluation);
         let puct_logit = if let Some(weights) = settings.moves_left {
             let m = if self.visits == 0 {
                 0.0
             } else {
-                self.net_evaluation.moves_left - (parent_moves_left - 1.0)
+
+                relative_evaluation.moves_left - (parent_moves_left - 1.0)
             };
             let m_unit = if weights.moves_left_weight == 0.0 {
                 0.0

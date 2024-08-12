@@ -1,4 +1,4 @@
-use pyo3::{exceptions::PyValueError, prelude::*};
+use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[pyclass]
