@@ -252,10 +252,10 @@ impl Tree {
             debug_print!("terminal! {:#} {:?}", input_b.board(), wdl);
             self.nodes[selected_node].net_evaluation.value = wdl.w - wdl.l;
             self.nodes[selected_node].net_evaluation.wdl = wdl;
-            self.nodes[selected_node].net_evaluation.moves_left = 0.0;
+            self.nodes[selected_node].net_evaluation.moves_left = 0.0; //TODO find alternative
         }
 
-        self.backpropagate(selected_node, input_b.board().side_to_move());
+        self.backpropagate(selected_node);
         let backprop_debug = TimeStampDebugger::create_debug();
         if id % 512 == 0 {
             backprop_debug.record("backpropagation", &thread_name);
@@ -469,36 +469,29 @@ impl Tree {
             bs,
             cache,
         );
-
+        debug_print!("        expanded {}", self.display_node(*selected_node_idx));
         idx_li
     }
 
     /// backpropagates the evaluation results up the tree
-    pub fn backpropagate(&mut self, node: usize, player: Color) {
+    pub fn backpropagate(&mut self, node: usize) {
         debug_print!("{}", &format!("    backpropagation:"));
-        self.nodes[node].total_evaluation = self.nodes[node].net_evaluation;
-        let child_zero_evaluation = self.nodes[node].total_evaluation;
-
-        let value = child_zero_evaluation.value;
         let mut curr: Option<usize> = Some(node);
-        let wdl = child_zero_evaluation.wdl;
-        let mut moves_left = child_zero_evaluation.moves_left;
-        let mut backprop_nodes_vec: Vec<usize> = Vec::new(); // keep track of the vecs used for backpropagation
-        let mut curr_player = !player;
+        let mut backprop_nodes_vec: Vec<usize> = Vec::new(); // keep track of the nodes used for backpropagation, for debug
+        let mut num_backprop_times = 1.0;
+        let current_node_net_eval = self.nodes[node].net_evaluation;
         while let Some(current) = curr {
-            let mut parent_node = self.nodes[current].total_evaluation;
-            // let mut curr_pov = self.nodes[current]
-            //     .total_evaluation
-            //     .to_relative(!curr_player);
             self.nodes[current].visits += 1;
-            parent_node.value += value;
-            parent_node.wdl += wdl;
-            parent_node.moves_left += moves_left;
-            moves_left += 1.0;
+            self.nodes[current].total_evaluation += current_node_net_eval;
+            debug_print!(
+                "{:?} {:?}",
+                self.nodes[current].total_evaluation,
+                current_node_net_eval
+            );
+            self.nodes[current].total_evaluation.moves_left += num_backprop_times;
             backprop_nodes_vec.push(current);
             curr = self.nodes[current].parent;
-            debug_print!("{:?}", parent_node);
-            curr_player = player
+            num_backprop_times += 1.0;
         }
 
         for current in backprop_nodes_vec {
@@ -506,6 +499,7 @@ impl Tree {
             debug_print!("{}", &format!("        updated node to {}", display_str));
         }
     }
+
     /// Displays information on a node (debug)
     pub fn display_node(&self, id: usize) -> String {
         if cfg!(debug_assertions) {
@@ -558,7 +552,9 @@ impl Tree {
                     mv_n = "Null".to_string();
                 }
             }
-            let relative_evaluation = self.nodes[id].total_evaluation.to_relative(!bs_clone.board().side_to_move());
+            let relative_evaluation = self.nodes[id]
+                .total_evaluation
+                .to_relative(!bs_clone.board().side_to_move());
             format!(
                 "Node(action= {}, V= {}, N={}, W={}, P={}, Q={}, U={}, PUCT={}, len_children={}, wdl={}, w={}, d={}, l={}, M={}, M_total={})",
                 mv_n,
@@ -575,7 +571,7 @@ impl Tree {
                 self.nodes[id].net_evaluation.wdl.d,
                 self.nodes[id].net_evaluation.wdl.l,
                 self.nodes[id].net_evaluation.moves_left,
-                self.nodes[id].total_evaluation.moves_left,
+                self.nodes[id].total_evaluation.moves_left/self.nodes[id].visits as f32,
             )
         } else {
             String::new()
@@ -659,9 +655,9 @@ impl Node {
             let m = if self.visits == 0 {
                 0.0
             } else {
-
-                relative_evaluation.moves_left - (parent_moves_left - 1.0)
+                (relative_evaluation.moves_left / self.visits as f32) - (parent_moves_left - 1.0)
             };
+
             let m_unit = if weights.moves_left_weight == 0.0 {
                 0.0
             } else {
@@ -738,8 +734,15 @@ impl Wdl {
     pub fn zeros() -> Self {
         Wdl {
             w: 0.0,
-            d: 1.0,
+            d: 0.0,
             l: 0.0,
+        }
+    }
+    pub fn get_average(self, visits: u32) -> Self {
+        Self {
+            w: self.w / visits as f32,
+            d: self.d / visits as f32,
+            l: self.l / visits as f32,
         }
     }
 }
@@ -867,10 +870,11 @@ pub async fn get_move(
     };
 
     let search_data = ZeroEvaluationAbs {
-        // search data
+        // empirical search data
         values: tree.nodes[0].total_evaluation,
         policy: pi,
-    };
+    }
+    .get_average(tree.nodes[0].visits);
 
     (
         best_move.expect("Error"),

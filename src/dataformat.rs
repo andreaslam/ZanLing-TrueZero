@@ -22,6 +22,15 @@ pub struct ZeroEvaluationAbs {
     pub policy: Vec<f32>,
 }
 
+impl ZeroEvaluationAbs {
+    pub fn get_average(self, visits: u32) -> Self {
+        Self {
+            values: self.values.get_average(visits),
+            policy: self.policy,
+        }
+    }
+}
+
 /// A single position in a game.
 #[derive(Debug, Clone)]
 pub struct Position {
@@ -118,5 +127,20 @@ impl ZeroValuesAbs {
             wdl: Wdl::zeros(),
             moves_left: 0.0,
         }
+    }
+    pub fn get_average(self, visits: u32) -> Self {
+        Self {
+            value: self.value / visits as f32,
+            wdl: self.wdl.get_average(visits),
+            moves_left: self.moves_left / visits as f32,
+        }
+    }
+}
+
+impl std::ops::AddAssign for ZeroValuesAbs {
+    fn add_assign(&mut self, rhs: Self) {
+        self.value += rhs.value;
+        self.wdl += rhs.wdl;
+        self.moves_left += rhs.moves_left;
     }
 }

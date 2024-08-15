@@ -238,7 +238,6 @@ pub fn process_board_output(
 
     // ensure that moves_left is positive - there are no negative moves
     let moves_left = 0.0_f32.max(moves_left);
-
     let selected_node_net_evaluation = ZeroValuesPov {
         value,
         wdl,
@@ -247,7 +246,6 @@ pub fn process_board_output(
     .to_absolute(bs.board().side_to_move());
     // debug_print!("decoder {:?}", selected_node_net_evaluation);
     tree.nodes[*selected_node_idx].net_evaluation = selected_node_net_evaluation;
-
     let ct = tree.nodes.len();
     for (mv, pol) in legal_moves.iter().zip(pol_list.iter()) {
         let fm: Move;
@@ -262,6 +260,7 @@ pub fn process_board_output(
             fm = *mv;
         }
         let child = Node::new(*pol, Some(*selected_node_idx), Some(fm));
+
         tree.nodes.push(child); // push child to the tree Vec<Node>
 
         counter += 1

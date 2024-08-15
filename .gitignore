@@ -16,6 +16,5 @@ debug.txt
 datafile.txt
 filedebug.txt
 .vscode/
-.venv/
 traininglog.txt
 chess_16x128_gen3634.pt

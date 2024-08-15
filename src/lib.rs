@@ -1,21 +1,22 @@
-pub mod boardmanager;
+pub mod boardmanager; // CAN IMPORT PY, MINIMUM BUILD
 pub mod cache;
 pub mod dataformat;
 pub mod decoder;
-pub mod dirichlet;
+pub mod dirichlet; // CAN IMPORT PY, MINIMUM BUILD
 pub mod dummyreq;
-pub mod elo;
+pub mod elo; // CAN IMPORT PY, MINIMUM BUILD
 pub mod executor;
 pub mod fileformat;
 pub mod mcts;
 pub mod mcts_trainer;
-pub mod message_types;
-pub mod mvs;
+pub mod message_types; // CAN IMPORT PY, MINIMUM BUILD
+pub mod mvs; // CAN IMPORT PY, MINIMUM BUILD
 pub mod selfplay;
 pub mod settings;
 pub mod superluminal;
+pub mod testnet;
 pub mod uci;
-pub mod utils;
+pub mod utils; // CAN IMPORT PY, MINIMUM BUILD
 
 #[cfg(test)]
 
@@ -24,8 +25,6 @@ mod tests {
 
     use boardmanager::BoardStack;
     use cozy_chess::{Board, Color, GameStatus};
-    use executor::Packet;
-    use lru::LruCache;
     use mcts_trainer::{EvalMode, Node, Tree, TypeRequest};
     use settings::SearchSettings;
 
@@ -89,7 +88,7 @@ mod tests {
     fn create_search_settings() -> SearchSettings {
         SearchSettings {
             max_nodes: 100,
-            c_puct: 1.0,
+            c_puct: 2.0,
             fpu: 1.0,
             pst: 1.0,
             eps: 0.25,
@@ -131,15 +130,15 @@ mod tests {
         assert_eq!(selected_node, 0);
     }
 
-    /// test backpropagation
+    /// test PUCT with non-zero FPU, where the initial visit count is 0
     #[test]
-    fn test_backpropagation() {
-        let board_stack = create_board_stack();
+
+    fn test_puct_with_nonzero_fpu() {
         let settings = create_search_settings();
-        let mut tree = Tree::new(board_stack, settings);
         let node = Node::new(0.5, None, None);
-        tree.nodes.push(node);
-        tree.backpropagate(1, Color::White);
-        assert_eq!(tree.nodes[1].visits, 1);
+        assert_eq!(
+            settings.fpu,
+            node.puct_formula(1, 2.0, Color::White, settings)
+        )
     }
 }
