@@ -34,8 +34,8 @@ fn main() {
     //     false,
     // )
     // .unwrap(); // black M2
-    let board = Board::from_fen("8/7k/5KR1/8/8/8/8/8 w - - 0 1", false).unwrap(); // white M2
-                                                                                  // let board = Board::from_fen("5r1k/6pp/8/8/1Pq2r2/P3Q2P/6P1/2R1R2K b - - 4 34", false).unwrap();
+    // let board = Board::from_fen("8/7k/5KR1/8/8/8/8/8 w - - 0 1", false).unwrap(); // white M2
+    // let board = Board::from_fen("5r1k/6pp/8/8/1Pq2r2/P3Q2P/6P1/2R1R2K b - - 4 34", false).unwrap();
     let mut move_list = Vec::new();
     board.generate_moves(|moves| {
         // Unpack dense move set into move list
@@ -53,8 +53,8 @@ fn main() {
             .name("executor".to_string())
             .spawn(move |_| {
                 executor_static(
-                    // r"nets/tz_11.pt".to_string(),
-                    r"chess_16x128_gen3634.pt".to_string(),
+                    r"nets/tz_0.pt".to_string(),
+                    // r"chess_16x128_gen3634.pt".to_string(),
                     tensor_exe_recv,
                     ctrl_recv,
                     1,

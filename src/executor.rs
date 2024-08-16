@@ -52,7 +52,7 @@ fn handle_new_graph(
     debug_print!("{}: loading new net", thread_name);
 
     if let Some(network) = network.take() {
-        drop(network);
+        drop(network)
     }
 
     *network = graph.map(|graph| Net::new_with_device_id(&graph[..], id));

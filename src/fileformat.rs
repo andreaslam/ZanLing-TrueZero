@@ -144,7 +144,6 @@ impl BinaryOutput {
             GameStatus::Ongoing => panic!("Game is still ongoing!"),
         }; // colour (if any) that won the game
 
-        // idk i cant have wdl in total_root_wdl to be constantly changing between the winners of each game
         match winner {
             Some(player) => {
                 if player == Color::White {

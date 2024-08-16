@@ -28,7 +28,6 @@ class TrueNet(nn.Module):
             nn.ReLU(),
             nn.Flatten(),
             nn.Linear(head_channel_values * 64, 5),
-            nn.Tanh(),
         )
 
     def forward(self, x):
