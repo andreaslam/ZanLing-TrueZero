@@ -1,8 +1,5 @@
 use crate::{
-    debug_print,
-    decoder::eval_state,
-    mcts_trainer::Net,
-    selfplay::CollectorMessage,
+    debug_print, decoder::eval_state, mcts_trainer::Net, selfplay::CollectorMessage,
     utils::TimeStampDebugger,
 };
 

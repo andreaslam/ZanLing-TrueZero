@@ -277,7 +277,11 @@ impl Tree {
             let (pv, mate) = self.get_pv();
             let eval_string = {
                 if mate {
-                    format!("mate {}", pv.len())
+                    let mut mate_score = pv.split_whitespace().collect::<Vec<&str>>().len() as isize;
+                    if cp_eval < 0.0 {
+                        mate_score *= -1;
+                    }
+                    format!("mate {}", mate_score)
                 } else {
                     format!(
                         "cp {}",
@@ -305,9 +309,10 @@ impl Tree {
         let mut pv_nodes: Vec<usize> = vec![];
         let mut curr_node = 0;
         let mut terminal = false; // by default assume the pv has not reached mate
+        let mut pv_board = self.board.clone();
         loop {
-            if self.nodes[curr_node].children.is_empty() || self.board.is_terminal() {
-                if self.board.is_terminal() {
+            if self.nodes[curr_node].children.is_empty() || pv_board.is_terminal() {
+                if pv_board.status() == GameStatus::Won {
                     terminal = true;
                 }
                 break;
@@ -317,6 +322,7 @@ impl Tree {
                 .clone()
                 .max_by_key(|&n| self.nodes[n].visits)
                 .expect("Error");
+            pv_board.play(self.nodes[curr_node].mv.unwrap());
             pv_nodes.push(curr_node);
         }
         let mut pv_string: String = String::new();
