@@ -37,9 +37,9 @@ fn main() {
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
     let num_games = 1000000;
     let num_threads = 1024;
-    let engine_0: String = "nets/tz_66.pt".to_string(); // new engine
-    let engine_1: String = "chess_16x128_gen3634.pt".to_string(); // old engine
-                                                                  // let engine_1: String = "tz_6515.pt".to_string();
+    let engine_0: String = "nets/tz_16.pt".to_string(); // new engine
+    let engine_1: String = "./chess_16x128_gen3634.pt".to_string(); // old engine
+                                                                    // let engine_1: String = "tz_6515.pt".to_string();
     let num_executors = 2; // always be 2, 2 players, one each (one for each neural net)
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
     let pool = ThreadPool::builder().pool_size(6).create().unwrap();
@@ -55,21 +55,21 @@ fn main() {
 
         let (tensor_exe_send_0, tensor_exe_recv_0) = flume::bounded::<Packet>(num_threads);
         let (tensor_exe_send_1, tensor_exe_recv_1) = flume::bounded::<Packet>(num_threads);
-
         for n in 0..num_threads {
             let sender_clone = game_sender.clone();
             let tensor_exe_send_clone_0 = tensor_exe_send_0.clone();
             let tensor_exe_send_clone_1 = tensor_exe_send_1.clone();
-            let fut_generator = async move {
-                generator_main(
-                    sender_clone,
-                    tensor_exe_send_clone_0.clone(),
-                    tensor_exe_send_clone_1.clone(),
-                    n.clone(),
-                )
-                .await;
-            };
-            pool.spawn_ok(fut_generator);
+            s.builder()
+                .name(format!("generator_{}", n.to_string()))
+                .spawn(move |_| {
+                    generator_main(
+                        sender_clone,
+                        tensor_exe_send_clone_0.clone(),
+                        tensor_exe_send_clone_1.clone(),
+                        n.clone(),
+                    )
+                })
+                .unwrap();
         }
 
         s.builder()
@@ -141,15 +141,15 @@ async fn generator_main(
     };
 
     let settings: SearchSettings = SearchSettings {
-        fpu: 1.0,
+        fpu: 0.0,
         wdl: EvalMode::Wdl,
         moves_left: Some(m_settings),
         c_puct: 3.0,
         max_nodes: 400,
-        alpha: 0.03,
-        eps: 0.25,
+        alpha: 0.0,
+        eps: 0.0,
         search_type: NonTrainerSearch,
-        pst: 1.3,
+        pst: 0.0,
     };
     let thread_name = format!("sprt-generator-{}", generator_id);
     debug_print!("{} Generator settings initialized", thread_name,);
@@ -177,8 +177,9 @@ async fn generator_main(
         while bs.status() == GameStatus::Ongoing {
             let engine = &engines[move_counter % 2];
             let cache = &mut caches[move_counter % 2];
-            let (mv, _, _, _, _) =
-                get_move(bs.clone(), engine.clone(), settings.clone(), None, cache).await;
+            let (mv, _, _, _, _) = rt.block_on(async {
+                get_move(bs.clone(), engine.clone(), settings.clone(), None, cache).await
+            });
             bs.play(mv);
             moves_list.push(format!("{:#}", mv));
             move_counter += 1;

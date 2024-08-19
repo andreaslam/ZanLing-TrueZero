@@ -277,7 +277,8 @@ impl Tree {
             let (pv, mate) = self.get_pv();
             let eval_string = {
                 if mate {
-                    let mut mate_score = pv.split_whitespace().collect::<Vec<&str>>().len() as isize;
+                    let mut mate_score =
+                        pv.split_whitespace().collect::<Vec<&str>>().len() as isize;
                     if cp_eval < 0.0 {
                         mate_score *= -1;
                     }
