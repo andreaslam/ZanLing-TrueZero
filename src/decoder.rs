@@ -1,7 +1,7 @@
 use crate::{
     boardmanager::BoardStack,
     cache::CacheEntryKey,
-    dataformat::{ZeroEvaluationAbs, ZeroValuesAbs, ZeroValuesPov},
+    dataformat::{ZeroEvaluationAbs, ZeroValuesPov},
     debug_print,
     mcts_trainer::{Net, Node, Tree, Wdl},
     mvs::get_contents,
@@ -66,13 +66,12 @@ pub fn board_data(bs: &BoardStack) -> (Vec<f32>, Vec<bool>) {
         scalar_data[0] = 1.0;
     }
 
-    let li;
-    if us == Color::White {
+    let li: [Color; 2] = if us == Color::White {
         // can't use Colour::ALL since the order of Colour::ALL is always going to be [white, black]
-        li = [Color::White, Color::Black];
+        [Color::White, Color::Black]
     } else {
-        li = [Color::Black, Color::White];
-    }
+        [Color::Black, Color::White]
+    };
 
     let mut c = 2;
 
@@ -168,7 +167,7 @@ pub fn extract_policy(bs: &BoardStack, contents: &'static [Move]) -> (Vec<Move>,
             })
         }
     } else {
-        fm = legal_moves.clone();
+        fm.clone_from(&legal_moves);
     }
 
     legal_moves = fm;

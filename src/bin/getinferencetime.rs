@@ -112,7 +112,7 @@ async fn dummy_generator<S: MPMCShared>(tensor_sender: TxFuture<Vec<f32>, S>, id
     let mut loop_sender = 0;
     loop {
         tensor_sender.send(data_sample.clone()).await.unwrap();
-        if id % 1 == 0 {
+        if id % 512 == 0 {
             if one_sec_timer.elapsed() > Duration::from_secs(1) {
                 debug_print!("{}", &format!("{}: {} req", thread_name, loop_sender));
                 loop_sender = 0;

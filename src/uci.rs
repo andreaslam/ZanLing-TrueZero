@@ -21,12 +21,13 @@ const STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
 
 const DEFAULT_CACHE_SIZE: usize = 64; // default cache size in megabytes
 
-pub struct UCIRequest {
-    pub board: BoardStack,
-    pub tensor_exe_send: Sender<Packet>,
-    pub search_settings: SearchSettings,
-    pub stop_signal: Receiver<UCIMsg>,
-    pub cache_size: usize,
+struct UCIRequest {
+    board: BoardStack,
+    tensor_exe_send: Sender<Packet>,
+    search_settings: SearchSettings,
+    stop_signal: Receiver<UCIMsg>,
+    cache_size: usize,
+    cache_reset: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -79,7 +80,7 @@ pub fn run_uci(net_path: &str) {
 
         s.builder()
             .name("stop-thread-listener-uci".to_string())
-            .spawn(move |_| listen_to_stop_msg(cmd_send, user_input_send))
+            .spawn(move |_| listen_to_user_inputs(cmd_send, user_input_send, ctrl_sender))
             .unwrap();
 
         // spawn permanent executor
@@ -100,10 +101,9 @@ pub fn run_uci(net_path: &str) {
             })
             .unwrap();
         // run main uci loop
-        run_uci_loop(
+        uci_command_parse_loop(
             bs,
             cmd_recv,
-            ctrl_sender,
             tensor_exe_send,
             job_send,
             finished_move_recv,
@@ -115,10 +115,9 @@ pub fn run_uci(net_path: &str) {
     .unwrap();
 }
 
-fn run_uci_loop(
+fn uci_command_parse_loop(
     mut bs: BoardStack,
     cmd_recv: Receiver<UCIMsg>,
-    ctrl_sender: Sender<Message>,
     tensor_exe_send: Sender<Packet>,
     job_send: Sender<UCIRequest>,
     finished_move_recv: Receiver<Move>,
@@ -127,6 +126,7 @@ fn run_uci_loop(
     user_input_recv: Receiver<String>,
 ) {
     let mut cache_in_items = mb_to_items(DEFAULT_CACHE_SIZE); // cache size in number of items in `LruCache`
+    let mut cache_reset = false;
     loop {
         debug_print!("Debug: run_uci_loop ready");
         let input = user_input_recv.recv().unwrap();
@@ -149,12 +149,13 @@ fn run_uci_loop(
                     &commands,
                     &bs,
                     &cmd_recv,
-                    &ctrl_sender,
                     &tensor_exe_send,
                     &job_send,
                     &finished_move_recv,
                     cache_in_items,
+                    cache_reset,
                 );
+                cache_reset = false;
             }
             "position" => {
                 debug_print!("{}", &format!("Debug: Received 'position' command"));
@@ -173,6 +174,7 @@ fn run_uci_loop(
                 );
             }
             "setoption" => match commands[..] {
+                ["setoption", "name", "Clear", "Hash"] => cache_reset = true,
                 ["setoption", "name", "Hash", "value", x] => {
                     cache_in_items = mb_to_items(x.parse().unwrap_or(DEFAULT_CACHE_SIZE))
                 }
@@ -184,9 +186,13 @@ fn run_uci_loop(
     }
 }
 
-fn listen_to_stop_msg(cmd_sender: Sender<UCIMsg>, user_input_send: Sender<String>) {
+fn listen_to_user_inputs(
+    cmd_sender: Sender<UCIMsg>,
+    user_input_send: Sender<String>,
+    ctrl_sender: Sender<Message>,
+) {
     loop {
-        debug_print!("Debug: run_uci_loop ready");
+        debug_print!("Debug: listen_to_user_inputs ready");
         let mut input = String::new();
         let bytes_read = io::stdin().read_line(&mut input).unwrap();
         if bytes_read == 0 {
@@ -202,11 +208,12 @@ fn listen_to_stop_msg(cmd_sender: Sender<UCIMsg>, user_input_send: Sender<String
                 debug_print!("{}", &format!("Debug: Sent 'stop' command"));
             }
             "quit" => {
+                ctrl_sender.send(Message::StopServer).unwrap();
                 process::exit(0);
             }
             _ => user_input_send.send(input).unwrap(),
         }
-        debug_print!("Debug: Finished 1 iteration of listening to stop messages");
+        debug_print!("Debug: Finished 1 iteration of listen_to_user_inputs");
     }
 }
 
@@ -280,15 +287,15 @@ fn set_position(commands: Vec<&str>, bs: &mut BoardStack, stack: &mut Vec<u64>) 
     }
 }
 
-pub fn handle_go(
+fn handle_go(
     commands: &[&str],
     bs: &BoardStack,
     cmd_receiver: &Receiver<UCIMsg>,
-    ctrl_sender: &Sender<Message>,
     tensor_exe_send: &Sender<Packet>,
     job_sender: &Sender<UCIRequest>,
     finished_move_receiver: &Receiver<Move>,
     cache_size: usize,
+    cache_reset: bool,
 ) {
     debug_print!("{}", &format!("Debug: Handling 'go' command"));
     let mut nodes = 1600;
@@ -383,15 +390,15 @@ pub fn handle_go(
     };
 
     let settings: SearchSettings = SearchSettings {
-        fpu: 0.6,
+        fpu: 0.1,
         wdl: EvalMode::Wdl,
         moves_left: Some(m_settings),
-        c_puct: 1.5,
+        c_puct: 2.0,
         max_nodes: nodes,
         alpha: 0.03,
         eps: 0.25,
         search_type: UCISearch,
-        pst: 1.0,
+        pst: 1.3,
     };
 
     let search_request = UCIRequest {
@@ -400,6 +407,7 @@ pub fn handle_go(
         search_settings: settings.clone(),
         stop_signal: cmd_receiver.clone(),
         cache_size: cache_size.min(1),
+        cache_reset,
     };
 
     debug_print!("Debug: Gathered search request");
@@ -411,13 +419,12 @@ pub fn handle_go(
     debug_print!("{}", &format!("sent termination message"));
     debug_print!("{}", &format!("handle go done"));
 }
-
-pub fn job_listener(job_receiver: Receiver<UCIRequest>, finished_move_sender: Sender<Move>) {
+fn job_listener(job_receiver: Receiver<UCIRequest>, finished_move_sender: Sender<Move>) {
     // listen to jobs and run search requests
     let rt = Runtime::new().unwrap();
 
     let mut cache: LruCache<CacheEntryKey, ZeroEvaluationAbs> =
-        LruCache::new(NonZeroUsize::new(DEFAULT_CACHE_SIZE).unwrap()); // TODO read request from user
+        LruCache::new(NonZeroUsize::new(DEFAULT_CACHE_SIZE).unwrap());
     debug_print!("Debug: Job Listener ready");
 
     loop {
@@ -426,6 +433,10 @@ pub fn job_listener(job_receiver: Receiver<UCIRequest>, finished_move_sender: Se
             Ok(search_request) => {
                 debug_print!("Debug: Received new UCI search request");
                 let old_cache_cap = cache.cap();
+                if search_request.cache_reset {
+                    cache.clear();
+                    assert!(cache.len() == 0);
+                }
                 if old_cache_cap != NonZeroUsize::new(search_request.cache_size).unwrap() {
                     cache.resize(NonZeroUsize::new(search_request.cache_size).unwrap());
                     debug_print!(

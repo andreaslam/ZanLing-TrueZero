@@ -146,7 +146,6 @@ impl Tree {
 
         // self.nodes[0].display_full_tree(self);
 
-        let selected_node = selected_node;
         let idx_li: Vec<usize>;
 
         // check if the board has reached terminal state in selection
@@ -658,7 +657,7 @@ impl Node {
         let relative_evaluation = self.total_evaluation.to_relative(player);
         let u = self.get_u_val(parent_visits, settings);
         let q = self.get_q_val(settings, relative_evaluation);
-        let puct_logit = if let Some(weights) = settings.moves_left {
+        if let Some(weights) = settings.moves_left {
             let m = if self.visits == 0 {
                 0.0
             } else {
@@ -679,8 +678,7 @@ impl Node {
             q + u + weights.moves_left_weight * m_unit
         } else {
             q + u
-        };
-        puct_logit
+        }
     }
 
     /// recursively prints the tree containing information about each node (debug)
