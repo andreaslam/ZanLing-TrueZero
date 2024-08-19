@@ -1083,21 +1083,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
-name = "superluminal-perf"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aece3c26c5c4de8c11b8bdfeacd0cf8da28fdd3004dc5cce82e46c724bc4b8c4"
-dependencies = [
- "superluminal-perf-sys",
-]
-
-[[package]]
-name = "superluminal-perf-sys"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2eb52c360c1d83ab4d4ccfb0728f4648122e5548396e576e3d096659366776c"
-
-[[package]]
 name = "syn"
 version = "2.0.68"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1237,7 +1222,6 @@ dependencies = [
  "rand_distr",
  "serde",
  "serde_json",
- "superluminal-perf",
  "tch",
  "tokio",
 ]

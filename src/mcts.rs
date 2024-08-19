@@ -8,7 +8,6 @@ use crate::{
     settings::SearchSettings,
     uci::UCIMsg,
 };
-use cozy_chess::Color;
 use cozy_chess::Move;
 use flume::{Receiver, Sender, TryRecvError};
 use lru::LruCache;
@@ -65,7 +64,6 @@ pub async fn get_move(
             }
         }
     }
-    debug_print!("Debug: Tree search completed");
 
     let mut child_visits: Vec<u32> = Vec::new();
 
@@ -148,6 +146,8 @@ pub async fn get_move(
         values: tree.nodes[0].total_evaluation,
         policy: pi,
     };
+
+    debug_print!("Debug: Tree search completed");
 
     (
         best_move.expect("Error"),

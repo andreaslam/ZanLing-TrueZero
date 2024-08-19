@@ -3,15 +3,15 @@ use crate::{
     decoder::eval_state,
     mcts_trainer::Net,
     selfplay::CollectorMessage,
-    // superluminal::{CL_BLUE, CL_ORANGE, CL_RED},
     utils::TimeStampDebugger,
 };
 
+use cozy_chess::Move;
 use crossbeam::thread;
 
 use flume::{Receiver, RecvError, Selector, Sender};
+use lru::LruCache;
 use std::{cmp::min, collections::VecDeque, process, time::Instant};
-// use superluminal_perf::{ begin_event_with_color,  end_event};
 use tch::Tensor;
 
 pub struct Packet {
@@ -71,7 +71,7 @@ fn handle_requests(
         input_vec.push_back(job.job);
         output_senders.push_back(job.resender);
         id_vec.push_back(job.id);
-
+        debug_print!("Executor: received new request!");
         if input_vec.len() >= max_batch_size {
             let pack = ExecutorPacket {
                 job: std::mem::take(&mut input_vec),
@@ -229,7 +229,6 @@ pub fn executor_static(
             selector = selector.recv(&handler_recv, |res| Message::JobTensorExecutor(res));
             selector = selector.recv(&ctrl_receiver, |_| Message::StopServer);
             let message = selector.wait();
-
             match message {
                 Message::StopServer => {
                     break;
@@ -248,7 +247,6 @@ pub fn executor_static(
                     let batch_size = min(max_batch_size, input_vec.len());
                     let i_v = input_vec.make_contiguous();
                     let input_tensors = Tensor::cat(&i_v[..batch_size], 0);
-
                     let (board_eval, policy) =
                         eval_state(input_tensors, &network).expect("Evaluation failed");
                     for i in 0..batch_size {
