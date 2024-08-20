@@ -1,2 +1,4 @@
+--index-url https://pypi.org/simple
+--extra-index-url https://https://download.pytorch.org/whl/cu121
 torch==2.4.0+cu121
 setuptools==73.0.0
