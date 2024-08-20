@@ -24,8 +24,8 @@ debug = true
 anyhow = "1.0.72"
 cozy-chess = "0.3.4"
 lazy_static = "1.4.0"
-tch = "0.14.0" # DO NOT CHANGE TCH VERSION
-rand = "0.8.5"
+tch = {version = "0.17.0"} # TODO CHANGE VERSION
+rand = "0.8.0"
 rand_distr = "0.4.3"
 serde = {version = "1.0.188", features = ["derive"]}
 bytemuck = "1.14.0"
