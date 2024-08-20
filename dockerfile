@@ -35,11 +35,11 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Set up requirements.txt
 
-RUN curl -o requirements-tch-only.txt -L https://github.com/andreaslam/ZanLing-TrueZero/raw/main/requirements-tch-only.txt
+RUN curl -o requirements.txt -L https://github.com/andreaslam/ZanLing-TrueZero/raw/main/requirements-tch-only.txt
 
 RUN python3 -m venv .venv
 
-RUN .venv/bin/pip3 install -r requirements-tch-only.txt
+RUN .venv/bin/pip3 install -r requirements.txt
 
 ENV LIBTORCH_USE_PYTORCH=1
 RUN PYTORCH_PATH=$(.venv/bin/python3 -c "import torch; print(torch.__path__[0])") && \
