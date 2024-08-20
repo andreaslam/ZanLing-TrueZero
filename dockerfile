@@ -41,8 +41,6 @@ RUN python3 -m venv .venv
 
 RUN .venv/bin/pip3 install -r requirements.txt
 
-RUN source .venv/bin/activate
-
 ENV LIBTORCH_USE_PYTORCH=1
-RUN PYTORCH_PATH=$(python3 -c "import torch; print(torch.__path__[0])")
-ENV LD_LIBRARY_PATH="$PYTORCH_PATH/lib:$LD_LIBRARY_PATH"
+RUN PYTORCH_PATH=$(.venv/bin/python3 -c "import torch; print(torch.__path__[0])") && \
+    export LD_LIBRARY_PATH="$PYTORCH_PATH/lib:$LD_LIBRARY_PATH"
