@@ -101,7 +101,7 @@ fn main() {
         println!("{:?}", nn_data);
         println!("Elapsed time: {}ms", sw.elapsed().as_nanos() as f32 / 1e6);
         let nps = settings.max_nodes as f32 / (sw.elapsed().as_nanos() as f32 / 1e9);
-        debug_print!("{}", &format!("Nodes per second: {}nps", nps));
+        println!("{}", &format!("Nodes per second: {}nps", nps));
         ctrl_sender.send(StopServer).unwrap();
         process::exit(0);
     })
