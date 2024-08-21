@@ -297,7 +297,7 @@ impl Tree {
                     eval_string,
                     self.nodes.len(),
                     nps as usize,
-                    ((cache.len() as f32 / cache.cap().get() as f32) as usize * 1000),
+                    ((cache.len() as f32 / cache.cap().get() as f32) * 1000.0) as usize,
                     elapsed_ms as usize,
                     pv,
                 );
