@@ -28,7 +28,7 @@ fn handle_client(
     let mut needs_tb_link = false;
     loop {
         let mut recv_msg = String::new();
-        if reader.read_line(&mut recv_msg).is_err() {
+        if let Err(_) = reader.read_line(&mut recv_msg) {
             recv_msg.clear();
             break;
         }
@@ -355,7 +355,7 @@ fn handle_client(
 
             let all_clients = clients.lock().unwrap();
             for mut client in all_clients.iter() {
-                if client.write_all(recv_msg.as_bytes()).is_err() {
+                if let Err(_) = client.write_all(recv_msg.as_bytes()) {
                     continue;
                 }
                 let mut disp_msg = recv_msg.clone();
