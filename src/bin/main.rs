@@ -157,7 +157,7 @@ async fn generator_main(
     // implement caching
 
     let mut cache: LruCache<CacheEntryKey, ZeroEvaluationAbs> =
-        LruCache::new(NonZeroUsize::new(1).unwrap());
+        LruCache::new(NonZeroUsize::new(settings.max_nodes as usize).unwrap());
 
     loop {
         let sim = datagen
