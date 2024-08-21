@@ -291,12 +291,13 @@ impl Tree {
             };
             if self.pv != pv {
                 println!(
-                    "info depth {} seldepth {} score {} nodes {} nps {} time {} pv {}",
+                    "info depth {} seldepth {} score {} nodes {} nps {} hashfull {} time {} pv {}",
                     min_depth,
                     max_depth,
                     eval_string,
                     self.nodes.len(),
                     nps as usize,
+                    ((cache.len() as f32 / cache.cap().get() as f32) as usize * 1000),
                     elapsed_ms as usize,
                     pv,
                 );

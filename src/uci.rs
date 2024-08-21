@@ -20,7 +20,7 @@ use std::{cmp::max, io, num::NonZeroUsize, panic, process, str::FromStr};
 use tokio::runtime::Runtime;
 const STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-const DEFAULT_CACHE_SIZE: usize = 64; // default cache size in megabytes
+const DEFAULT_CACHE_SIZE: usize = 8; // default cache size in megabytes
 
 struct UCIRequest {
     board: BoardStack,
