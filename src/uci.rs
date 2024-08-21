@@ -304,6 +304,9 @@ fn handle_go(
     cache_reset: bool,
 ) {
     debug_print!("{}", &format!("Debug: Handling 'go' command"));
+
+    let mut finite_search = true;
+
     let mut nodes = 1600;
     let mut max_time = None;
     let mut max_depth = 256;
@@ -311,13 +314,11 @@ fn handle_go(
     let mut times = [None; 2];
     let mut incs = [None; 2];
     let mut movestogo = 30;
-
     let mut mode = "";
 
     for cmd in commands {
         match *cmd {
             "nodes" => mode = "nodes",
-            "movetime" => mode = "mov",
             "movetime" => mode = "movetime",
             "depth" => mode = "depth",
             "wtime" => mode = "wtime",
@@ -325,6 +326,7 @@ fn handle_go(
             "winc" => mode = "winc",
             "binc" => mode = "binc",
             "movestogo" => mode = "movestogo",
+            "infinite" => mode = "infinite",
             _ => match mode {
                 "nodes" => {
                     nodes = cmd.parse().unwrap_or(nodes);
@@ -357,6 +359,13 @@ fn handle_go(
                 "movestogo" => {
                     movestogo = cmd.parse().unwrap_or(30);
                     debug_print!("{}", &format!("Debug: Set 'movestogo' to {}", movestogo));
+                }
+                "infinite" => {
+                    finite_search = false;
+                    debug_print!(
+                        "{}",
+                        &format!("Debug: Initiating infinite search {}", movestogo)
+                    )
                 }
                 _ => mode = "none",
             },
@@ -395,12 +404,20 @@ fn handle_go(
         moves_left_sharpness: 0.5,
     };
 
+    let search_nodes: Option<u128>;
+
+    if finite_search {
+        search_nodes = Some(nodes);
+    } else {
+        search_nodes = None;
+    }
+
     let settings: SearchSettings = SearchSettings {
         fpu: 0.1,
         wdl: EvalMode::Wdl,
         moves_left: Some(m_settings),
         c_puct: 2.0,
-        max_nodes: Some(nodes),
+        max_nodes: search_nodes,
         alpha: 0.03,
         eps: 0.25,
         search_type: UCISearch,
