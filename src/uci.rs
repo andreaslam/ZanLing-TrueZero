@@ -415,7 +415,7 @@ fn handle_go(
         tensor_exe_send: tensor_exe_send.clone(),
         search_settings: settings.clone(),
         stop_signal: cmd_receiver.clone(),
-        cache_size: cache_size.min(1),
+        cache_size: cache_size.max(1),
         cache_reset,
     };
 
@@ -433,7 +433,7 @@ fn job_listener(job_receiver: Receiver<UCIRequest>, finished_move_sender: Sender
     let rt = Runtime::new().unwrap();
 
     let mut cache: LruCache<CacheEntryKey, ZeroEvaluationAbs> =
-        LruCache::new(NonZeroUsize::new(DEFAULT_CACHE_SIZE).unwrap());
+        LruCache::new(NonZeroUsize::new(mb_to_items(DEFAULT_CACHE_SIZE)).unwrap());
     debug_print!("Debug: Job Listener ready");
 
     loop {

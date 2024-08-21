@@ -64,7 +64,7 @@ pub async fn get_move(
             }
         }
     }
-
+    println!("CACHE {} {} {}", cache.len(), cache.cap(), tree.nodes[0].visits);
     let mut child_visits: Vec<u32> = Vec::new();
 
     for child in tree.nodes[0].children.clone() {
