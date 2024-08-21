@@ -15,8 +15,8 @@ use cozy_chess::{Board, Color, Move, Piece, Square};
 use crossbeam::thread;
 use flume::{Receiver, Sender};
 use lru::LruCache;
-use tch::{Device, Tensor, Kind::Float};
 use std::{cmp::max, io, num::NonZeroUsize, panic, process, str::FromStr};
+use tch::{Device, Kind::Float, Tensor};
 use tokio::runtime::Runtime;
 const STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -54,7 +54,6 @@ fn mb_to_items(mb: usize) -> usize {
     (mb * 1000000) / (key_size + val_size)
 }
 
-
 pub fn run_uci(net_path: &str) {
     panic::set_hook(Box::new(|panic_info| {
         eprintln!("Panic occurred: {:?}", panic_info);
@@ -79,7 +78,6 @@ pub fn run_uci(net_path: &str) {
     let (user_input_send, user_input_recv) = flume::bounded::<String>(1);
 
     thread::scope(|s| {
-
         // spawn a thread to listen for stop and quit commands
 
         s.builder()
@@ -95,8 +93,7 @@ pub fn run_uci(net_path: &str) {
             })
             .unwrap();
 
-
-        // spawn permanent thread to process search requests 
+        // spawn permanent thread to process search requests
         s.builder()
             .name("job-listener-uci".to_string())
             .spawn(move |_| {
@@ -104,20 +101,20 @@ pub fn run_uci(net_path: &str) {
             })
             .unwrap();
 
-        // run main uci loop to handle most commands 
+        // run main uci loop to handle most commands
         s.builder()
             .name("main-loop-uci".to_string())
             .spawn(move |_| {
-                 uci_command_parse_loop(
-            bs,
-            cmd_recv,
-            tensor_exe_send,
-            job_send,
-            finished_move_recv,
-            stack,
-            net,
-            user_input_recv,
-        );
+                uci_command_parse_loop(
+                    bs,
+                    cmd_recv,
+                    tensor_exe_send,
+                    job_send,
+                    finished_move_recv,
+                    stack,
+                    net,
+                    user_input_recv,
+                );
             })
             .unwrap();
     })
@@ -403,7 +400,7 @@ fn handle_go(
         wdl: EvalMode::Wdl,
         moves_left: Some(m_settings),
         c_puct: 2.0,
-        max_nodes: nodes,
+        max_nodes: Some(nodes),
         alpha: 0.03,
         eps: 0.25,
         search_type: UCISearch,

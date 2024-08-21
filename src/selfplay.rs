@@ -85,7 +85,7 @@ impl DataGen {
                 net_evaluation: v_p,          // v
             };
 
-            let nps = settings.max_nodes as f32 / elapsed;
+            let nps = settings.max_nodes.unwrap() as f32 / elapsed;
 
             debug_print!(
                 "{}",
@@ -94,7 +94,7 @@ impl DataGen {
             debug_print!("{}", &format!("{:#}", final_mv));
             nps_sender
                 .send_async(CollectorMessage::GeneratorStatistics(
-                    settings.max_nodes as usize,
+                    settings.max_nodes.unwrap() as usize,
                 ))
                 .await
                 .unwrap();

@@ -782,20 +782,26 @@ pub async fn get_move(
     if tree.board.is_terminal() {
         panic!("No valid move!/Board is already game over!");
     }
+    match settings.max_nodes {
+        Some(max_nodes) => {
+            while tree.nodes[0].visits < max_nodes as u32 {
+                debug_print!("{}", &format!("step {}", tree.nodes[0].visits));
+                debug_print!(
+                    "{}",
+                    &format!("thread {}, step {}", thread_name, tree.nodes[0].visits)
+                );
 
-    while tree.nodes[0].visits < settings.max_nodes as u32 {
-        debug_print!("{}", &format!("step {}", tree.nodes[0].visits));
-        debug_print!(
-            "{}",
-            &format!("thread {}, step {}", thread_name, tree.nodes[0].visits)
-        );
+                let get_move_debugger = TimeStampDebugger::create_debug();
 
-        let get_move_debugger = TimeStampDebugger::create_debug();
+                tree.step(tensor_exe_send, sw_uci, id, cache).await;
 
-        tree.step(tensor_exe_send, sw_uci, id, cache).await;
-
-        if id % 512 == 0 {
-            get_move_debugger.record("mcts_step", &thread_name);
+                if id % 512 == 0 {
+                    get_move_debugger.record("mcts_step", &thread_name);
+                }
+            }
+        }
+        None => {
+            panic!("`max_nodes` is None! Must have a non-zero Some(u128) for data generation!")
         }
     }
 

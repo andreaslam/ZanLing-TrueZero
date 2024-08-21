@@ -87,7 +87,7 @@ mod tests {
     /// helper function to create dummy SearchSettings
     fn create_search_settings() -> SearchSettings {
         SearchSettings {
-            max_nodes: 100,
+            max_nodes: Some(100),
             c_puct: 2.0,
             fpu: 1.0,
             pst: 1.0,

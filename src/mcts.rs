@@ -36,31 +36,65 @@ pub async fn get_move(
     if tree.board.is_terminal() {
         panic!("No valid move!/Board is already game over!");
     }
-
-    while tree.nodes[0].visits < settings.max_nodes as u32 {
-        debug_print!("step {}", tree.nodes[0].visits);
-        match stop_signal {
-            Some(ref signal) => match signal.try_recv() {
-                Ok(_) => {
-                    if tree.nodes[0].visits < 1 {
-                        debug_print!("Debug: Insufficient search to produce output");
+    match settings.max_nodes {
+        Some(max_nodes) => {
+            while tree.nodes[0].visits < max_nodes as u32 {
+                debug_print!("step {}", tree.nodes[0].visits);
+                match stop_signal {
+                    Some(ref signal) => match signal.try_recv() {
+                        Ok(_) => {
+                            if tree.nodes[0].visits < 1 {
+                                debug_print!("Debug: Insufficient search to produce output");
+                                tree.step(&tensor_exe_send, sw, 0, cache).await;
+                            } else {
+                                debug_print!("Debug: Stop signal received, breaking loop");
+                                break;
+                            }
+                        }
+                        Err(TryRecvError::Empty) => {
+                            debug_print!("Debug: No stop signal, stepping tree");
+                            tree.step(&tensor_exe_send, sw, 0, cache).await;
+                        }
+                        Err(TryRecvError::Disconnected) => {
+                            debug_print!("Debug: Stop signal disconnected, breaking loop");
+                            break;
+                        }
+                    },
+                    None => {
                         tree.step(&tensor_exe_send, sw, 0, cache).await;
-                    } else {
-                        debug_print!("Debug: Stop signal received, breaking loop");
-                        break;
                     }
                 }
-                Err(TryRecvError::Empty) => {
-                    debug_print!("Debug: No stop signal, stepping tree");
-                    tree.step(&tensor_exe_send, sw, 0, cache).await;
+            }
+        }
+        None => {
+            // go infinite/infinite search
+
+            loop {
+                debug_print!("step {}", tree.nodes[0].visits);
+                match stop_signal {
+                    Some(ref signal) => match signal.try_recv() {
+                        Ok(_) => {
+                            if tree.nodes[0].visits < 1 {
+                                debug_print!("Debug: Insufficient search to produce output");
+                                tree.step(&tensor_exe_send, sw, 0, cache).await;
+                            } else {
+                                debug_print!("Debug: Stop signal received, breaking loop");
+                                break;
+                            }
+                        }
+                        Err(TryRecvError::Empty) => {
+                            debug_print!("Debug: No stop signal, stepping tree");
+                            tree.step(&tensor_exe_send, sw, 0, cache).await;
+                        }
+                        Err(TryRecvError::Disconnected) => {
+                            debug_print!("Debug: Stop signal disconnected, breaking loop");
+                            break;
+                        }
+                    },
+                    None => {
+                        tree.step(&tensor_exe_send, sw, 0, cache).await;
+                    }
                 }
-                Err(TryRecvError::Disconnected) => {
-                    debug_print!("Debug: Stop signal disconnected, breaking loop");
-                    break;
-                }
-            },
-            None => {
-                tree.step(&tensor_exe_send, sw, 0, cache).await;
             }
         }
     }
