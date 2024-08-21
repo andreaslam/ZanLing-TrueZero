@@ -318,6 +318,7 @@ fn handle_go(
 
     for cmd in commands {
         match *cmd {
+            "infinite" => mode = "infinite",
             "nodes" => mode = "nodes",
             "movetime" => mode = "movetime",
             "depth" => mode = "depth",
@@ -326,7 +327,6 @@ fn handle_go(
             "winc" => mode = "winc",
             "binc" => mode = "binc",
             "movestogo" => mode = "movestogo",
-            "infinite" => mode = "infinite",
             _ => match mode {
                 "nodes" => {
                     nodes = cmd.parse().unwrap_or(nodes);
@@ -371,7 +371,7 @@ fn handle_go(
             },
         }
     }
-
+    debug_print!("mode: {}", mode);
     let mut time: Option<u128> = None;
 
     let stm = bs.board().side_to_move();
@@ -407,8 +407,10 @@ fn handle_go(
     let search_nodes: Option<u128>;
 
     if finite_search {
+        debug_print!("Visit limit {}", nodes);
         search_nodes = Some(nodes);
     } else {
+        debug_print!("Visit limit: None");
         search_nodes = None;
     }
 
