@@ -25,7 +25,7 @@ use tzrust::{
 };
 
 fn main() {
-    let pool = ThreadPool::new().expect("Failed to build pool");
+    let pool = ThreadPool::builder().pool_size(6).create().unwrap();
     env::set_var("RUST_BACKTRACE", "2");
 
     panic::set_hook(Box::new(|panic_info| {

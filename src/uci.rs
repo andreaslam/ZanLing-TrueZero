@@ -15,6 +15,7 @@ use cozy_chess::{Board, Color, Move, Piece, Square};
 use crossbeam::thread;
 use flume::{Receiver, Sender};
 use lru::LruCache;
+use tch::{Device, Tensor, Kind::Float};
 use std::{cmp::max, io, num::NonZeroUsize, panic, process, str::FromStr};
 use tokio::runtime::Runtime;
 const STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -49,8 +50,10 @@ pub fn eval_in_cp(eval: f32) -> f32 {
 fn mb_to_items(mb: usize) -> usize {
     let key_size = std::mem::size_of::<CacheEntryKey>();
     let val_size = std::mem::size_of::<ZeroEvaluationAbs>();
+    debug_print!("cache size: {}", (mb * 1000000) / (key_size + val_size));
     (mb * 1000000) / (key_size + val_size)
 }
+
 
 pub fn run_uci(net_path: &str) {
     panic::set_hook(Box::new(|panic_info| {
@@ -76,15 +79,15 @@ pub fn run_uci(net_path: &str) {
     let (user_input_send, user_input_recv) = flume::bounded::<String>(1);
 
     thread::scope(|s| {
+
         // spawn a thread to listen for stop and quit commands
 
         s.builder()
-            .name("stop-thread-listener-uci".to_string())
+            .name("thread-listener-uci".to_string())
             .spawn(move |_| listen_to_user_inputs(cmd_send, user_input_send, ctrl_sender))
             .unwrap();
 
         // spawn permanent executor
-
         s.builder()
             .name("executor-uci".to_string())
             .spawn(move |_| {
@@ -92,16 +95,20 @@ pub fn run_uci(net_path: &str) {
             })
             .unwrap();
 
-        // spawn permanent thread to listen to search requests
-        // job_receiver: Receiver<UCIRequest>, finished_move_sender: Sender<Move>
+
+        // spawn permanent thread to process search requests 
         s.builder()
             .name("job-listener-uci".to_string())
             .spawn(move |_| {
                 job_listener(job_recv, finished_move_send);
             })
             .unwrap();
-        // run main uci loop
-        uci_command_parse_loop(
+
+        // run main uci loop to handle most commands 
+        s.builder()
+            .name("main-loop-uci".to_string())
+            .spawn(move |_| {
+                 uci_command_parse_loop(
             bs,
             cmd_recv,
             tensor_exe_send,
@@ -111,6 +118,8 @@ pub fn run_uci(net_path: &str) {
             net,
             user_input_recv,
         );
+            })
+            .unwrap();
     })
     .unwrap();
 }
