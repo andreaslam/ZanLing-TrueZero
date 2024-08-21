@@ -318,7 +318,8 @@ fn handle_go(
 
     for cmd in commands {
         match *cmd {
-            "infinite" => mode = "infinite",
+            "infinite" => {finite_search = false;
+                mode = "infinite"},
             "nodes" => mode = "nodes",
             "movetime" => mode = "movetime",
             "depth" => mode = "depth",
@@ -328,6 +329,12 @@ fn handle_go(
             "binc" => mode = "binc",
             "movestogo" => mode = "movestogo",
             _ => match mode {
+                "infinite" => {
+                    debug_print!(
+                        "{}",
+                        &format!("Debug: Initiating infinite search {}", movestogo)
+                    )
+                }
                 "nodes" => {
                     nodes = cmd.parse().unwrap_or(nodes);
                     debug_print!("{}", &format!("Debug: Set 'nodes' to {}", nodes));
@@ -359,13 +366,6 @@ fn handle_go(
                 "movestogo" => {
                     movestogo = cmd.parse().unwrap_or(30);
                     debug_print!("{}", &format!("Debug: Set 'movestogo' to {}", movestogo));
-                }
-                "infinite" => {
-                    finite_search = false;
-                    debug_print!(
-                        "{}",
-                        &format!("Debug: Initiating infinite search {}", movestogo)
-                    )
                 }
                 _ => mode = "none",
             },
