@@ -148,7 +148,10 @@ fn uci_command_parse_loop(
                 debug_print!("{}", &format!("Debug: Received 'isready' command"));
                 println!("readyok");
             }
-            "ucinewgame" => {}
+            "ucinewgame" => {
+                cache_reset = true;
+                set_position(vec!["startpos"], &mut bs, &mut stack);
+            }
             "go" => {
                 debug_print!("{}", &format!("Debug: Received 'go' command"));
                 handle_go(
@@ -268,6 +271,7 @@ fn set_position(commands: Vec<&str>, bs: &mut BoardStack, stack: &mut Vec<u64>) 
         }
     }
     let fenstr = if fen.is_empty() {
+        debug_print!("Debug: setting FEN to startpos");
         STARTPOS
     } else {
         &fen.trim()
@@ -318,8 +322,10 @@ fn handle_go(
 
     for cmd in commands {
         match *cmd {
-            "infinite" => {finite_search = false;
-                mode = "infinite"},
+            "infinite" => {
+                finite_search = false;
+                mode = "infinite"
+            }
             "nodes" => mode = "nodes",
             "movetime" => mode = "movetime",
             "depth" => mode = "depth",

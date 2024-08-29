@@ -130,7 +130,7 @@ async fn dummy_generator(tensor_sender: Sender<Packet>, id: usize) {
         wdl: EvalMode::Value,
         moves_left: None,
         c_puct: 3.0,
-        max_nodes: 400,
+        max_nodes: Some(400),
         alpha: 0.3,
         eps: 0.3,
         search_type: TrainerSearch(None),

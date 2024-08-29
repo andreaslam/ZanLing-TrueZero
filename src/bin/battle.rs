@@ -83,7 +83,7 @@ fn main() {
         wdl: EvalMode::Value,
         moves_left: None,
         c_puct: 2.0,
-        max_nodes: 400,
+        max_nodes: Some(400),
         alpha: 0.0,
         eps: 0.0,
         search_type: NonTrainerSearch,
