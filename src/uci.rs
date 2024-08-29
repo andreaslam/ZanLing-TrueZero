@@ -318,8 +318,10 @@ fn handle_go(
 
     for cmd in commands {
         match *cmd {
-            "infinite" => {finite_search = false;
-                mode = "infinite"},
+            "infinite" => {
+                finite_search = false;
+                mode = "infinite"
+            }
             "nodes" => mode = "nodes",
             "movetime" => mode = "movetime",
             "depth" => mode = "depth",
