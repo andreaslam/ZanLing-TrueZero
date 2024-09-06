@@ -1,7 +1,7 @@
 use crate::{
     boardmanager::BoardStack,
     cache::CacheEntryKey,
-    dataformat::{Position, Simulation, ZeroEvaluationAbs},
+    dataformat::{Position, Simulation, ZeroEvaluationAbs, ZeroEvaluationPov},
     debug_print,
     executor::{Packet, ReturnMessage},
     mcts_trainer::{get_move, ExpansionType, TypeRequest},
@@ -81,8 +81,14 @@ impl DataGen {
                 is_full_search: true,
                 played_mv: final_mv,
                 zero_visits: visits as u64,
-                zero_evaluation: search_data, // q
-                net_evaluation: v_p,          // v
+                zero_evaluation: ZeroEvaluationPov {
+                    values: search_data.values.to_relative(bs.board().side_to_move()),
+                    policy: search_data.policy,
+                }, // q
+                net_evaluation: ZeroEvaluationPov {
+                    values: v_p.values.to_relative(bs.board().side_to_move()),
+                    policy: v_p.policy,
+                }, // v
             };
 
             let nps = settings.max_nodes.unwrap() as f32 / elapsed;

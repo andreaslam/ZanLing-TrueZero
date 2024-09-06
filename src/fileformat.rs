@@ -10,7 +10,7 @@ use std::{
 
 use crate::{
     boardmanager::BoardStack,
-    dataformat::{Position, Simulation, ZeroValuesPov},
+    dataformat::{Position, Simulation, ZeroEvaluationAbs, ZeroValuesPov},
     decoder::board_data,
     mcts_trainer::Wdl,
     mvs::get_contents,
@@ -147,19 +147,14 @@ impl BinaryOutput {
         match winner {
             Some(player) => {
                 if player == Color::White {
-                    self.total_root_wdl[2] += 1;
-                } else {
                     self.total_root_wdl[0] += 1;
+                } else {
+                    self.total_root_wdl[1] += 1;
                 }
             }
-            None => self.total_root_wdl[1] += 1,
+            None => self.total_root_wdl[2] += 1,
         }
 
-        // is this redundant???
-        // self.total_root_wdl[0] += positions[0].zero_evaluation.values.wdl.w as u64;
-        // self.total_root_wdl[1] += positions[0].zero_evaluation.values.wdl.d as u64;
-        // self.total_root_wdl[2] += positions[0].zero_evaluation.values.wdl.l as u64;
-        // self.hit_move_limit_count += final_board.outcome().is_none() as u8 as u64;
         // write the positions
         for (pos_index, position) in positions.iter().enumerate() {
             let &Position {
@@ -241,12 +236,8 @@ impl BinaryOutput {
                 played_mv: played_mv_index as isize,
                 kdl_policy,
                 final_values,
-                zero_values: zero_evaluation
-                    .values
-                    .to_relative(board.board().side_to_move()),
-                net_values: net_evaluation
-                    .values
-                    .to_relative(board.board().side_to_move()),
+                zero_values: zero_evaluation.values,
+                net_values: net_evaluation.values,
             };
 
             self.append_position(board, &scalars, &policy_indices, stored_policy)?;
@@ -279,16 +270,6 @@ impl BinaryOutput {
             moves_left: game_length as f32,
         };
 
-        let nan = ZeroValuesPov {
-            value: f32::NAN,
-            wdl: Wdl {
-                w: f32::NAN,
-                d: f32::NAN,
-                l: f32::NAN,
-            },
-            moves_left: f32::NAN,
-        };
-
         let scalars = Scalars {
             game_id,
             pos_index: game_length,
@@ -302,9 +283,9 @@ impl BinaryOutput {
             played_mv: -1,
             kdl_policy: f32::NAN,
             final_values,
-            zero_values: nan,
+            zero_values: ZeroValuesPov::nan(),
             //TODO in theory we could ask the network, but this is only really meaningful for muzero
-            net_values: nan,
+            net_values: ZeroValuesPov::nan(),
         };
 
         self.append_position(&final_board, &scalars, &[], &[])?;

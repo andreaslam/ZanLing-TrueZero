@@ -57,7 +57,7 @@ pub struct Net {
 impl Net {
     /// creates a new `Net` instance by loading a model from the specified path
     pub fn new(path: &str) -> Self {
-        // maybe_init_cuda();
+        maybe_init_cuda();
         let device = if has_cuda() {
             if Cuda::cudnn_is_available() {
                 Cuda::cudnn_set_benchmark(true);
@@ -77,7 +77,7 @@ impl Net {
     }
     /// creates a new `Net` instance with a specified device ID (supports only CUDA)
     pub fn new_with_device_id(path: &str, id: usize) -> Self {
-        // maybe_init_cuda();
+        maybe_init_cuda();
         let device = if has_cuda() {
             if Cuda::cudnn_is_available() {
                 Cuda::cudnn_set_benchmark(true);
@@ -131,7 +131,7 @@ impl Tree {
 
     pub async fn step(
         &mut self,
-        tensor_exe_send: &Sender<Packet>, // sender to send tensors to `executor.rs``, which gathers MCTS simulations to execute in a batch
+        tensor_exe_send: &Sender<Packet>, // sender to send tensors to `executor.rs`, which gathers MCTS simulations to execute in a batch
         sw: Instant,                      // timer for UCI
         id: usize,                        // unique ID assigned to each thread for debugging
         cache: &mut LruCache<CacheEntryKey, ZeroEvaluationAbs>,
@@ -267,8 +267,7 @@ impl Tree {
             let display_str = self.display_node(child);
             debug_print!("        {}", &format!("{}", &display_str));
         }
-        // debug_print!("    full tree:");
-        // self.nodes[0].display_full_tree(self);
+
         if let TypeRequest::UCISearch = self.settings.search_type {
             let cp_eval = eval_in_cp(self.nodes[selected_node].net_evaluation.value);
             let elapsed_ms = sw.elapsed().as_nanos() as f32 / 1e6;
@@ -281,7 +280,7 @@ impl Tree {
                     if cp_eval < 0.0 {
                         mate_score *= -1;
                     }
-                    format!("mate {}", mate_score)
+                    format!("mate {}", (mate_score as f32 / 2.0).ceil())
                 } else {
                     format!(
                         "cp {}",
@@ -321,7 +320,20 @@ impl Tree {
             curr_node = self.nodes[curr_node]
                 .children
                 .clone()
-                .max_by_key(|&n| self.nodes[n].visits)
+                .max_by(|a, b| {
+                    let a_node = &self.nodes[*a];
+                    let b_node = &self.nodes[*b];
+                    let a_visits = a_node.visits;
+                    let b_visits = b_node.visits;
+
+                    if a_visits == b_visits || self.nodes[curr_node].visits == 0 {
+                        let a_policy = a_node.policy;
+                        let b_policy = b_node.policy;
+                        a_policy.partial_cmp(&b_policy).unwrap()
+                    } else {
+                        a_visits.partial_cmp(&b_visits).unwrap()
+                    }
+                })
                 .expect("Error");
             pv_board.play(self.nodes[curr_node].mv.unwrap());
             pv_nodes.push(curr_node);
@@ -811,9 +823,9 @@ pub async fn get_move(
         child_visits.push(tree.nodes[child].visits);
     }
 
-    let all_same = child_visits.iter().all(|&x| x == child_visits[0]);
+    let all_same_visits = child_visits.iter().all(|&x| x == child_visits[0]);
 
-    let best_move_node = if !all_same {
+    let best_move_node = if !all_same_visits {
         // if visits to nodes are the same eg max_nodes=1
         tree.nodes[0]
             .children

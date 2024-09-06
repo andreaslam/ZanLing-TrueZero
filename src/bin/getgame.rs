@@ -50,7 +50,7 @@ fn main() {
         wdl: EvalMode::Wdl,
         moves_left: Some(m_settings),
         c_puct: 3.0,
-        max_nodes: Some(10),
+        max_nodes: 10,
         alpha: 0.03,
         eps: 0.25,
         search_type: TrainerSearch(None),

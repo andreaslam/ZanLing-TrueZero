@@ -16,7 +16,6 @@ use crossbeam::thread;
 use flume::{Receiver, Sender};
 use lru::LruCache;
 use std::{cmp::max, io, num::NonZeroUsize, panic, process, str::FromStr};
-use tch::{Device, Kind::Float, Tensor};
 use tokio::runtime::Runtime;
 const STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 

@@ -1,25 +1,18 @@
 use crate::{
-    boardmanager::BoardStack,
-    cache::CacheEntryKey,
-    dataformat::ZeroEvaluationAbs,
-    debug_print,
-    executor::Packet,
-    mcts_trainer::{Tree, Wdl},
-    settings::SearchSettings,
-    uci::UCIMsg,
+    boardmanager::BoardStack, cache::CacheEntryKey, dataformat::ZeroEvaluationAbs, debug_print,
+    executor::Packet, mcts_trainer::Tree, settings::SearchSettings, uci::UCIMsg,
 };
 use cozy_chess::Move;
 use flume::{Receiver, Sender, TryRecvError};
 use lru::LruCache;
 use std::time::Instant;
-use tokio::signal;
 
 pub async fn get_move(
     bs: BoardStack,
     tensor_exe_send: Sender<Packet>,
     settings: SearchSettings,
     stop_signal: Option<Receiver<UCIMsg>>,
-    mut cache: &mut LruCache<CacheEntryKey, ZeroEvaluationAbs>,
+    cache: &mut LruCache<CacheEntryKey, ZeroEvaluationAbs>,
 ) -> (
     Move,
     ZeroEvaluationAbs,
@@ -104,9 +97,9 @@ pub async fn get_move(
         child_visits.push(tree.nodes[child].visits);
     }
 
-    let all_same = child_visits.iter().all(|&x| x == child_visits[0]);
+    let all_same_visits = child_visits.iter().all(|&x| x == child_visits[0]);
 
-    let best_move_node = if !all_same {
+    let best_move_node = if !all_same_visits {
         // if visits to nodes are the same eg max_nodes=1
         tree.nodes[0]
             .children
@@ -159,8 +152,6 @@ pub async fn get_move(
         let display_str = tree.display_node(child);
         debug_print!("{}", &format!("{}", display_str));
     }
-
-    // tree.nodes[0].display_full_tree(&tree);
 
     let mut all_tree_pol = Vec::new();
 

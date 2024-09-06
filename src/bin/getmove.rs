@@ -76,7 +76,7 @@ fn main() {
             wdl: EvalMode::Wdl,
             moves_left: Some(m_settings),
             c_puct: 2.0,
-            max_nodes: Some(1000),
+            max_nodes: 1000,
             alpha: 0.03,
             eps: 0.25,
             search_type: NonTrainerSearch,
@@ -101,7 +101,7 @@ fn main() {
         println!("{:#}", best_move);
         println!("{:?}", nn_data);
         println!("Elapsed time: {}ms", sw.elapsed().as_nanos() as f32 / 1e6);
-        let nps = settings.max_nodes.unwrap() as f32 / (sw.elapsed().as_nanos() as f32 / 1e9);
+        let nps = settings.max_nodes as f32 / (sw.elapsed().as_nanos() as f32 / 1e9);
         println!("{}", &format!("Nodes per second: {}nps", nps));
         ctrl_sender.send(StopServer).unwrap();
         process::exit(0);

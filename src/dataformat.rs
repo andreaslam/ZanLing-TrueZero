@@ -39,8 +39,8 @@ pub struct Position {
     pub played_mv: Move,
 
     pub zero_visits: u64,
-    pub zero_evaluation: ZeroEvaluationAbs,
-    pub net_evaluation: ZeroEvaluationAbs,
+    pub zero_evaluation: ZeroEvaluationPov,
+    pub net_evaluation: ZeroEvaluationPov,
 }
 
 /// A full game.
@@ -88,6 +88,13 @@ impl ZeroValuesPov {
                 wdl: self.wdl.flip(),
                 moves_left: self.moves_left,
             },
+        }
+    }
+    pub fn nan() -> Self {
+        ZeroValuesPov {
+            value: f32::NAN,
+            wdl: Wdl::nan(),
+            moves_left: f32::NAN,
         }
     }
 }
