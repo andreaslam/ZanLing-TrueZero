@@ -9,6 +9,8 @@ class TrueNet(nn.Module):
         super().__init__()
         self.startBlock = nn.Sequential(
             nn.Conv2d(21, num_hidden, kernel_size=1, padding=0),
+            nn.MaxPool2d(3, stride=2),
+            nn.Dropout(0.2),
             nn.BatchNorm2d(num_hidden),
             nn.ReLU(),
         )
@@ -17,6 +19,8 @@ class TrueNet(nn.Module):
         )
         self.policyHead = nn.Sequential(
             nn.Conv2d(num_hidden, head_channel_policy, kernel_size=1, padding=0),
+            nn.MaxPool2d(3, stride=2),
+            nn.Dropout(0.2),
             nn.BatchNorm2d(head_channel_policy),
             nn.ReLU(),
             nn.Flatten(),
@@ -24,6 +28,7 @@ class TrueNet(nn.Module):
         )
         self.valueHead = nn.Sequential(
             nn.Conv2d(num_hidden, head_channel_values, kernel_size=1, padding=0),
+            nn.Dropout(0.2),
             nn.BatchNorm2d(head_channel_values),
             nn.ReLU(),
             nn.Flatten(),
@@ -68,7 +73,6 @@ class TrueNetXS(nn.Module):
         self.valueHead = nn.Sequential(
             nn.Linear(num_hidden, 5),
             nn.ReLU(),
-            nn.Tanh(),
         )
 
     def forward(self, x):

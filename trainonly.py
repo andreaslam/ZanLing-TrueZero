@@ -49,7 +49,7 @@ torch.jit.save(model, "experiment_nets/tz_test_0.pt")
 with open("log_experiment.npz", "w") as f:
     f.write("")
 
-BUFFER_SIZE = 15000000
+BUFFER_SIZE = 10000000
 BATCH_SIZE = 16384
 loopbuf = LoopBuffer(
     Game.find("chess"), target_positions=BUFFER_SIZE, test_fraction=0.1
@@ -58,10 +58,10 @@ loopbuf = LoopBuffer(
 train_settings = TrainSettings(
     game=game,
     scalar_target=ScalarTarget.Final,
-    value_weight=1.0,
-    wdl_weight=0.0,
-    moves_left_weight=0.0,
-    moves_left_delta=0.0,
+    value_weight=0.1,
+    wdl_weight=0.1,
+    moves_left_weight=0.1,
+    moves_left_delta=0.1,
     policy_weight=1,
     sim_weight=0.0,
     train_in_eval_mode=False,
@@ -69,7 +69,7 @@ train_settings = TrainSettings(
     mask_policy=True,
 )
 
-op = optim.AdamW(params=model.parameters(), lr=5e-2)
+op = optim.AdamW(params=model.parameters(), lr=1e-2)
 log = Logger()
 
 data_paths = []
@@ -106,7 +106,7 @@ else:
 
 # print(loopbuf.position_count)
 
-num_steps_training = 10
+num_steps_training = 100
 starting_gen = 0
 while True:
     train_sampler = loopbuf.sampler(

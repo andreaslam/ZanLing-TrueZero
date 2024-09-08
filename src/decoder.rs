@@ -175,7 +175,6 @@ pub fn extract_policy(bs: &BoardStack, contents: &'static [Move]) -> (Vec<Move>,
     let mut idx_li: Vec<usize> = Vec::new();
 
     for mov in &legal_moves {
-        // let mov = format!("{}", mov);
         if let Some(idx) = contents.iter().position(|x| mov == x) {
             idx_li.push(idx as usize);
         }
@@ -193,7 +192,7 @@ pub fn process_board_output(
     mut cache: &mut LruCache<CacheEntryKey, ZeroEvaluationAbs>,
 ) -> Vec<usize> {
     let contents = get_contents();
-    let (board_eval, policy) = output; // check policy, eval ordering!
+    let (board_eval, policy) = output;
     let board_eval = board_eval.squeeze();
     let board_evals: Vec<f32> = Vec::try_from(board_eval).expect("Error");
 
@@ -219,12 +218,13 @@ pub fn process_board_output(
     let (legal_moves, idx_li) = extract_policy(bs, contents);
 
     // step 2 - using the idx in step 1, index all the policies involved
+
     let mut pol_list: Vec<f32> = Vec::new();
     for id in &idx_li {
         pol_list.push(policy[*id]);
     }
 
-    // step 3 - softmax
+    // step 3 - apply softmax to policy
 
     let sm = Tensor::from_slice(&pol_list);
 
@@ -243,13 +243,13 @@ pub fn process_board_output(
         moves_left,
     }
     .to_absolute(bs.board().side_to_move());
-    // debug_print!("decoder {:?}", selected_node_net_evaluation);
+
     tree.nodes[*selected_node_idx].net_evaluation = selected_node_net_evaluation;
     let ct = tree.nodes.len();
     for (mv, pol) in legal_moves.iter().zip(pol_list.iter()) {
         let fm: Move;
+        // flip move if the current move is a black move
         if bs.board().side_to_move() == Color::Black {
-            // flip move
             fm = Move {
                 from: mv.from.flip_rank(),
                 to: mv.to.flip_rank(),
@@ -260,7 +260,7 @@ pub fn process_board_output(
         }
         let child = Node::new(*pol, Some(*selected_node_idx), Some(fm));
 
-        tree.nodes.push(child); // push child to the tree Vec<Node>
+        tree.nodes.push(child);
 
         counter += 1
     }

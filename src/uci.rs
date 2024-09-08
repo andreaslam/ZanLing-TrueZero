@@ -391,12 +391,12 @@ fn handle_go(
             base += i * 3 / 4;
         }
         time = Some(base.try_into().unwrap());
-        nodes = time.unwrap() as u128 / 120;
+        nodes = time.unwrap() as u128 / 50;
     }
     nodes = max(1, nodes);
     if let Some(max) = max_time {
         time = Some(time.unwrap_or(u128::MAX).min(max));
-        nodes = time.unwrap() as u128 / 120;
+        nodes = time.unwrap() as u128 / 50;
     }
 
     if let Some(t) = time.as_mut() {

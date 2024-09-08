@@ -3,7 +3,7 @@ from lib.games import Game
 
 data = DataFile.open(
     Game.find("chess"),
-    r"games\gen_1_games_1723831884211921800",
+    r"games\gen_1_games_1725558424281596000",
 )
 
 all_game_moves = []

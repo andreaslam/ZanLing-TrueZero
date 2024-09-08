@@ -149,10 +149,10 @@ impl BinaryOutput {
                 if player == Color::White {
                     self.total_root_wdl[0] += 1;
                 } else {
-                    self.total_root_wdl[1] += 1;
+                    self.total_root_wdl[2] += 1;
                 }
             }
-            None => self.total_root_wdl[2] += 1,
+            None => self.total_root_wdl[1] += 1,
         }
 
         // write the positions
