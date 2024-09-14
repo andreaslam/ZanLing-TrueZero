@@ -19,7 +19,7 @@ fn main() {
 
     for _ in 0..100 {
         let data = Tensor::from_slice(&[0.0 as f32; 1344 * BATCH_SIZE]); // 8*8*21 = 1344
-        let mut sw = Instant::now();
+        let sw = Instant::now();
         (_, _) = eval_state(data, &net).expect("Error");
         let elapsed_time_ms = sw.elapsed().as_nanos() as f32 / 1e6;
         println!("Elapsed time: {}ms", elapsed_time_ms);

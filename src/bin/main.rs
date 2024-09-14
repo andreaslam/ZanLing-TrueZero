@@ -16,6 +16,7 @@ use std::{
 use tzrust::{
     cache::CacheEntryKey,
     dataformat::ZeroEvaluationAbs,
+    debug_print,
     executor::{executor_main, Packet},
     fileformat::BinaryOutput,
     mcts_trainer::{EvalMode, TypeRequest::TrainerSearch},
@@ -44,7 +45,7 @@ fn main() {
         purpose: MessageType::Initialise(Entity::RustDataGen),
     };
     let serialised = serde_json::to_string(&message).expect("serialisation failed");
-    let mut serialised = serialised + "\n";
+    let serialised = serialised + "\n";
     stream
         .write_all(serialised.as_bytes())
         .expect("Failed to send data");
@@ -144,7 +145,7 @@ async fn generator_main(
         wdl: EvalMode::Wdl,
         moves_left: Some(m_settings),
         c_puct: 3.0,
-        max_nodes: Some(400),
+        max_nodes: Some(1600),
         alpha: 0.03,
         eps: 0.25,
         search_type: TrainerSearch(None),
@@ -187,6 +188,7 @@ fn collector_main(
         .name()
         .unwrap_or("unnamed")
         .to_owned();
+    debug_print!("Initialised {}", thread_name);
     let folder_name = "games";
     if let Err(e) = fs::create_dir(folder_name) {
         if e.kind() != std::io::ErrorKind::AlreadyExists {
@@ -321,15 +323,9 @@ fn commander_main(
         if let Err(_) = reader.read_line(&mut recv_msg) {
             return;
         }
-        // deserialise data
-        // println!("RAW message: {:?}", recv_msg);
         let message = match serde_json::from_str::<MessageServer>(&recv_msg) {
-            Ok(message) => {
-                message
-                // process the received JSON data
-            }
-            Err(err) => {
-                // println!("error deserialising message! {}, {}", recv_msg, err);
+            Ok(message) => message,
+            Err(_) => {
                 recv_msg.clear();
                 continue;
             }
@@ -410,14 +406,13 @@ fn commander_main(
                 }
                 for exe_sender in &vec_exe_sender {
                     exe_sender.send(net_path.clone()).unwrap();
-                    // println!("SENT!");
+                    debug_print!("sent net!");
                 }
 
                 curr_net = net_path.clone();
             }
         }
         if net_path.is_empty() {
-            // println!("no net yet");
             // actively request for net path
 
             let message = MessageServer {
@@ -425,7 +420,6 @@ fn commander_main(
             };
             let mut serialised = serde_json::to_string(&message).expect("serialisation failed");
             serialised += "\n";
-            // println!("serialised {:?}", serialised);
             cloned_handle.write_all(serialised.as_bytes()).unwrap();
         }
         recv_msg.clear();
