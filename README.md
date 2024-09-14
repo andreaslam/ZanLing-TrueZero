@@ -41,7 +41,7 @@ cd ZanLing-TrueZero
 Then, build using `cargo`:
 
 ```
-cargo build
+cargo build --release
 ```
 
 Then choose a binary to run!
@@ -123,15 +123,19 @@ cargo run --bin ucimain
 - `ucimain.rs` - used for running games using UCI.
 
 ### Source code for the Engine
-- `decoder.rs` - used to decode and encode inputs for the Engine. Also handles the creation of child nodes. This is where NN inference happens.
-- `mcts_trainer.rs` - used for MCTS tree search. Initialises the NN and manages the entire tree search. Adds Dirichlet noise to search results.
 - `boardmanager.rs` - a wrapper for the cozy-chess library. Manages and handles draw conditions, such as fifty-move repetition, threefold repetition and must-draw scenarios.
-- `dirichlet.rs` - Dirichlet noise generator.
-- `mvs.rs` - a large array that contains all possible moves in chess. Used for indexing and storing (legal) move order. Statically loads and stored during programme execution.
-- `selfplay.rs` - facilitates selfplay. This is where search is initialised. Contains temperature management.
-- `fileformat.rs` - contains the code for binary encoding.
+- `cache.rs` - contains abstractions for the cache key.
 - `dataformat.rs` - contains necessary abstractions for `fileformat.rs`.
+- `decoder.rs` - used to decode and encode inputs for the Engine. Also handles the creation of child nodes. This is where NN inference happens.
+- `dirichlet.rs` - Dirichlet noise generator.
+- `elo.rs` - contains code for elo calculation used in `enginetest.rs`.
+- `fileformat.rs` - contains the code for saving data files for training the Engine.
+- `mcts_trainer.rs` - used for MCTS tree search. Initialises the NN and manages the entire tree search. Adds Dirichlet noise to search results.
+- `mcts.rs` - abstraction for non-trainer MCTS search. Supports UCI search options, such as `go infinite`.
+- `mvs.rs` - a large array that contains all possible moves in chess. Used for indexing and storing (legal) move order. Statically loads and stored during programme execution.
 - `message_types.rs` - contains the message protocols for processes (such as the Generator and the training loop) to communicate with the server and vice vera.
+- `selfplay.rs` - facilitates selfplay. This is where search is initialised. Contains temperature management.
+
 
 ### Data Generation and Training components
 

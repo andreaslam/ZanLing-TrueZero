@@ -16,7 +16,6 @@ use std::{
 use tzrust::{
     cache::CacheEntryKey,
     dataformat::ZeroEvaluationAbs,
-    dummyreq::{send_request, send_request_async},
     executor::{executor_main, Packet},
     fileformat::BinaryOutput,
     mcts_trainer::{EvalMode, TypeRequest::TrainerSearch},
@@ -145,7 +144,7 @@ async fn generator_main(
         wdl: EvalMode::Wdl,
         moves_left: Some(m_settings),
         c_puct: 3.0,
-        max_nodes: 400,
+        max_nodes: Some(400),
         alpha: 0.03,
         eps: 0.25,
         search_type: TrainerSearch(None),
@@ -157,7 +156,7 @@ async fn generator_main(
     // implement caching
 
     let mut cache: LruCache<CacheEntryKey, ZeroEvaluationAbs> =
-        LruCache::new(NonZeroUsize::new(settings.max_nodes as usize).unwrap());
+        LruCache::new(NonZeroUsize::new(settings.max_nodes.unwrap() as usize).unwrap());
 
     loop {
         let sim = datagen

@@ -232,11 +232,11 @@ fn preamble() {
     println!(
         "option name Hash type spin default {} min 1 max {}",
         DEFAULT_CACHE_SIZE,
-        usize::MAX
+        i32::MAX
     );
 }
 
-fn check_castling_move(bs: &BoardStack, mut mv: Move) -> Move {
+fn check_castling_move_on_input(bs: &BoardStack, mut mv: Move) -> Move {
     debug_print!("{}", &format!("Debug: Checking castling move"));
     if bs.board().piece_on(mv.from) == Some(Piece::King) {
         mv.to = match (mv.from, mv.to) {
@@ -244,6 +244,20 @@ fn check_castling_move(bs: &BoardStack, mut mv: Move) -> Move {
             (Square::E8, Square::G8) => Square::H8,
             (Square::E1, Square::C1) => Square::A1,
             (Square::E8, Square::C8) => Square::A8,
+            _ => mv.to,
+        };
+    }
+    mv
+}
+
+fn check_castling_move_on_output(bs: &BoardStack, mut mv: Move) -> Move {
+    debug_print!("{}", &format!("Debug: Checking castling move"));
+    if bs.board().piece_on(mv.from) == Some(Piece::King) {
+        mv.to = match (mv.from, mv.to) {
+            (Square::E1, Square::H1) => Square::G1,
+            (Square::E8, Square::H8) => Square::G8,
+            (Square::E1, Square::A1) => Square::C1,
+            (Square::E8, Square::A8) => Square::C8,
             _ => mv.to,
         };
     }
@@ -288,7 +302,7 @@ fn set_position(commands: Vec<&str>, bs: &mut BoardStack, stack: &mut Vec<u64>) 
         });
         for mov in legal_moves.iter() {
             let mv = Move::from_str(&m).unwrap();
-            let mv = check_castling_move(&bs, mv);
+            let mv = check_castling_move_on_input(&bs, mv);
             if mv == *mov {
                 bs.play(*mov);
             }
@@ -475,7 +489,8 @@ fn job_listener(job_receiver: Receiver<UCIRequest>, finished_move_sender: Sender
                         cache.cap()
                     )
                 }
-                let (best_move, _, _, _, _) = rt.block_on(async {
+                let castling_board = search_request.board.clone();
+                let (mut best_move, _, _, _, _) = rt.block_on(async {
                     get_move(
                         search_request.board,
                         search_request.tensor_exe_send,
@@ -485,6 +500,7 @@ fn job_listener(job_receiver: Receiver<UCIRequest>, finished_move_sender: Sender
                     )
                     .await
                 });
+                best_move = check_castling_move_on_output(&castling_board, best_move);
                 debug_print!("Debug: Finished UCI Search. Best move: {:#}", best_move);
                 // send the best move back to main thread
                 finished_move_sender.send(best_move).unwrap();

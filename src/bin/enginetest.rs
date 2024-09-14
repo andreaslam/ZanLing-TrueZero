@@ -145,7 +145,7 @@ async fn generator_main(
         wdl: EvalMode::Wdl,
         moves_left: Some(m_settings),
         c_puct: 3.0,
-        max_nodes: 400,
+        max_nodes: Some(400),
         alpha: 0.03,
         eps: 0.25,
         search_type: NonTrainerSearch,
@@ -166,12 +166,11 @@ async fn generator_main(
         }
         let board = Board::from_fen(fen, false).unwrap();
         let mut bs = BoardStack::new(board);
-        let rt = Runtime::new().unwrap();
         let mut move_counter = swap_count % 2;
-        let mut cache_0: LruCache<CacheEntryKey, ZeroEvaluationAbs> =
-            LruCache::new(NonZeroUsize::new(settings.max_nodes as usize).unwrap());
-        let mut cache_1: LruCache<CacheEntryKey, ZeroEvaluationAbs> =
-            LruCache::new(NonZeroUsize::new(settings.max_nodes as usize).unwrap());
+        let cache_0: LruCache<CacheEntryKey, ZeroEvaluationAbs> =
+            LruCache::new(NonZeroUsize::new(settings.max_nodes.unwrap() as usize).unwrap());
+        let cache_1: LruCache<CacheEntryKey, ZeroEvaluationAbs> =
+            LruCache::new(NonZeroUsize::new(settings.max_nodes.unwrap() as usize).unwrap());
 
         let mut caches = vec![cache_0, cache_1];
         while bs.status() == GameStatus::Ongoing {

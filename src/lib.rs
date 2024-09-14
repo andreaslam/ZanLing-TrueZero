@@ -1,22 +1,19 @@
-pub mod boardmanager; // CAN IMPORT PY, MINIMUM BUILD
+pub mod boardmanager; 
 pub mod cache;
 pub mod dataformat;
 pub mod decoder;
-pub mod dirichlet; // CAN IMPORT PY, MINIMUM BUILD
-pub mod dummyreq;
-pub mod elo; // CAN IMPORT PY, MINIMUM BUILD
+pub mod dirichlet; 
+pub mod elo;
 pub mod executor;
 pub mod fileformat;
 pub mod mcts;
 pub mod mcts_trainer;
-pub mod message_types; // CAN IMPORT PY, MINIMUM BUILD
-pub mod mvs; // CAN IMPORT PY, MINIMUM BUILD
+pub mod message_types; 
+pub mod mvs; 
 pub mod selfplay;
 pub mod settings;
-pub mod superluminal;
-pub mod testnet;
 pub mod uci;
-pub mod utils; // CAN IMPORT PY, MINIMUM BUILD
+pub mod utils; 
 
 #[cfg(test)]
 

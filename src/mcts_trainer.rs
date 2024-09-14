@@ -628,7 +628,7 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(policy: f32, parent: Option<usize>, mv: Option<cozy_chess::Move>) -> Node {
+    pub fn new(policy: f32, parent: Option<usize>, mv: Option<Move>) -> Node {
         Node {
             parent,
             children: 0..0,
