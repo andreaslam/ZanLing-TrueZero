@@ -250,7 +250,7 @@ fn check_castling_move_on_input(bs: &BoardStack, mut mv: Move) -> Move {
     mv
 }
 
-fn check_castling_move_on_output(bs: &BoardStack, mut mv: Move) -> Move {
+pub fn check_castling_move_on_output(bs: &BoardStack, mut mv: Move) -> Move {
     debug_print!("{}", &format!("Debug: Checking castling move"));
     if bs.board().piece_on(mv.from) == Some(Piece::King) {
         mv.to = match (mv.from, mv.to) {
@@ -489,7 +489,7 @@ fn job_listener(job_receiver: Receiver<UCIRequest>, finished_move_sender: Sender
                         cache.cap()
                     )
                 }
-                let castling_board = search_request.board.clone();
+                let mut castling_board = search_request.board.clone();
                 let (mut best_move, _, _, _, _) = rt.block_on(async {
                     get_move(
                         search_request.board,
