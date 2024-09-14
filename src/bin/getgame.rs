@@ -14,7 +14,7 @@ use tzrust::{
         Packet,
     },
     mcts::get_move,
-    mcts_trainer::EvalMode,
+    mcts_trainer::{EvalMode, TypeRequest::NonTrainerSearch},
     settings::SearchSettings,
 };
 

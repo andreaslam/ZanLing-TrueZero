@@ -1,4 +1,4 @@
-use cozy_chess::{Board, GameStatus};
+use cozy_chess::{Board, Color, GameStatus, Move};
 use crossbeam::thread;
 use flume::{Receiver, Sender};
 use futures::executor::ThreadPool;
@@ -11,6 +11,7 @@ use std::{
     num::NonZeroUsize,
     panic, process,
 };
+use tokio::runtime::Runtime;
 use tzrust::settings::MovesLeftSettings;
 use tzrust::{
     boardmanager::BoardStack,
@@ -29,18 +30,16 @@ fn main() {
     panic::set_hook(Box::new(|panic_info| {
         // print panic information
         eprintln!("Panic occurred: {:?}", panic_info);
+        // exit the program immediately
         std::process::exit(1);
     }));
 
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
     let num_games = 1000000;
-    let num_threads = 2048;
-    let engine_0: String = "nets/tz_304.pt".to_string(); // new engine
-                                                         // let engine_0: String = "tz_6515.pt".to_string(); // new engine
-                                                         //  let engine_1: String = "chess_16x128_gen3634.pt".to_string(); // old engine
-    let engine_1: String = "tz_6515.pt".to_string();
-    // let engine_1: String = "nets/tz_296.pt".to_string(); // new engine
-    // let engine_1: String = "nets/tz_151.pt".to_string();
+    let num_threads = 1024;
+    let engine_0: String = "nets/tz_66.pt".to_string(); // new engine
+    let engine_1: String = "chess_16x128_gen3634.pt".to_string(); // old engine
+                                                                  // let engine_1: String = "tz_6515.pt".to_string();
     let num_executors = 2; // always be 2, 2 players, one each (one for each neural net)
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
     let pool = ThreadPool::builder().pool_size(6).create().unwrap();
@@ -224,6 +223,15 @@ fn collector_main(
             | CollectorMessage::GeneratorStatistics(_)
             | CollectorMessage::ExecutorStatistics(_)
             | CollectorMessage::GameResult(_) => {
+                panic!("not possible! this is to test engine changes");
+            }
+            CollectorMessage::GeneratorStatistics(_) => {
+                panic!("not possible! this is to test engine changes");
+            }
+            CollectorMessage::ExecutorStatistics(_) => {
+                panic!("not possible! this is to test engine changes");
+            }
+            CollectorMessage::GameResult(_) => {
                 panic!("not possible! this is to test engine changes");
             }
             CollectorMessage::TestingResult(result) => {

@@ -299,6 +299,7 @@ fn handle_client(
                 },
                 MessageType::EvaluationRequest(input_data) => {
                     debug_print!("EvaluationRequest message received: {:?}", input_data);
+                    // TODO: process evaluation requests
                 }
                 MessageType::TBLink(ref msg) => {
                     *tb_link = Some(msg.clone());

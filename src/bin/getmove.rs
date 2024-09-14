@@ -53,8 +53,8 @@ fn main() {
             .name("executor".to_string())
             .spawn(move |_| {
                 executor_static(
-                    r"nets/tz_292.pt".to_string(),
-                    // r"tz_6515.pt".to_string(),
+                    // r"nets/tz_0.pt".to_string(),
+                    r"tz_6515.pt".to_string(),
                     // r"chess_16x128_gen3634.pt".to_string(),
                     tensor_exe_recv,
                     ctrl_recv,
