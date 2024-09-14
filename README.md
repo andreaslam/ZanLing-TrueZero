@@ -95,11 +95,11 @@ python client.py
 ```
 
 ```
-cargo run --bin main 
+cargo run --bin main --release
 ```
 
 ```
-cargo run --bin server
+cargo run --bin server --release
 ```
 
 ## Running the Engine in UCI
@@ -107,7 +107,7 @@ cargo run --bin server
 To use TrueZero through UCI, simply run the following:
 
 ```
-cargo run --bin ucimain
+cargo run --bin ucimain --release
 ```
 
 ## What each file does
@@ -119,7 +119,7 @@ cargo run --bin ucimain
 - `getinferencetime.rs` - used for benchmarking inference times and batching effectiveness through calculating the nodes/s.
 
 ### External Engine testing (UCI compliant)
-- `uci.rs` - contains code for UCI implementation. Code modified from JW's [monty](https://github.com/jw1912/monty) engine
+- `uci.rs` - contains code for UCI implementation. Code modified from JW's [monty](https://github.com/official-monty/monty) engine
 - `ucimain.rs` - used for running games using UCI.
 
 ### Source code for the Engine
@@ -149,21 +149,21 @@ cargo run --bin ucimain
 
 ### Utility and visualisation code
 
+- `exec_plotter.py` - debugging code that shows the thread schedule. Useful for debugging async tasks (such as data generation code for the Engine)
+- `experiment.py` - code that can convert data generated from `client.py` into TensorBoard-readable format. This is an alternative experiment visualiser. Additionally, the code supports remote visualisation if SSH port forwarding is enabled on your device.
+- `gui.py` - GUI code for `scheduler.py`. Code is currently work in progress. Running this file directly launches a demo version without server backend.
+- `onnx_exporter.py` - contains code to convert `.pt` model weights to `.onnx`
+- `scheduler.py` - code for TrueScheduler, an experiment scheduler for scheduling experiments and monitoring server controls. This GUI also supports remote SSH logins to schedule experiments on external devices. 
 - `visualiser.py` - visualises training data and monitoring key performance indicators logged in `client.py`, where code from `lib/plotter.py`. For more details on the `lib` folder see [here](https://github.com/andreaslam/ZanLing-TrueZero?tab=readme-ov-file#credits-and-acknowledgements).
 - `visualisenet.py` - code that allows visualisation of neural network activations. Generates a `.gif` file for an animation of a policy-only game.
-- `scheduler.py` - code for TrueScheduler, an experiment scheduler for scheduling experiments and monitoring server controls. This GUI also supports remote SSH logins to schedule experiments on external devices. 
-- `gui.py` - GUI code for `scheduler.py`. Code is currently work in progress. Running this file directly launches a demo version without server backend.
-- `experiment.py` - code that can convert data generated from `client.py` into TensorBoard-readable format. This is an alternative experiment visualiser. Additionally, the code supports remote visualisation if SSH port forwarding is enabled on your device.
-- `exec_plotter.py` - debugging code that shows the thread schedule. Useful for debugging async tasks (such as data generation code for the Engine)
-- `onnx_exporter.py` - contains code to convert `.pt` model weights to `.onnx`
 
 ## Libraries/technologies used 
 This Python and Rust Engine uses the following:
 ### Python 
 
-- **PyTorch** - used for creating and training the Neural Network. Also used for visualising experiments through its TensorBoard API.
 - **Matplotlib** - used for plotting and creating animations and visualisations in `visualisenet.py`. 
-- **NumPy** - used for processing data (chess board representation after one-hot encoding, handling final outcome and final game result
+- **NumPy** - used for processing data (chess board representation after one-hot encoding, handling final outcome and final game result)
+- **PyTorch** - used for creating and training the Neural Network. Also used for visualising experiments through its TensorBoard API.
 
 ### Rust
 
@@ -171,7 +171,7 @@ This Python and Rust Engine uses the following:
 - **flume** - multi-sender, multi-producer channels used to send data between channels for data generation.
 - **tch-rs** - Rust wrapper of libtorch. Used for Neural Network inference.
 - **crossbeam** - enables multithreading data generation.
-- **serde** - serialises messages to send across TCP server
+- **serde** - serialises messages to send across TCP server and serialises finished data files to binary.
 
 
 ## Credits and Acknowledgements
