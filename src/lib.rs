@@ -1,19 +1,19 @@
-pub mod boardmanager; 
+pub mod boardmanager;
 pub mod cache;
 pub mod dataformat;
 pub mod decoder;
-pub mod dirichlet; 
+pub mod dirichlet;
 pub mod elo;
 pub mod executor;
 pub mod fileformat;
 pub mod mcts;
 pub mod mcts_trainer;
-pub mod message_types; 
-pub mod mvs; 
+pub mod message_types;
+pub mod mvs;
 pub mod selfplay;
 pub mod settings;
 pub mod uci;
-pub mod utils; 
+pub mod utils;
 
 #[cfg(test)]
 

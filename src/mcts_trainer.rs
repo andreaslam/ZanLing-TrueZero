@@ -8,7 +8,7 @@ use crate::{
     executor::{Packet, ReturnMessage},
     mvs::get_contents,
     settings::SearchSettings,
-    uci::eval_in_cp,
+    uci::{check_castling_move_on_output, eval_in_cp},
     utils::TimeStampDebugger,
 };
 use cozy_chess::{Color, GameStatus, Move};
@@ -339,11 +339,15 @@ impl Tree {
             pv_nodes.push(curr_node);
         }
         let mut pv_string: String = String::new();
+        let mut pv_string_board = self.board.clone();
         if pv_nodes.is_empty() {
             (pv_string, terminal)
         } else {
             for item in pv_nodes {
-                pv_string.push_str(&format!("{} ", self.nodes[item].mv.unwrap()));
+                let pv_move =
+                    check_castling_move_on_output(&pv_string_board, self.nodes[item].mv.unwrap());
+                pv_string.push_str(&format!("{} ", pv_move));
+                pv_string_board.play(self.nodes[item].mv.unwrap());
             }
             (pv_string, terminal)
         }
@@ -539,7 +543,11 @@ impl Tree {
             mv_vec.reverse();
             for mv in mv_vec {
                 bs_clone.play(mv);
-                // debug_print!("display - just played {:?}, player now {:?} ", mv, bs_clone.board().side_to_move());
+                debug_print!(
+                    "display - just played {:?}, player now {:?} ",
+                    mv,
+                    bs_clone.board().side_to_move()
+                );
             }
 
             match &self.nodes[id].parent {
@@ -640,8 +648,14 @@ impl Node {
             move_idx: None,
         }
     }
+
     pub fn get_q_val(&self, settings: SearchSettings, relative_evaluation: ZeroValuesPov) -> f32 {
-        let fpu = settings.fpu; // First Player Urgency
+        let fpu = {
+            match self.parent {
+                Some(_) => settings.fpu, 
+                None => f32::INFINITY, // root pst is infinite - explore all children moves at least once
+            }
+        }; // First Player Urgency
         if self.visits > 0 {
             let total = match settings.wdl {
                 EvalMode::Wdl => relative_evaluation.wdl.w - relative_evaluation.wdl.l,
@@ -684,9 +698,19 @@ impl Node {
                 (weights.moves_left_sharpness * m_clipped * -q).clamp(-1.0, 1.0)
             };
 
-            // debug_print!("{:?}, self {:?}, {}", player, self, q + u + weights.moves_left_weight * m_unit);
-            // debug_print!("moves_left_weight={} m_unit={}, m={}", weights.moves_left_weight, m_unit, m);
-            // debug_print!("{:?}", player);
+            debug_print!(
+                "{:?}, self {:?}, {}",
+                player,
+                self,
+                q + u + weights.moves_left_weight * m_unit
+            );
+            debug_print!(
+                "moves_left_weight={} m_unit={}, m={}",
+                weights.moves_left_weight,
+                m_unit,
+                m
+            );
+            debug_print!("{:?}", player);
 
             q + u + weights.moves_left_weight * m_unit
         } else {
