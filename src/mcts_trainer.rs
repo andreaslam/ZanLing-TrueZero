@@ -650,12 +650,7 @@ impl Node {
     }
 
     pub fn get_q_val(&self, settings: SearchSettings, relative_evaluation: ZeroValuesPov) -> f32 {
-        let fpu = {
-            match self.parent {
-                Some(_) => settings.fpu, 
-                None => f32::INFINITY, // root pst is infinite - explore all children moves at least once
-            }
-        }; // First Player Urgency
+        let fpu = settings.fpu;
         if self.visits > 0 {
             let total = match settings.wdl {
                 EvalMode::Wdl => relative_evaluation.wdl.w - relative_evaluation.wdl.l,
