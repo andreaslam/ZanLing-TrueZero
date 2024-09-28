@@ -33,11 +33,11 @@ impl TimeStampDebugger {
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards");
             let epoch_seconds_end = since_epoch_end.as_nanos();
-            let msg = format!(
+            let _msg = format!(
                 "{} {} {} {}",
                 self.epoch_seconds_start, epoch_seconds_end, thread_name, message
             );
-            debug_print!("{}", &msg);
+            debug_print!("{}", &_msg);
         }
     }
 }

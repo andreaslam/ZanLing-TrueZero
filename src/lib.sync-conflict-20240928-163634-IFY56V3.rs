@@ -26,6 +26,7 @@ mod tests {
     use settings::SearchSettings;
 
     extern crate flume;
+    
 
     /// helper function to create a dummy BoardStack
 

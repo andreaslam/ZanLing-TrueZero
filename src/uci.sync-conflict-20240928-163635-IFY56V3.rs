@@ -36,6 +36,7 @@ pub enum UCIMsg {
 }
 
 pub fn eval_in_cp(eval: f32) -> f32 {
+    
     if eval > 0.5 {
         18. * (eval - 0.5) + 1.
     } else if eval < -0.5 {
@@ -436,12 +437,12 @@ fn handle_go(
         fpu: 0.1,
         wdl: EvalMode::Wdl,
         moves_left: Some(m_settings),
-        c_puct: 1.0,
+        c_puct: 4.0,
         max_nodes: search_nodes,
         alpha: 0.03,
         eps: 0.25,
         search_type: UCISearch,
-        pst: 5.0,
+        pst: 1.5,
     };
 
     let search_request = UCIRequest {
@@ -504,8 +505,8 @@ fn job_listener(job_receiver: Receiver<UCIRequest>, finished_move_sender: Sender
                 // send the best move back to main thread
                 finished_move_sender.send(best_move).unwrap();
             }
-            Err(_msg) => {
-                debug_print!("Error: Failed to receive message: {}", _msg);
+            Err(msg) => {
+                debug_print!("Error: Failed to receive message: {}", msg);
             }
         };
     }

@@ -105,21 +105,25 @@ pub fn board_data(bs: &BoardStack) -> (Vec<f32>, Vec<bool>) {
     }
 
     let is_ep = bs.board().en_passant();
-    debug_print!("    board FEN: {}", bs.board());
+    let fenstr = format!("{}", bs.board());
+    debug_print!("    board FEN: {}", fenstr);
     debug_print!("En passant status: {:?}", is_ep);
 
     let mut sq21: Vec<bool> = vec![false; 64];
-    if let Some(is_ep) = is_ep {
-        if us == Color::White {
-            // 4 for white and 5 for black for victim
-            let row = Rank::Fourth;
-            let ep_sq = Square::new(is_ep, row);
-            sq21[ep_sq.rank() as usize * 8 + ep_sq.file() as usize] = true;
-        } else {
-            let row = Rank::Fifth;
-            let ep_sq = Square::new(is_ep, row);
-            sq21[63 - (ep_sq.rank() as usize * 8 + (7 - ep_sq.file() as usize))] = true;
+    match is_ep {
+        Some(is_ep) => {
+            if us == Color::White {
+                // 4 for white and 5 for black for victim
+                let row = Rank::Fourth;
+                let ep_sq = Square::new(is_ep, row);
+                sq21[ep_sq.rank() as usize * 8 + ep_sq.file() as usize] = true;
+            } else {
+                let row = Rank::Fifth;
+                let ep_sq = Square::new(is_ep, row);
+                sq21[63 - (ep_sq.rank() as usize * 8 + (7 - ep_sq.file() as usize))] = true;
+            }
         }
+        None => {}
     };
     pieces_sqs.extend(sq21);
     (scalar_data, pieces_sqs)
@@ -139,6 +143,7 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
 
     all_data.extend(pieces_sqs.iter().map(|&x| x as u8 as f32));
 
+    
     Tensor::from_slice(&all_data) // all_data is 1d
 }
 

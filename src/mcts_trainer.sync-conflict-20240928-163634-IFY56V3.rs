@@ -66,7 +66,10 @@ impl Net {
         let mut net = tch::CModule::load_on_device(path, device).expect("ERROR");
         net.set_eval();
 
-        Self { net, device }
+        Self {
+            net,
+            device,
+        }
     }
     /// creates a new `Net` instance with a specified device ID (supports only CUDA)
     pub fn new_with_device_id(path: &str, id: usize) -> Self {
@@ -87,7 +90,10 @@ impl Net {
         let mut net = tch::CModule::load_on_device(path, device).expect("ERROR");
         net.set_eval();
 
-        Self { net, device }
+        Self {
+            net,
+            device,
+        }
     }
 }
 
@@ -250,8 +256,9 @@ impl Tree {
         debug_print!("root node: {}", self.display_node(0));
 
         debug_print!("    all children:");
-        for _child in self.nodes[0].children.clone() {
-            debug_print!("        {}", &self.display_node(_child));
+        for child in self.nodes[0].children.clone() {
+            let display_str = self.display_node(child);
+            debug_print!("        {}", &display_str.to_string());
         }
 
         if let TypeRequest::UCISearch = self.settings.search_type {
@@ -367,7 +374,8 @@ impl Tree {
         let mut visited_nodes = Vec::new();
         debug_print!("{}", &"    selection:".to_string());
         let mut input_b: BoardStack = self.board.clone();
-        debug_print!("{}", &format!("        board FEN: {}", &input_b.board()));
+        let fenstr = format!("{}", &input_b.board());
+        debug_print!("{}", &format!("        board FEN: {}", fenstr));
         let mut depth = 1;
         let mut max_depth: usize = 1;
 
@@ -417,17 +425,20 @@ impl Tree {
             assert!(total_visits + 1 == curr_node.visits);
             if !visited_nodes.contains(&curr) {
                 visited_nodes.push(curr);
-                debug_print!("{}", &format!("        selected: {}", self.display_node(curr)));
+                let display_str = self.display_node(curr);
+                debug_print!("{}", &format!("        selected: {}", display_str));
             }
             input_b.play(self.nodes[curr].mv.expect("Error"));
             depth += 1;
         }
 
-        debug_print!("{}", &format!("    {}", self.display_node(curr)));
+        let display_str = self.display_node(curr);
+        debug_print!("{}", &format!("    {}", display_str));
         debug_print!("{}", &"        children:".to_string());
 
-        for _node_id in visited_nodes {
-            debug_print!("{}", &format!("        node: {}", self.display_node(_node_id)));
+        for node_id in visited_nodes {
+            let display_str = self.display_node(node_id);
+            debug_print!("{}", &format!("        node: {}", display_str));
         }
 
         (curr, input_b, (depth, max_depth))
@@ -499,8 +510,9 @@ impl Tree {
             num_backprop_times += 1.0;
         }
 
-        for _current in backprop_nodes_vec {
-            debug_print!("{}", &format!("        updated node to {}", self.display_node(_current)));
+        for current in backprop_nodes_vec {
+            let display_str = self.display_node(current);
+            debug_print!("{}", &format!("        updated node to {}", display_str));
         }
     }
 
@@ -515,8 +527,9 @@ impl Tree {
             let mut bs_clone = self.board.clone();
             let mut mv_vec: Vec<Move> = Vec::new();
             while let Some(current) = curr {
-                if let Some(mv) = self.nodes[current].mv {
-                    mv_vec.push(mv)
+                match self.nodes[current].mv {
+                    Some(mv) => mv_vec.push(mv),
+                    None => {}
                 }
                 curr = self.nodes[current].parent;
             }
@@ -696,10 +709,11 @@ impl Node {
     /// recursively prints the tree containing information about each node (debug)
     pub fn layer_p(&self, depth: u8, max_tree_print_depth: u8, tree: &Tree) {
         if cfg!(debug_assertions) {
-            let _indent = "    ".repeat(depth as usize + 2);
+            let indent = "    ".repeat(depth as usize + 2);
             if depth <= max_tree_print_depth && !self.children.is_empty() {
                 for c in self.children.clone() {
-                    debug_print!("{}", &format!("{}{}", _indent, tree.display_node(c)));
+                    let display_str = tree.display_node(c);
+                    debug_print!("{}", &format!("{}{}", indent, display_str));
                     tree.nodes[c].layer_p(depth + 1, max_tree_print_depth, tree);
                 }
             }
@@ -710,10 +724,11 @@ impl Node {
     pub fn display_full_tree(&self, tree: &Tree) {
         if cfg!(debug_assertions) {
             debug_print!("{}", &"        root node:".to_string());
-            debug_print!("{}", &format!("            {}", tree.display_node(0)));
+            let display_str = tree.display_node(0);
+            debug_print!("{}", &format!("            {}", display_str));
             debug_print!("{}", &"        children:".to_string());
             let max_tree_print_depth: u8 = 3;
-            debug_print!("{}", &format!("    {}", tree.display_node(0)));
+            debug_print!("{}", &format!("    {}", display_str));
             self.layer_p(0, max_tree_print_depth, tree);
         }
     }
@@ -845,10 +860,12 @@ pub async fn get_move(
     debug_print!("{}", &format!("{:#}", best_move.unwrap()));
     for child in tree.nodes[0].children.clone() {
         total_visits_list.push(tree.nodes[child].visits);
-        debug_print!("{}", &tree.display_node(child));
+        let msg = tree.display_node(child);
+        debug_print!("{}", msg);
     }
 
-    debug_print!("{}", &tree.display_node(0));
+    let display_str = tree.display_node(0);
+    debug_print!("{}", &display_str.to_string());
     let total_visits: u32 = total_visits_list.iter().sum();
 
     let mut pi: Vec<f32> = Vec::new();
@@ -862,10 +879,14 @@ pub async fn get_move(
 
     debug_print!("{}", &format!("{:?}", &pi));
     debug_print!("{}", &format!("{}", best_move.expect("Error")));
-    debug_print!("{}", &format!("best move: {}", best_move.expect("Error")));
+    debug_print!(
+        "{}",
+        &format!("best move: {}", best_move.expect("Error"))
+    );
 
-    for _child in tree.nodes[0].children.clone() {
-        debug_print!("{}", tree.display_node(_child));
+    for child in tree.nodes[0].children.clone() {
+        let display_str = tree.display_node(child);
+        debug_print!("{}", &display_str.to_string());
     }
 
     // tree.nodes[0].display_full_tree(&tree);

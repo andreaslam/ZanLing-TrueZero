@@ -3,8 +3,8 @@ use crate::{
     cache::CacheEntryKey,
     dataformat::{Position, Simulation, ZeroEvaluationAbs, ZeroEvaluationPov},
     debug_print,
-    executor::Packet,
-    mcts_trainer::get_move,
+    executor::{Packet},
+    mcts_trainer::{get_move},
     settings::SearchSettings,
 };
 use cozy_chess::{Board, Color, GameStatus, Move};
@@ -40,26 +40,32 @@ impl DataGen {
         id: usize,
         cache: &mut LruCache<CacheEntryKey, ZeroEvaluationAbs>,
     ) -> Simulation {
-        let _sw = Instant::now();
+        let sw = Instant::now();
         let mut bs = BoardStack::new(Board::default());
         // let mut value: Vec<f32> = Vec::new();
         let mut positions: Vec<Position> = Vec::new();
-        let _thread_name = std::thread::current()
+        let thread_name = std::thread::current()
             .name()
             .unwrap_or("unnamed")
             .to_owned();
         while bs.status() == GameStatus::Ongoing {
-            let _sw = Instant::now();
-            let (mv, v_p, _move_idx_piece, search_data, visits) =
-                get_move(bs.clone(), tensor_exe_send, *settings, id, cache).await;
-            let _elapsed = _sw.elapsed().as_nanos() as f32 / 1e9;
+            let sw = Instant::now();
+            let (mv, v_p, _move_idx_piece, search_data, visits) = get_move(
+                bs.clone(),
+                tensor_exe_send,
+                *settings,
+                id,
+                cache,
+            )
+            .await;
+            let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
             let final_mv = if positions.len() > 30 {
                 // when tau is "infinitesimally small", pick the best move
                 mv
             } else {
                 let weighted_index = WeightedIndex::new(&search_data.policy).unwrap();
                 let mut rng = rand::thread_rng();
-                // // debug_print(&format!("{}, {:?}, {:?}", _thread_name, weighted_index, rng);
+                // // debug_print(&format!("{}, {:?}, {:?}", thread_name, weighted_index, rng);
                 let sampled_idx = weighted_index.sample(&mut rng);
                 let mut legal_moves: Vec<Move> = Vec::new();
                 bs.board().generate_moves(|moves| {
@@ -85,11 +91,11 @@ impl DataGen {
                 }, // v
             };
 
-            let _nps = settings.max_nodes.unwrap() as f32 / _elapsed;
+            let nps = settings.max_nodes.unwrap() as f32 / elapsed;
 
             debug_print!(
                 "{}",
-                &format!("thread {}, {:#}, {}nps", _thread_name, final_mv, _nps)
+                &format!("thread {}, {:#}, {}nps", thread_name, final_mv, nps)
             );
             debug_print!("{}", &format!("{:#}", final_mv));
             nps_sender
@@ -106,7 +112,8 @@ impl DataGen {
             final_board: bs,
         };
 
-        debug_print!("{}", &format!("one done {}s", _sw.elapsed().as_nanos() as f32 / 1e9));
+        let elapsed_ms = sw.elapsed().as_nanos() as f32 / 1e9;
+        debug_print!("{}", &format!("one done {}s", elapsed_ms));
         debug_print!("{}", &"one done!".to_string());
         tz
     }

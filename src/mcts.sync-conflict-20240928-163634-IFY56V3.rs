@@ -124,10 +124,12 @@ pub async fn get_move(
     debug_print!("{}", &format!("{:#}", best_move.unwrap()));
     for child in tree.nodes[0].children.clone() {
         total_visits_list.push(tree.nodes[child].visits);
-        debug_print!("{}", tree.display_node(child));
+        let msg = tree.display_node(child);
+        debug_print!("{}", msg);
     }
 
-    debug_print!("{}", &tree.display_node(0));
+    let display_str = tree.display_node(0);
+    debug_print!("{}", &display_str.to_string());
     let total_visits: u32 = total_visits_list.iter().sum();
 
     let mut pi: Vec<f32> = Vec::new();
@@ -141,10 +143,14 @@ pub async fn get_move(
 
     debug_print!("{}", &format!("{:?}", &pi));
     debug_print!("{}", &format!("{}", best_move.expect("Error")));
-    debug_print!("{}", &format!("best move: {}", best_move.expect("Error")));
+    debug_print!(
+        "{}",
+        &format!("best move: {}", best_move.expect("Error"))
+    );
 
-    for _child in tree.nodes[0].children.clone() {
-        debug_print!("{}", &tree.display_node(_child));
+    for child in tree.nodes[0].children.clone() {
+        let display_str = tree.display_node(child);
+        debug_print!("{}", &display_str.to_string());
     }
 
     let mut all_tree_pol = Vec::new();

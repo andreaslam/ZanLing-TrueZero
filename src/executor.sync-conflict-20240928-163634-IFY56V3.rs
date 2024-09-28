@@ -3,6 +3,7 @@ use crate::{
     utils::TimeStampDebugger,
 };
 
+
 use crossbeam::thread;
 
 use flume::{Receiver, RecvError, Selector, Sender};
@@ -42,10 +43,10 @@ pub enum ReturnMessage {
 fn handle_new_graph(
     network: &mut Option<Net>,
     graph: Option<String>,
-    _thread_name: &str,
+    thread_name: &str,
     id: usize,
 ) {
-    debug_print!("{}: loading new net", _thread_name);
+    debug_print!("{}: loading new net", thread_name);
 
     if let Some(network) = network.take() {
         drop(network)
@@ -119,8 +120,11 @@ pub fn executor_main(
                 waiting_for_batch_debugger.record("waiting_for_batch", &thread_name);
             }
 
-            if let Some(_) = network {
-                selector = selector.recv(&handler_recv, Message::JobTensorExecutor);
+            match network {
+                Some(_) => {
+                    selector = selector.recv(&handler_recv, Message::JobTensorExecutor);
+                }
+                None => (),
             }
 
             let message = selector.wait();
