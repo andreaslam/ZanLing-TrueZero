@@ -3,8 +3,8 @@ use crate::{
     cache::CacheEntryKey,
     dataformat::{Position, Simulation, ZeroEvaluationAbs, ZeroEvaluationPov},
     debug_print,
-    executor::{Packet, ReturnMessage},
-    mcts_trainer::{get_move, ExpansionType, TypeRequest},
+    executor::{Packet},
+    mcts_trainer::{get_move},
     settings::SearchSettings,
 };
 use cozy_chess::{Board, Color, GameStatus, Move};
@@ -38,7 +38,7 @@ impl DataGen {
         nps_sender: &Sender<CollectorMessage>,
         settings: &SearchSettings,
         id: usize,
-        mut cache: &mut LruCache<CacheEntryKey, ZeroEvaluationAbs>,
+        cache: &mut LruCache<CacheEntryKey, ZeroEvaluationAbs>,
     ) -> Simulation {
         let sw = Instant::now();
         let mut bs = BoardStack::new(Board::default());
@@ -50,12 +50,12 @@ impl DataGen {
             .to_owned();
         while bs.status() == GameStatus::Ongoing {
             let sw = Instant::now();
-            let (mv, v_p, move_idx_piece, search_data, visits) = get_move(
+            let (mv, v_p, _move_idx_piece, search_data, visits) = get_move(
                 bs.clone(),
-                &tensor_exe_send,
-                settings.clone(),
+                tensor_exe_send,
+                *settings,
                 id,
-                &mut cache,
+                cache,
             )
             .await;
             let elapsed = sw.elapsed().as_nanos() as f32 / 1e9;
@@ -114,7 +114,7 @@ impl DataGen {
 
         let elapsed_ms = sw.elapsed().as_nanos() as f32 / 1e9;
         debug_print!("{}", &format!("one done {}s", elapsed_ms));
-        debug_print!("{}", &format!("one done!"));
+        debug_print!("{}", &"one done!".to_string());
         tz
     }
 }

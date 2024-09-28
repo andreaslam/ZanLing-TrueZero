@@ -106,7 +106,7 @@ fn main() {
         let input = input.replace("\r\n", "");
         let mut cache: LruCache<CacheEntryKey, ZeroEvaluationAbs> =
             LruCache::new(NonZeroUsize::new(10000).unwrap());
-        if input == "p".to_string() {
+        if input == *"p" {
             while bs.status() == GameStatus::Ongoing {
                 let mv = get_input(&bs);
                 bs.play(mv);
@@ -115,7 +115,7 @@ fn main() {
                     get_move(
                         bs.clone(),
                         tensor_exe_send.clone(),
-                        settings.clone(),
+                        settings,
                         None,
                         &mut cache,
                     )
@@ -124,7 +124,7 @@ fn main() {
                 println!("{:#}", mv);
                 bs.play(mv);
             }
-        } else if input == "b".to_string() {
+        } else if input == *"b" {
             // bot plays first
             while bs.status() == GameStatus::Ongoing {
                 let rt = Runtime::new().unwrap();
@@ -132,7 +132,7 @@ fn main() {
                     get_move(
                         bs.clone(),
                         tensor_exe_send.clone(),
-                        settings.clone(),
+                        settings,
                         None,
                         &mut cache,
                     )

@@ -102,7 +102,7 @@ fn main() {
                     get_move(
                         bs.clone(),
                         tensor_exe_send.clone(),
-                        settings.clone(),
+                        settings,
                         None,
                         &mut cache,
                     )

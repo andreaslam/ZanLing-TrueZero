@@ -10,7 +10,7 @@ use std::{
 
 use crate::{
     boardmanager::BoardStack,
-    dataformat::{Position, Simulation, ZeroEvaluationAbs, ZeroValuesPov},
+    dataformat::{Position, Simulation, ZeroValuesPov},
     decoder::board_data,
     mcts_trainer::Wdl,
     mvs::get_contents,
@@ -288,7 +288,7 @@ impl BinaryOutput {
             net_values: ZeroValuesPov::nan(),
         };
 
-        self.append_position(&final_board, &scalars, &[], &[])?;
+        self.append_position(final_board, &scalars, &[], &[])?;
 
         Ok(())
     }
@@ -369,7 +369,7 @@ impl BinaryOutput {
             scalar_names: Scalars::NAMES,
             input_bool_shape: &[13, 8, 8], // pieces + EP
             input_scalar_count: 8,         // move turn, counters, castling
-            policy_shape: &[1880 as usize],
+            policy_shape: &[1880_usize],
             game_count: self.game_count,
             position_count: self.position_count,
             includes_terminal_positions: true,
@@ -484,7 +484,7 @@ impl Scalars {
             self.hit_move_limit as u8 as f32,
             self.available_mv_count as f32,
             self.played_mv as f32,
-            self.kdl_policy as f32,
+            self.kdl_policy,
         ];
 
         result.extend_from_slice(&self.final_values.to_slice());

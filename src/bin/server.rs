@@ -316,8 +316,7 @@ fn handle_client(
                         if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
                             eprintln!("Error sending TensorBoard link! {}", msg);
                             break;
-                        } else {
-                        }
+                        } 
                         needs_tb_link = false;
                     }
                 }
@@ -338,8 +337,7 @@ fn handle_client(
                             if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
                                 eprintln!("Error sending TensorBoard link! {}", msg);
                                 break;
-                            } else {
-                            }
+                            } 
                             needs_tb_link = false;
                         }
                         None => {
@@ -347,7 +345,7 @@ fn handle_client(
                         }
                     }
                 }
-                MessageType::EvaluationRequest(input_data) => {
+                MessageType::EvaluationRequest(_input_data) => {
                     // TODO: process evaluation requests
                 }
             }

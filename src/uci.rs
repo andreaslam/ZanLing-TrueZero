@@ -36,14 +36,14 @@ pub enum UCIMsg {
 }
 
 pub fn eval_in_cp(eval: f32) -> f32 {
-    let cps = if eval > 0.5 {
+    
+    if eval > 0.5 {
         18. * (eval - 0.5) + 1.
     } else if eval < -0.5 {
         18. * (eval + 0.5) - 1.
     } else {
         2. * eval
-    };
-    cps
+    }
 }
 
 fn mb_to_items(mb: usize) -> usize {
@@ -62,7 +62,7 @@ pub fn run_uci(net_path: &str) {
     let board = Board::default();
     let bs = BoardStack::new(board);
     let stack = Vec::new();
-    let threads = 1;
+    let _threads = 1;
 
     let net = Net::new(net_path);
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
@@ -140,11 +140,11 @@ fn uci_command_parse_loop(
 
         match *commands.first().unwrap_or(&"oops") {
             "uci" => {
-                debug_print!("{}", &format!("Debug: Received 'uci' command"));
+                debug_print!("{}", &"Debug: Received 'uci' command".to_string());
                 preamble();
             }
             "isready" => {
-                debug_print!("{}", &format!("Debug: Received 'isready' command"));
+                debug_print!("{}", &"Debug: Received 'isready' command".to_string());
                 println!("readyok");
             }
             "ucinewgame" => {
@@ -152,7 +152,7 @@ fn uci_command_parse_loop(
                 set_position(vec!["startpos"], &mut bs, &mut stack);
             }
             "go" => {
-                debug_print!("{}", &format!("Debug: Received 'go' command"));
+                debug_print!("{}", &"Debug: Received 'go' command".to_string());
                 handle_go(
                     &commands,
                     &bs,
@@ -166,11 +166,11 @@ fn uci_command_parse_loop(
                 cache_reset = false;
             }
             "position" => {
-                debug_print!("{}", &format!("Debug: Received 'position' command"));
+                debug_print!("{}", &"Debug: Received 'position' command".to_string());
                 set_position(commands, &mut bs, &mut stack);
             }
             "eval" => {
-                debug_print!("{}", &format!("Debug: Received 'eval' command"));
+                debug_print!("{}", &"Debug: Received 'eval' command".to_string());
                 let (value, _) = eval_state(convert_board(&bs), &net).unwrap();
                 let value = value.squeeze();
                 let value_raw: Vec<f32> = Vec::try_from(value).expect("Error");
@@ -213,7 +213,7 @@ fn listen_to_user_inputs(
         match *commands.first().unwrap_or(&"oops") {
             "stop" => {
                 let _ = cmd_sender.send(UCIMsg::UCIStopMessage);
-                debug_print!("{}", &format!("Debug: Sent 'stop' command"));
+                debug_print!("{}", &"Debug: Sent 'stop' command".to_string());
             }
             "quit" => {
                 ctrl_sender.send(Message::StopServer).unwrap();
@@ -237,7 +237,7 @@ fn preamble() {
 }
 
 fn check_castling_move_on_input(bs: &BoardStack, mut mv: Move) -> Move {
-    debug_print!("{}", &format!("Debug: Checking castling move"));
+    debug_print!("{}", &"Debug: Checking castling move".to_string());
     if bs.board().piece_on(mv.from) == Some(Piece::King) {
         mv.to = match (mv.from, mv.to) {
             (Square::E1, Square::G1) => Square::H1,
@@ -251,7 +251,7 @@ fn check_castling_move_on_input(bs: &BoardStack, mut mv: Move) -> Move {
 }
 
 pub fn check_castling_move_on_output(bs: &BoardStack, mut mv: Move) -> Move {
-    debug_print!("{}", &format!("Debug: Checking castling move"));
+    debug_print!("{}", &"Debug: Checking castling move".to_string());
     if bs.board().piece_on(mv.from) == Some(Piece::King) {
         mv.to = match (mv.from, mv.to) {
             (Square::E1, Square::H1) => Square::G1,
@@ -265,7 +265,7 @@ pub fn check_castling_move_on_output(bs: &BoardStack, mut mv: Move) -> Move {
 }
 
 fn set_position(commands: Vec<&str>, bs: &mut BoardStack, stack: &mut Vec<u64>) {
-    debug_print!("{}", &format!("Debug: Setting position"));
+    debug_print!("{}", &"Debug: Setting position".to_string());
     let mut fen = String::new();
     let mut move_list = Vec::new();
     let mut moves = false;
@@ -287,9 +287,9 @@ fn set_position(commands: Vec<&str>, bs: &mut BoardStack, stack: &mut Vec<u64>) 
         debug_print!("Debug: setting FEN to startpos");
         STARTPOS
     } else {
-        &fen.trim()
+        fen.trim()
     };
-    let board = Board::from_fen(fenstr, false).unwrap_or(Board::default());
+    let board = Board::from_fen(fenstr, false).unwrap_or_default();
     *bs = BoardStack::new(board.clone());
     stack.clear();
 
@@ -301,8 +301,8 @@ fn set_position(commands: Vec<&str>, bs: &mut BoardStack, stack: &mut Vec<u64>) 
             false
         });
         for mov in legal_moves.iter() {
-            let mv = Move::from_str(&m).unwrap();
-            let mv = check_castling_move_on_input(&bs, mv);
+            let mv = Move::from_str(m).unwrap();
+            let mv = check_castling_move_on_input(bs, mv);
             if mv == *mov {
                 bs.play(*mov);
             }
@@ -320,7 +320,7 @@ fn handle_go(
     cache_size: usize,
     cache_reset: bool,
 ) {
-    debug_print!("{}", &format!("Debug: Handling 'go' command"));
+    debug_print!("{}", &"Debug: Handling 'go' command".to_string());
 
     let mut finite_search = true;
 
@@ -405,12 +405,12 @@ fn handle_go(
             base += i * 3 / 4;
         }
         time = Some(base.try_into().unwrap());
-        nodes = time.unwrap() as u128 / 50;
+        nodes = time.unwrap() / 50;
     }
     nodes = max(1, nodes);
     if let Some(max) = max_time {
         time = Some(time.unwrap_or(u128::MAX).min(max));
-        nodes = time.unwrap() as u128 / 50;
+        nodes = time.unwrap() / 50;
     }
 
     if let Some(t) = time.as_mut() {
@@ -448,7 +448,7 @@ fn handle_go(
     let search_request = UCIRequest {
         board: bs.clone(),
         tensor_exe_send: tensor_exe_send.clone(),
-        search_settings: settings.clone(),
+        search_settings: settings,
         stop_signal: cmd_receiver.clone(),
         cache_size: cache_size.max(1),
         cache_reset,
@@ -460,8 +460,8 @@ fn handle_go(
     let best_move = finished_move_receiver.recv().unwrap();
 
     println!("bestmove {:#}", best_move);
-    debug_print!("{}", &format!("sent termination message"));
-    debug_print!("{}", &format!("handle go done"));
+    debug_print!("{}", &"sent termination message".to_string());
+    debug_print!("{}", &"handle go done".to_string());
 }
 fn job_listener(job_receiver: Receiver<UCIRequest>, finished_move_sender: Sender<Move>) {
     // listen to jobs and run search requests
@@ -479,7 +479,7 @@ fn job_listener(job_receiver: Receiver<UCIRequest>, finished_move_sender: Sender
                 let old_cache_cap = cache.cap();
                 if search_request.cache_reset {
                     cache.clear();
-                    assert!(cache.len() == 0);
+                    assert!(cache.is_empty());
                 }
                 if old_cache_cap != NonZeroUsize::new(search_request.cache_size).unwrap() {
                     cache.resize(NonZeroUsize::new(search_request.cache_size).unwrap());
@@ -489,7 +489,7 @@ fn job_listener(job_receiver: Receiver<UCIRequest>, finished_move_sender: Sender
                         cache.cap()
                     )
                 }
-                let mut castling_board = search_request.board.clone();
+                let castling_board = search_request.board.clone();
                 let (mut best_move, _, _, _, _) = rt.block_on(async {
                     get_move(
                         search_request.board,

@@ -186,5 +186,5 @@ lazy_static! {
 }
 
 pub fn get_contents() -> &'static [Move] {
-    &**&*CONTENTS_COZY
+    &CONTENTS_COZY
 }

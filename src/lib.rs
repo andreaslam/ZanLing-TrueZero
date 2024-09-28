@@ -26,7 +26,7 @@ mod tests {
     use settings::SearchSettings;
 
     extern crate flume;
-    use std::{num::NonZeroUsize, time::Instant};
+    
 
     /// helper function to create a dummy BoardStack
 
@@ -114,7 +114,7 @@ mod tests {
         assert!(node.parent.is_none());
         assert!(node.mv.is_none());
         assert_eq!(node.visits, 0);
-        assert_eq!(node.net_evaluation.value.is_nan(), true);
+        assert!(node.net_evaluation.value.is_nan());
     }
 
     /// test node selection

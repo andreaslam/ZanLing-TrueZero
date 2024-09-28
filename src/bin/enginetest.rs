@@ -66,7 +66,7 @@ fn main() {
                     sender_clone,
                     tensor_exe_send_clone_0.clone(),
                     tensor_exe_send_clone_1.clone(),
-                    n.clone(),
+                    n,
                 )
                 .await;
             };
@@ -156,15 +156,14 @@ async fn generator_main(
     debug_print!("{} Generator settings initialized", thread_name,);
 
     let openings = read_epd_file("./8moves_v3.epd").unwrap();
-    let engines = vec![tensor_exe_send_0.clone(), tensor_exe_send_1.clone()];
+    let engines = [tensor_exe_send_0.clone(), tensor_exe_send_1.clone()];
     let mut swap_count = 0;
     let mut fen = openings.choose(&mut rand::thread_rng()).unwrap();
     loop {
         let mut moves_list: Vec<String> = Vec::new();
         if swap_count % 2 == 0 {
             fen = openings.choose(&mut rand::thread_rng()).unwrap();
-        } else {
-        }
+        } 
         let board = Board::from_fen(fen, false).unwrap();
         let mut bs = BoardStack::new(board);
         let mut move_counter = swap_count % 2;
@@ -173,12 +172,12 @@ async fn generator_main(
         let cache_1: LruCache<CacheEntryKey, ZeroEvaluationAbs> =
             LruCache::new(NonZeroUsize::new(settings.max_nodes.unwrap() as usize).unwrap());
 
-        let mut caches = vec![cache_0, cache_1];
+        let mut caches = [cache_0, cache_1];
         while bs.status() == GameStatus::Ongoing {
             let engine = &engines[move_counter % 2];
             let cache = &mut caches[move_counter % 2];
             let (mv, _, _, _, _) =
-                get_move(bs.clone(), engine.clone(), settings.clone(), None, cache).await;
+                get_move(bs.clone(), engine.clone(), settings, None, cache).await;
             bs.play(mv);
             moves_list.push(format!("{:#}", mv));
             move_counter += 1;

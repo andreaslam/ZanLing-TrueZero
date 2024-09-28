@@ -53,7 +53,7 @@ pub struct Simulation {
 
 impl Simulation {
     pub fn start_board(&self) -> &BoardStack {
-        match self.positions.get(0) {
+        match self.positions.first() {
             Some(pos) => &pos.board,
             None => &self.final_board,
         }

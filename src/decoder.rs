@@ -143,8 +143,8 @@ pub fn convert_board(bs: &BoardStack) -> Tensor {
 
     all_data.extend(pieces_sqs.iter().map(|&x| x as u8 as f32));
 
-    let all_data = Tensor::from_slice(&all_data);
-    all_data // all_data is 1d
+    
+    Tensor::from_slice(&all_data) // all_data is 1d
 }
 
 /// extracts the policy indices from `mvs.rs` given board state in order to filter raw output from neural network
@@ -176,7 +176,7 @@ pub fn extract_policy(bs: &BoardStack, contents: &'static [Move]) -> (Vec<Move>,
 
     for mov in &legal_moves {
         if let Some(idx) = contents.iter().position(|x| mov == x) {
-            idx_li.push(idx as usize);
+            idx_li.push(idx);
         }
     }
 
@@ -189,7 +189,7 @@ pub fn process_board_output(
     selected_node_idx: &usize,
     tree: &mut Tree,
     bs: &BoardStack,
-    mut cache: &mut LruCache<CacheEntryKey, ZeroEvaluationAbs>,
+    cache: &mut LruCache<CacheEntryKey, ZeroEvaluationAbs>,
 ) -> Vec<usize> {
     let contents = get_contents();
     let (board_eval, policy) = output;

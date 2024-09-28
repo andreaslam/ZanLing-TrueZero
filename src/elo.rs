@@ -15,7 +15,7 @@ fn elo(score: f64) -> f64 {
     if score <= 0.0 || score >= 1.0 {
         return 0.0;
     }
-    return -400.0 * f64::log10(1.0 / score - 1.0);
+    -400.0 * f64::log10(1.0 / score - 1.0)
 }
 
 pub fn elo_wld(wins: u32, losses: u32, draws: u32) -> (f64, f64, f64) {

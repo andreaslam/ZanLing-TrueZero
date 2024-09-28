@@ -3,7 +3,6 @@ use flume::{Receiver, Sender};
 use futures::executor::ThreadPool;
 use lru::LruCache;
 use std::{
-    cmp::{max, min},
     env,
     fs::{self, File},
     io::{self, BufRead, BufReader, Read, Write},
@@ -51,7 +50,7 @@ fn main() {
         .expect("Failed to send data");
     println!("Connected to server!");
 
-    let mut num_executors = 2;
+    let num_executors = 2;
     // num_executors = max(min(tch::Cuda::device_count() as usize, num_executors), 1);
     let batch_size = 1024;
     let num_generators = num_executors * batch_size * 2;
@@ -337,7 +336,7 @@ fn commander_main(
                 MessageType::JobSendPath(_) => {}
                 MessageType::StatisticsSend(_) => {}
                 MessageType::RequestingNet() => {}
-                MessageType::NewNetworkPath(path) => {}
+                MessageType::NewNetworkPath(_path) => {}
                 MessageType::IdentityConfirmation(_) => {}
                 MessageType::JobSendData(_) => {}
                 MessageType::NewNetworkData(data) => {
@@ -392,25 +391,23 @@ fn commander_main(
             }
         }
 
-        if curr_net != net_path {
-            if !net_path.is_empty() {
-                println!("updating net to: {}", net_path.clone());
-                let exists_file = Path::new(&curr_net).is_file();
-                if exists_file {
-                    match fs::remove_file(curr_net.clone()) {
-                        Ok(_) => {
-                            println!("Deleted net {}", curr_net);
-                        }
-                        Err(e) => eprintln!("Error deleting the file: {}", e),
+        if curr_net != net_path && !net_path.is_empty() {
+            println!("updating net to: {}", net_path.clone());
+            let exists_file = Path::new(&curr_net).is_file();
+            if exists_file {
+                match fs::remove_file(curr_net.clone()) {
+                    Ok(_) => {
+                        println!("Deleted net {}", curr_net);
                     }
+                    Err(e) => eprintln!("Error deleting the file: {}", e),
                 }
-                for exe_sender in &vec_exe_sender {
-                    exe_sender.send(net_path.clone()).unwrap();
-                    debug_print!("sent net!");
-                }
-
-                curr_net = net_path.clone();
             }
+            for exe_sender in &vec_exe_sender {
+                exe_sender.send(net_path.clone()).unwrap();
+                debug_print!("sent net!");
+            }
+
+            curr_net = net_path.clone();
         }
         if net_path.is_empty() {
             // actively request for net path

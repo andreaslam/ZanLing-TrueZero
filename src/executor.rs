@@ -3,11 +3,11 @@ use crate::{
     utils::TimeStampDebugger,
 };
 
-use cozy_chess::Move;
+
 use crossbeam::thread;
 
 use flume::{Receiver, RecvError, Selector, Sender};
-use lru::LruCache;
+
 use std::{cmp::min, collections::VecDeque, process, time::Instant};
 use tch::Tensor;
 
@@ -112,17 +112,17 @@ pub fn executor_main(
         loop {
             let mut selector = Selector::new();
             // begin_event_with_color("waiting_for_job", CL_ORANGE);
-            let sw = Instant::now();
+            let _sw = Instant::now();
             assert!(network.is_some() || !graph_disconnected);
 
             if !graph_disconnected {
-                selector = selector.recv(&net_receiver, |res| Message::NewNetwork(res));
+                selector = selector.recv(&net_receiver, Message::NewNetwork);
                 waiting_for_batch_debugger.record("waiting_for_batch", &thread_name);
             }
 
             match network {
                 Some(_) => {
-                    selector = selector.recv(&handler_recv, |res| Message::JobTensorExecutor(res));
+                    selector = selector.recv(&handler_recv, Message::JobTensorExecutor);
                 }
                 None => (),
             }
@@ -145,7 +145,7 @@ pub fn executor_main(
                     let network = network.as_mut().expect("Network should be available");
                     let batch_size = input_vec.len();
                     let i_v = input_vec.make_contiguous();
-                    let input_tensors = Tensor::cat(&i_v, 0);
+                    let input_tensors = Tensor::cat(i_v, 0);
 
                     // begin_event_with_color("eval", CL_BLUE);
                     evaluation_time_taken_debugger.reset();
@@ -223,7 +223,7 @@ pub fn executor_static(
             let mut selector = Selector::new();
 
             // Register all receivers in the selector
-            selector = selector.recv(&handler_recv, |res| Message::JobTensorExecutor(res));
+            selector = selector.recv(&handler_recv, Message::JobTensorExecutor);
             selector = selector.recv(&ctrl_receiver, |_| Message::StopServer);
             let message = selector.wait();
             match message {
@@ -245,7 +245,7 @@ pub fn executor_static(
                     let i_v = input_vec.make_contiguous();
                     let input_tensors = Tensor::cat(&i_v[..batch_size], 0);
                     let (board_eval, policy) =
-                        eval_state(input_tensors, &network).expect("Evaluation failed");
+                        eval_state(input_tensors, network).expect("Evaluation failed");
                     for i in 0..batch_size {
                         let sender = output_senders
                             .pop_front()

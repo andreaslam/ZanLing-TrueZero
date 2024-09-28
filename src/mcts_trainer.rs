@@ -67,8 +67,8 @@ impl Net {
         net.set_eval();
 
         Self {
-            net: net,
-            device: device,
+            net,
+            device,
         }
     }
     /// creates a new `Net` instance with a specified device ID (supports only CUDA)
@@ -91,8 +91,8 @@ impl Net {
         net.set_eval();
 
         Self {
-            net: net,
-            device: device,
+            net,
+            device,
         }
     }
 }
@@ -183,7 +183,7 @@ impl Tree {
                     idx_li // returns  idx_li, which is used for indexing legal moves
                 }
                 None => {
-                    self.eval_and_expand(&selected_node, &input_b, &tensor_exe_send, id, cache)
+                    self.eval_and_expand(&selected_node, &input_b, tensor_exe_send, id, cache)
                         .await // if there are no corresponding entries in the cache, request a nn evaluation
                 }
             };
@@ -258,13 +258,13 @@ impl Tree {
         debug_print!("    all children:");
         for child in self.nodes[0].children.clone() {
             let display_str = self.display_node(child);
-            debug_print!("        {}", &format!("{}", &display_str));
+            debug_print!("        {}", &display_str.to_string());
         }
 
         if let TypeRequest::UCISearch = self.settings.search_type {
             let cp_eval = eval_in_cp(self.nodes[selected_node].net_evaluation.value);
             let elapsed_ms = sw.elapsed().as_nanos() as f32 / 1e6;
-            let nps = self.nodes[0].visits as f32 / (sw.elapsed().as_nanos() as f32 / 1e9 as f32);
+            let nps = self.nodes[0].visits as f32 / (sw.elapsed().as_nanos() as f32 / 1e9_f32);
             let (pv, mate) = self.get_pv();
             let eval_string = {
                 if mate {
@@ -372,7 +372,7 @@ impl Tree {
     pub fn select(&mut self) -> (usize, BoardStack, (usize, usize)) {
         let mut curr: usize = 0;
         let mut visited_nodes = Vec::new();
-        debug_print!("{}", &format!("    selection:"));
+        debug_print!("{}", &"    selection:".to_string());
         let mut input_b: BoardStack = self.board.clone();
         let fenstr = format!("{}", &input_b.board());
         debug_print!("{}", &format!("        board FEN: {}", fenstr));
@@ -434,7 +434,7 @@ impl Tree {
 
         let display_str = self.display_node(curr);
         debug_print!("{}", &format!("    {}", display_str));
-        debug_print!("{}", &format!("        children:"));
+        debug_print!("{}", &"        children:".to_string());
 
         for node_id in visited_nodes {
             let display_str = self.display_node(node_id);
@@ -451,7 +451,7 @@ impl Tree {
         selected_node_idx: &usize,
         bs: &BoardStack,
         tensor_exe_send: &Sender<Packet>,
-        id: usize,
+        _id: usize,
         cache: &mut LruCache<CacheEntryKey, ZeroEvaluationAbs>,
     ) -> Vec<usize> {
         debug_print!("    eval_and_expand:");
@@ -491,7 +491,7 @@ impl Tree {
 
     /// backpropagates the evaluation results up the tree
     pub fn backpropagate(&mut self, node: usize) {
-        debug_print!("{}", &format!("    backpropagation:"));
+        debug_print!("{}", &"    backpropagation:".to_string());
         let mut curr: Option<usize> = Some(node);
         let mut backprop_nodes_vec: Vec<usize> = Vec::new(); // keep track of the nodes used for backpropagation, for debug
         let mut num_backprop_times = 1.0;
@@ -710,13 +710,11 @@ impl Node {
     pub fn layer_p(&self, depth: u8, max_tree_print_depth: u8, tree: &Tree) {
         if cfg!(debug_assertions) {
             let indent = "    ".repeat(depth as usize + 2);
-            if depth <= max_tree_print_depth {
-                if !self.children.is_empty() {
-                    for c in self.children.clone() {
-                        let display_str = tree.display_node(c);
-                        debug_print!("{}", &format!("{}{}", indent, display_str));
-                        tree.nodes[c].layer_p(depth + 1, max_tree_print_depth, tree);
-                    }
+            if depth <= max_tree_print_depth && !self.children.is_empty() {
+                for c in self.children.clone() {
+                    let display_str = tree.display_node(c);
+                    debug_print!("{}", &format!("{}{}", indent, display_str));
+                    tree.nodes[c].layer_p(depth + 1, max_tree_print_depth, tree);
                 }
             }
         }
@@ -725,10 +723,10 @@ impl Node {
     /// prints the entire tree with all node information (debug)
     pub fn display_full_tree(&self, tree: &Tree) {
         if cfg!(debug_assertions) {
-            debug_print!("{}", &format!("        root node:"));
+            debug_print!("{}", &"        root node:".to_string());
             let display_str = tree.display_node(0);
             debug_print!("{}", &format!("            {}", display_str));
-            debug_print!("{}", &format!("        children:"));
+            debug_print!("{}", &"        children:".to_string());
             let max_tree_print_depth: u8 = 3;
             debug_print!("{}", &format!("    {}", display_str));
             self.layer_p(0, max_tree_print_depth, tree);
@@ -867,7 +865,7 @@ pub async fn get_move(
     }
 
     let display_str = tree.display_node(0);
-    debug_print!("{}", &format!("{}", display_str));
+    debug_print!("{}", &display_str.to_string());
     let total_visits: u32 = total_visits_list.iter().sum();
 
     let mut pi: Vec<f32> = Vec::new();
@@ -880,15 +878,15 @@ pub async fn get_move(
     }
 
     debug_print!("{}", &format!("{:?}", &pi));
-    debug_print!("{}", &format!("{}", best_move.expect("Error").to_string()));
+    debug_print!("{}", &format!("{}", best_move.expect("Error")));
     debug_print!(
         "{}",
-        &format!("best move: {}", best_move.expect("Error").to_string())
+        &format!("best move: {}", best_move.expect("Error"))
     );
 
     for child in tree.nodes[0].children.clone() {
         let display_str = tree.display_node(child);
-        debug_print!("{}", &format!("{}", display_str));
+        debug_print!("{}", &display_str.to_string());
     }
 
     // tree.nodes[0].display_full_tree(&tree);

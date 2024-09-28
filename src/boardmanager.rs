@@ -21,7 +21,7 @@ impl BoardStack {
     pub fn get_reps(&self) -> usize {
         // reps only for the current position, not the global maximum of repetitions recorded
         let target = self.board.hash();
-        (&self.move_stack).iter().filter(|&x| *x == target).count()
+        self.move_stack.iter().filter(|&x| *x == target).count()
     }
 
     /// play function to be called instead of calling directly on the cozy-chess board
