@@ -31,15 +31,15 @@ else:
 
 # print("Using: " + str(d))
 
-# model = torch.jit.script(network.TrueNetXS(16384)).to(d)
-model = torch.jit.script(
-    network.TrueNet(
-        num_resBlocks=8,
-        num_hidden=64,
-        head_channel_policy=8,
-        head_channel_values=4,
-    )
-).to(d)
+model = torch.jit.script(network.TrueNetXS(16384)).to(d)
+# model = torch.jit.script(
+#     network.TrueNet(
+#         num_resBlocks=8,
+#         num_hidden=64,
+#         head_channel_policy=8,
+#         head_channel_values=4,
+#     )
+# ).to(d)
 model.eval()
 # model = torch.jit.load("tz_6515.pt", map_location=d).eval()
 if not os.path.exists("experiment_nets"):  # no net
@@ -50,7 +50,7 @@ with open("log_experiment.npz", "w") as f:
     f.write("")
 
 BUFFER_SIZE = 10000000
-BATCH_SIZE = 16384
+BATCH_SIZE = 512
 loopbuf = LoopBuffer(
     Game.find("chess"), target_positions=BUFFER_SIZE, test_fraction=0.1
 )
@@ -69,11 +69,11 @@ train_settings = TrainSettings(
     mask_policy=True,
 )
 
-op = optim.AdamW(params=model.parameters(), lr=1e-2)
+op = optim.AdamW(params=model.parameters(), lr=1e-3, weight_decay=0.01)
 log = Logger()
 
 data_paths = []
-game_folder = "games"
+game_folder = "python_client_games"
 for file in os.listdir(game_folder):
     data_paths.append(f"{game_folder}/" + file)
 
@@ -106,7 +106,7 @@ else:
 
 # print(loopbuf.position_count)
 
-num_steps_training = 100
+num_steps_training = 10
 starting_gen = 0
 while True:
     train_sampler = loopbuf.sampler(
@@ -174,5 +174,6 @@ while True:
     model_path = "experiment_nets/tz_test_" + str(starting_gen) + ".pt"
     # print(model_path)
     model.eval()
-    with torch.no_grad():
-        torch.jit.save(model, model_path)
+    if starting_gen % 100 == 0:
+        with torch.no_grad():
+            torch.jit.save(model, model_path)

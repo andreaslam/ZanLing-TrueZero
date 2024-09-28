@@ -60,7 +60,7 @@ def load_file(games_path):
 
 HOST = "127.0.0.1"
 PORT = 38475
-BUFFER_SIZE = 5000000
+BUFFER_SIZE = 15000000
 BATCH_SIZE = 2048
 MIN_SAMPLING = 50
 SAMPLING_RATIO = 0.75
@@ -373,7 +373,6 @@ def get_model_path(training_nets):
 
     model_path = recorded_sessions[-1].strip()
     return model_path
-
 
 def check_net_exists(device, pattern):
     training_nets = []

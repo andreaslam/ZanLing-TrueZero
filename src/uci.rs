@@ -437,12 +437,12 @@ fn handle_go(
         fpu: 0.1,
         wdl: EvalMode::Wdl,
         moves_left: Some(m_settings),
-        c_puct: 2.0,
+        c_puct: 4.0,
         max_nodes: search_nodes,
         alpha: 0.03,
         eps: 0.25,
         search_type: UCISearch,
-        pst: 1.3,
+        pst: 1.5,
     };
 
     let search_request = UCIRequest {

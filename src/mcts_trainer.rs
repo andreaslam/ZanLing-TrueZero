@@ -59,14 +59,10 @@ impl Net {
     pub fn new(path: &str) -> Self {
         maybe_init_cuda();
         let device = if has_cuda() {
-            if Cuda::cudnn_is_available() {
-                Cuda::cudnn_set_benchmark(true);
-            }
             Device::Cuda(0)
         } else {
             Device::Cpu
         };
-
         let mut net = tch::CModule::load_on_device(path, device).expect("ERROR");
         net.set_eval();
 
@@ -79,9 +75,6 @@ impl Net {
     pub fn new_with_device_id(path: &str, id: usize) -> Self {
         maybe_init_cuda();
         let device = if has_cuda() {
-            if Cuda::cudnn_is_available() {
-                Cuda::cudnn_set_benchmark(true);
-            }
             let id = if Cuda::device_count() <= id.try_into().unwrap() {
                 0
             } else {
