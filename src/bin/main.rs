@@ -21,7 +21,7 @@ use tzrust::{
     mcts_trainer::{EvalMode, TypeRequest::TrainerSearch},
     message_types::{DataFileType, Entity, MessageServer, MessageType, Statistics},
     selfplay::{CollectorMessage, DataGen},
-    settings::{MovesLeftSettings, SearchSettings},
+    settings::{CPUCTSettings, FPUSettings, MovesLeftSettings, SearchSettings},
 };
 
 fn main() {
@@ -140,15 +140,22 @@ async fn generator_main(
     };
 
     let settings: SearchSettings = SearchSettings {
-        fpu: 0.6,
+        fpu: FPUSettings {
+            root_fpu: Some(0.1),
+            children_fpu: Some(0.1),
+        },
         wdl: EvalMode::Wdl,
         moves_left: Some(m_settings),
-        c_puct: 3.0,
+        c_puct: CPUCTSettings {
+            root_c_puct: Some(2.0),
+            children_c_puct: Some(2.0),
+        },
         max_nodes: Some(1600),
         alpha: 0.03,
         eps: 0.25,
         search_type: TrainerSearch(None),
         pst: 1.3,
+        batch_size: 1,
     };
 
     let nps_sender = sender_collector.clone();
@@ -183,11 +190,11 @@ fn collector_main(
     server_handle: &mut TcpStream,
     id_recv: Receiver<usize>,
 ) {
-    let thread_name = std::thread::current()
+    let _thread_name = std::thread::current()
         .name()
         .unwrap_or("unnamed")
         .to_owned();
-    debug_print!("Initialised {}", thread_name);
+    debug_print!("Initialised {}", _thread_name);
     let folder_name = "games";
     if let Err(e) = fs::create_dir(folder_name) {
         if e.kind() != std::io::ErrorKind::AlreadyExists {
@@ -336,7 +343,7 @@ fn commander_main(
                 MessageType::JobSendPath(_) => {}
                 MessageType::StatisticsSend(_) => {}
                 MessageType::RequestingNet() => {}
-                MessageType::NewNetworkPath(_path) => {}
+                MessageType::NewNetworkPath(_) => {}
                 MessageType::IdentityConfirmation(_) => {}
                 MessageType::JobSendData(_) => {}
                 MessageType::NewNetworkData(data) => {

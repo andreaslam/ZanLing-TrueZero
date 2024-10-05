@@ -197,20 +197,17 @@ fn handle_client(
                 MessageType::RequestingNet() => {
                     debug_print!("RequestingNet message received");
                     if !has_net {
-                        match *net_data {
-                            Some(ref path) => {
-                                let extra_request = MessageServer {
-                                    purpose: MessageType::NewNetworkData(path.clone()),
-                                };
-                                let mut serialised = serde_json::to_string(&extra_request)
-                                    .expect("serialisation failed");
-                                serialised += "\n";
-                                if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
-                                    eprintln!("Error sending identification! {}", msg);
-                                    break;
-                                }
+                        if let Some(ref path) = *net_data {
+                            let extra_request = MessageServer {
+                                purpose: MessageType::NewNetworkData(path.clone()),
+                            };
+                            let mut serialised = serde_json::to_string(&extra_request)
+                                .expect("serialisation failed");
+                            serialised += "\n";
+                            if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
+                                eprintln!("Error sending identification! {}", msg);
+                                break;
                             }
-                            None => {}
                         }
                         recv_msg.clear();
                         continue;
@@ -297,8 +294,8 @@ fn handle_client(
                         needs_tb_link = true;
                     }
                 },
-                MessageType::EvaluationRequest(input_data) => {
-                    debug_print!("EvaluationRequest message received: {:?}", input_data);
+                MessageType::EvaluationRequest(_input_data) => {
+                    debug_print!("EvaluationRequest message received: {:?}", _input_data);
                 }
                 MessageType::TBLink(ref msg) => {
                     *tb_link = Some(msg.clone());
@@ -316,7 +313,7 @@ fn handle_client(
                         if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
                             eprintln!("Error sending TensorBoard link! {}", msg);
                             break;
-                        } 
+                        }
                         needs_tb_link = false;
                     }
                 }
@@ -337,16 +334,13 @@ fn handle_client(
                             if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
                                 eprintln!("Error sending TensorBoard link! {}", msg);
                                 break;
-                            } 
+                            }
                             needs_tb_link = false;
                         }
                         None => {
                             needs_tb_link = true;
                         }
                     }
-                }
-                MessageType::EvaluationRequest(_input_data) => {
-                    // TODO: process evaluation requests
                 }
             }
 

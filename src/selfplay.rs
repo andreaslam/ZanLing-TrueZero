@@ -106,7 +106,10 @@ impl DataGen {
             final_board: bs,
         };
 
-        debug_print!("{}", &format!("one done {}s", _sw.elapsed().as_nanos() as f32 / 1e9));
+        debug_print!(
+            "{}",
+            &format!("one done {}s", _sw.elapsed().as_nanos() as f32 / 1e9)
+        );
         debug_print!("{}", &"one done!".to_string());
         tz
     }

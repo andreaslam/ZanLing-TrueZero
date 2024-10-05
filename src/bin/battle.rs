@@ -14,7 +14,7 @@ use tzrust::{
     },
     mcts::get_move,
     mcts_trainer::{EvalMode, TypeRequest::NonTrainerSearch},
-    settings::SearchSettings,
+    settings::{CPUCTSettings, FPUSettings, SearchSettings},
 };
 
 fn get_input(bs: &BoardStack) -> Move {
@@ -79,15 +79,22 @@ fn main() {
 
     // set up executor and sender pairs
     let settings: SearchSettings = SearchSettings {
-        fpu: 0.0,
+        fpu: FPUSettings {
+            root_fpu: Some(0.1),
+            children_fpu: Some(0.1),
+        },
         wdl: EvalMode::Value,
         moves_left: None,
-        c_puct: 2.0,
+        c_puct: CPUCTSettings {
+            root_c_puct: Some(2.0),
+            children_c_puct: Some(2.0),
+        },
         max_nodes: Some(400),
         alpha: 0.0,
         eps: 0.0,
         search_type: NonTrainerSearch,
         pst: 0.0,
+        batch_size: 1,
     };
     let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(1);
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);

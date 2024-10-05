@@ -150,9 +150,6 @@ impl Tree {
                     // retrieve non-policy data
                     let ct = self.nodes.len();
                     self.nodes[selected_node].net_evaluation = packet.values;
-                    // self.nodes[selected_node].value = packet.eval_score;
-                    // self.nodes[selected_node].wdl = packet.wdl;
-                    // self.nodes[selected_node].moves_left = packet.moves_left;
 
                     // retrieve policy data and children
 
@@ -174,7 +171,7 @@ impl Tree {
                     }
                     self.nodes[selected_node].children = ct..ct + counter; // push indices of `Node.children` (type `Range<usize>`)
 
-                    idx_li // returns  idx_li, which is used for indexing legal moves
+                    idx_li // returns idx_li, which is used for indexing legal moves
                 }
                 None => {
                     self.eval_and_expand(&selected_node, &input_b, tensor_exe_send, id, cache)
@@ -417,7 +414,10 @@ impl Tree {
             assert!(total_visits + 1 == curr_node.visits);
             if !visited_nodes.contains(&curr) {
                 visited_nodes.push(curr);
-                debug_print!("{}", &format!("        selected: {}", self.display_node(curr)));
+                debug_print!(
+                    "{}",
+                    &format!("        selected: {}", self.display_node(curr))
+                );
             }
             input_b.play(self.nodes[curr].mv.expect("Error"));
             depth += 1;
@@ -427,7 +427,10 @@ impl Tree {
         debug_print!("{}", &"        children:".to_string());
 
         for _node_id in visited_nodes {
-            debug_print!("{}", &format!("        node: {}", self.display_node(_node_id)));
+            debug_print!(
+                "{}",
+                &format!("        node: {}", self.display_node(_node_id))
+            );
         }
 
         (curr, input_b, (depth, max_depth))
@@ -500,7 +503,10 @@ impl Tree {
         }
 
         for _current in backprop_nodes_vec {
-            debug_print!("{}", &format!("        updated node to {}", self.display_node(_current)));
+            debug_print!(
+                "{}",
+                &format!("        updated node to {}", self.display_node(_current))
+            );
         }
     }
 
@@ -523,11 +529,6 @@ impl Tree {
             mv_vec.reverse();
             for mv in mv_vec {
                 bs_clone.play(mv);
-                debug_print!(
-                    "display - just played {:?}, player now {:?} ",
-                    mv,
-                    bs_clone.board().side_to_move()
-                );
             }
 
             match &self.nodes[id].parent {
@@ -638,12 +639,25 @@ impl Node {
             };
             total / (self.visits as f32)
         } else {
-            fpu
+            match self.parent {
+                Some(_) => fpu.children_fpu.unwrap_or_else(|| fpu.default()),
+                None => fpu.root_fpu.unwrap_or_else(|| fpu.default()),
+            }
         }
     }
 
     pub fn get_u_val(&self, parent_visits: u32, settings: SearchSettings) -> f32 {
-        let c_puct = settings.c_puct; // "constant determining the level of exploration"
+        let c_puct = match self.parent {
+            Some(_) => settings
+                .c_puct
+                .children_c_puct
+                .unwrap_or_else(|| settings.c_puct.default()),
+            None => settings
+                .c_puct
+                .root_c_puct
+                .unwrap_or_else(|| settings.c_puct.default()),
+        };
+
         c_puct * self.policy * ((parent_visits - 1) as f32).sqrt() / (1.0 + self.visits as f32)
     }
 
@@ -672,20 +686,6 @@ impl Node {
                 let m_clipped = m.clamp(-weights.moves_left_clip, weights.moves_left_clip);
                 (weights.moves_left_sharpness * m_clipped * -q).clamp(-1.0, 1.0)
             };
-
-            debug_print!(
-                "{:?}, self {:?}, {}",
-                player,
-                self,
-                q + u + weights.moves_left_weight * m_unit
-            );
-            debug_print!(
-                "moves_left_weight={} m_unit={}, m={}",
-                weights.moves_left_weight,
-                m_unit,
-                m
-            );
-            debug_print!("{:?}", player);
 
             q + u + weights.moves_left_weight * m_unit
         } else {

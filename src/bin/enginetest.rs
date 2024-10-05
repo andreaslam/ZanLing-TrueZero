@@ -11,18 +11,18 @@ use std::{
     num::NonZeroUsize,
     panic, process,
 };
-use tzrust::settings::MovesLeftSettings;
 use tzrust::{
     boardmanager::BoardStack,
     cache::CacheEntryKey,
+    dataformat::ZeroEvaluationAbs,
+    debug_print,
     elo::elo_wld,
     executor::{executor_static, Message, Packet},
     mcts::get_move,
     mcts_trainer::{EvalMode, TypeRequest::NonTrainerSearch},
     selfplay::CollectorMessage,
-    settings::SearchSettings,
+    settings::{CPUCTSettings, FPUSettings, MovesLeftSettings, SearchSettings},
 };
-use tzrust::{dataformat::ZeroEvaluationAbs, debug_print};
 
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
@@ -142,18 +142,25 @@ async fn generator_main(
     };
 
     let settings: SearchSettings = SearchSettings {
-        fpu: 1.0,
+        fpu: FPUSettings {
+            root_fpu: Some(0.1),
+            children_fpu: Some(0.1),
+        },
         wdl: EvalMode::Wdl,
         moves_left: Some(m_settings),
-        c_puct: 3.0,
+        c_puct: CPUCTSettings {
+            root_c_puct: Some(2.0),
+            children_c_puct: Some(2.0),
+        },
         max_nodes: Some(400),
         alpha: 0.03,
         eps: 0.25,
         search_type: NonTrainerSearch,
         pst: 1.3,
+        batch_size: 1,
     };
-    let thread_name = format!("sprt-generator-{}", generator_id);
-    debug_print!("{} Generator settings initialized", thread_name,);
+    let _thread_name = format!("sprt-generator-{}", generator_id);
+    debug_print!("{} Generator settings initialized", _thread_name);
 
     let openings = read_epd_file("./8moves_v3.epd").unwrap();
     let engines = [tensor_exe_send_0.clone(), tensor_exe_send_1.clone()];
@@ -163,7 +170,7 @@ async fn generator_main(
         let mut moves_list: Vec<String> = Vec::new();
         if swap_count % 2 == 0 {
             fen = openings.choose(&mut rand::thread_rng()).unwrap();
-        } 
+        }
         let board = Board::from_fen(fen, false).unwrap();
         let mut bs = BoardStack::new(board);
         let mut move_counter = swap_count % 2;

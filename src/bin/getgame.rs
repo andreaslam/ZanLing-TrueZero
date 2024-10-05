@@ -4,8 +4,6 @@ use flume::Sender;
 use lru::LruCache;
 use std::{env, num::NonZeroUsize, panic};
 use tokio::runtime::Runtime;
-use tzrust::mcts_trainer::TypeRequest::TrainerSearch;
-use tzrust::settings::MovesLeftSettings;
 use tzrust::{
     boardmanager::BoardStack,
     executor::{
@@ -14,8 +12,8 @@ use tzrust::{
         Packet,
     },
     mcts::get_move,
-    mcts_trainer::EvalMode,
-    settings::SearchSettings,
+    mcts_trainer::{EvalMode, TypeRequest::TrainerSearch},
+    settings::{CPUCTSettings, FPUSettings, MovesLeftSettings, SearchSettings},
 };
 
 fn main() {
@@ -46,15 +44,24 @@ fn main() {
         moves_left_sharpness: 0.5,
     };
     let settings: SearchSettings = SearchSettings {
-        fpu: 0.6,
+        fpu: FPUSettings {
+            root_fpu: Some(0.1),
+            children_fpu: Some(0.1),
+        },
+
         wdl: EvalMode::Wdl,
         moves_left: Some(m_settings),
-        c_puct: 3.0,
+        c_puct: CPUCTSettings {
+            root_c_puct: Some(2.0),
+            children_c_puct: Some(2.0),
+        },
+
         max_nodes: Some(10),
         alpha: 0.03,
         eps: 0.25,
         search_type: TrainerSearch(None),
         pst: 1.3,
+        batch_size: 1,
     };
     thread::scope(|s| {
         while games_count < target_games {

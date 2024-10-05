@@ -1,6 +1,6 @@
 // UCI code based on https://github.com/jw1912/monty
 use crate::dataformat::ZeroEvaluationAbs;
-use crate::settings::MovesLeftSettings;
+use crate::settings::{CPUCTSettings, FPUSettings, MovesLeftSettings};
 use crate::{
     boardmanager::BoardStack,
     cache::CacheEntryKey,
@@ -20,6 +20,8 @@ use tokio::runtime::Runtime;
 const STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 const DEFAULT_CACHE_SIZE: usize = 64; // default cache size in megabytes
+
+const DEFAULT_BATCH_SIZE: usize = 8;
 
 struct UCIRequest {
     board: BoardStack,
@@ -44,10 +46,15 @@ pub fn eval_in_cp(eval: f32) -> f32 {
         2. * eval
     }
 }
+fn get_cache_entry_size() -> (usize, usize) {
+    (
+        std::mem::size_of::<CacheEntryKey>(),
+        std::mem::size_of::<ZeroEvaluationAbs>(),
+    )
+}
 
 fn mb_to_items(mb: usize) -> usize {
-    let key_size = std::mem::size_of::<CacheEntryKey>();
-    let val_size = std::mem::size_of::<ZeroEvaluationAbs>();
+    let (key_size, val_size) = get_cache_entry_size();
     debug_print!("cache size: {}", (mb * 1000000) / (key_size + val_size));
     (mb * 1000000) / (key_size + val_size)
 }
@@ -131,6 +138,7 @@ fn uci_command_parse_loop(
 ) {
     let mut cache_in_items = mb_to_items(DEFAULT_CACHE_SIZE); // cache size in number of items in `LruCache`
     let mut cache_reset = false;
+    let mut batch_size = DEFAULT_BATCH_SIZE;
     loop {
         debug_print!("Debug: run_uci_loop ready");
         let input = user_input_recv.recv().unwrap();
@@ -161,6 +169,7 @@ fn uci_command_parse_loop(
                     &finished_move_recv,
                     cache_in_items,
                     cache_reset,
+                    batch_size,
                 );
                 cache_reset = false;
             }
@@ -184,6 +193,9 @@ fn uci_command_parse_loop(
                 ["setoption", "name", "Clear", "Hash"] => cache_reset = true,
                 ["setoption", "name", "Hash", "value", x] => {
                     cache_in_items = mb_to_items(x.parse().unwrap_or(DEFAULT_CACHE_SIZE))
+                }
+                ["setoption", "name", "Threads", "value", x] => {
+                    batch_size = x.parse().unwrap_or(DEFAULT_BATCH_SIZE)
                 }
                 _ => {}
             },
@@ -228,9 +240,15 @@ fn preamble() {
     println!("id name TrueZero-latest {}", env!("CARGO_PKG_VERSION"));
     println!("id author Andreas Lam");
     println!("uciok");
+    let cache_entry_size = get_cache_entry_size();
     println!(
         "option name Hash type spin default {} min 1 max {}",
         DEFAULT_CACHE_SIZE,
+        (i32::MAX / (cache_entry_size.0 + cache_entry_size.1) as i32)
+    );
+    println!(
+        "option name Threads type spin default {} min 1 max {}",
+        DEFAULT_BATCH_SIZE,
         i32::MAX
     );
 }
@@ -318,6 +336,7 @@ fn handle_go(
     finished_move_receiver: &Receiver<Move>,
     cache_size: usize,
     cache_reset: bool,
+    batch_size: usize,
 ) {
     debug_print!("{}", &"Debug: Handling 'go' command".to_string());
 
@@ -433,15 +452,22 @@ fn handle_go(
     }
 
     let settings: SearchSettings = SearchSettings {
-        fpu: 0.1,
+        fpu: FPUSettings {
+            root_fpu: Some(0.1),
+            children_fpu: Some(0.1),
+        },
         wdl: EvalMode::Wdl,
         moves_left: Some(m_settings),
-        c_puct: 1.0,
+        c_puct: CPUCTSettings {
+            root_c_puct: Some(2.0),
+            children_c_puct: Some(2.0),
+        },
         max_nodes: search_nodes,
         alpha: 0.03,
         eps: 0.25,
         search_type: UCISearch,
-        pst: 5.0,
+        pst: 1.5,
+        batch_size,
     };
 
     let search_request = UCIRequest {
@@ -459,8 +485,8 @@ fn handle_go(
     let best_move = finished_move_receiver.recv().unwrap();
 
     println!("bestmove {:#}", best_move);
-    debug_print!("{}", &"sent termination message".to_string());
-    debug_print!("{}", &"handle go done".to_string());
+    debug_print!("{}", "sent termination message");
+    debug_print!("{}", "handle go done");
 }
 fn job_listener(job_receiver: Receiver<UCIRequest>, finished_move_sender: Sender<Move>) {
     // listen to jobs and run search requests
@@ -469,7 +495,6 @@ fn job_listener(job_receiver: Receiver<UCIRequest>, finished_move_sender: Sender
     let mut cache: LruCache<CacheEntryKey, ZeroEvaluationAbs> =
         LruCache::new(NonZeroUsize::new(mb_to_items(DEFAULT_CACHE_SIZE)).unwrap());
     debug_print!("Debug: Job Listener ready");
-
     loop {
         let received_message = job_receiver.recv();
         match received_message {

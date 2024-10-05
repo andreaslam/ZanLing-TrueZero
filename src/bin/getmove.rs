@@ -1,15 +1,13 @@
 use cozy_chess::Board;
 use crossbeam::thread;
 use lru::LruCache;
-use std::{env, panic, time::Instant};
-use std::{num::NonZeroUsize, process};
+use std::{env, num::NonZeroUsize, panic, process, time::Instant};
 use tokio::runtime::Runtime;
-use tzrust::dataformat::ZeroEvaluationAbs;
-use tzrust::debug_print;
-use tzrust::settings::MovesLeftSettings;
 use tzrust::{
     boardmanager::BoardStack,
     cache::CacheEntryKey,
+    dataformat::ZeroEvaluationAbs,
+    debug_print,
     executor::{
         executor_static,
         Message::{self, StopServer},
@@ -17,7 +15,7 @@ use tzrust::{
     },
     mcts::get_move,
     mcts_trainer::{EvalMode, TypeRequest::NonTrainerSearch},
-    settings::SearchSettings,
+    settings::{CPUCTSettings, FPUSettings, MovesLeftSettings, SearchSettings},
 };
 fn main() {
     // test MCTS move outputs
@@ -43,7 +41,7 @@ fn main() {
         false
     });
 
-    let total_moves = move_list.len();
+    let _total_moves = move_list.len();
     // set up executor and sender pairs
 
     let (tensor_exe_send, tensor_exe_recv) = flume::bounded::<Packet>(1);
@@ -53,7 +51,7 @@ fn main() {
             .name("executor".to_string())
             .spawn(move |_| {
                 executor_static(
-                    r"nets/tz_292.pt".to_string(),
+                    r"nets/tz_4924.pt".to_string(),
                     // r"tz_6515.pt".to_string(),
                     // r"chess_16x128_gen3634.pt".to_string(),
                     tensor_exe_recv,
@@ -63,7 +61,7 @@ fn main() {
             })
             .unwrap();
 
-        debug_print!("{}", &format!("Number of legal moves: {}", total_moves));
+        debug_print!("{}", &format!("Number of legal moves: {}", _total_moves));
         let bs = BoardStack::new(board);
         let sw = Instant::now();
         let m_settings = MovesLeftSettings {
@@ -72,28 +70,28 @@ fn main() {
             moves_left_sharpness: 0.5,
         };
         let settings: SearchSettings = SearchSettings {
-            fpu: 1.0,
+            fpu: FPUSettings {
+                root_fpu: Some(0.1),
+                children_fpu: Some(0.1),
+            },
             wdl: EvalMode::Wdl,
             moves_left: Some(m_settings),
-            c_puct: 2.0,
+            c_puct: CPUCTSettings {
+                root_c_puct: Some(2.0),
+                children_c_puct: Some(2.0),
+            },
             max_nodes: Some(1000),
             alpha: 0.03,
             eps: 0.25,
             search_type: NonTrainerSearch,
             pst: 1.0,
+            batch_size: 1,
         };
         let rt = Runtime::new().unwrap();
         let mut cache: LruCache<CacheEntryKey, ZeroEvaluationAbs> =
             LruCache::new(NonZeroUsize::new(100000).unwrap());
         let (best_move, nn_data, _, _, _) = rt.block_on(async {
-            get_move(
-                bs,
-                tensor_exe_send.clone(),
-                settings,
-                None,
-                &mut cache,
-            )
-            .await
+            get_move(bs, tensor_exe_send.clone(), settings, None, &mut cache).await
         });
         for (mv, score) in move_list.iter().zip(nn_data.policy.iter()) {
             println!("{:#}, {}", mv, score);

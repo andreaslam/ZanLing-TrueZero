@@ -31,7 +31,7 @@ class TrueNet(nn.Module):
             nn.BatchNorm2d(head_channel_values),
             nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(head_channel_values *  num_hidden, 5),
+            nn.Linear(head_channel_values * num_hidden, 5),
         )
 
     def forward(self, x):
@@ -73,9 +73,7 @@ class TrueNetXS(nn.Module):
             nn.Linear(num_hidden, 1880),
         )
         self.valueHead = nn.Sequential(
-            nn.Dropout(0.5),
-            nn.Linear(num_hidden, 5),
-            nn.Dropout(0.5)
+            nn.Dropout(0.5), nn.Linear(num_hidden, 5), nn.Dropout(0.5)
         )
 
     def forward(self, x):

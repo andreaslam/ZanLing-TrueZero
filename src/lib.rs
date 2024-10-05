@@ -23,7 +23,7 @@ mod tests {
     use boardmanager::BoardStack;
     use cozy_chess::{Board, Color, GameStatus};
     use mcts_trainer::{EvalMode, Node, Tree, TypeRequest};
-    use settings::SearchSettings;
+    use settings::{CPUCTSettings, FPUSettings, SearchSettings};
 
     extern crate flume;
 
@@ -84,14 +84,21 @@ mod tests {
     fn create_search_settings() -> SearchSettings {
         SearchSettings {
             max_nodes: Some(100),
-            c_puct: 2.0,
-            fpu: 1.0,
+            c_puct: CPUCTSettings {
+                root_c_puct: Some(2.0),
+                children_c_puct: Some(2.0),
+            },
+            fpu: FPUSettings {
+                root_fpu: Some(0.1),
+                children_fpu: Some(0.1),
+            },
             pst: 1.0,
             eps: 0.25,
             alpha: 0.03,
             search_type: TypeRequest::UCISearch,
             wdl: EvalMode::Wdl,
             moves_left: None,
+            batch_size: 1,
         }
     }
 
@@ -126,14 +133,14 @@ mod tests {
         assert_eq!(selected_node, 0);
     }
 
-    /// test PUCT with non-zero FPU, where the initial visit count is 0
+    // test PUCT with non-zero FPU, where the initial visit count is 0
     #[test]
 
     fn test_puct_with_nonzero_fpu() {
         let settings = create_search_settings();
         let node = Node::new(0.5, None, None);
         assert_eq!(
-            settings.fpu,
+            settings.fpu.root_fpu.unwrap(),
             node.puct_formula(1, 2.0, Color::White, settings)
         )
     }

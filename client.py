@@ -374,6 +374,7 @@ def get_model_path(training_nets):
     model_path = recorded_sessions[-1].strip()
     return model_path
 
+
 def check_net_exists(device, pattern):
     training_nets = []
     net_id = {}
