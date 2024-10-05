@@ -127,6 +127,7 @@ impl Tree {
         let step_debugger = TimeStampDebugger::create_debug();
 
         let (selected_node, input_b, (min_depth, max_depth)) = self.select();
+        
         if id % 512 == 0 {
             step_debugger.record("mcts select", &thread_name);
         }
@@ -235,7 +236,7 @@ impl Tree {
             debug_print!("terminal! {:#} {:?}", input_b.board(), wdl);
             self.nodes[selected_node].net_evaluation.value = wdl.w - wdl.l;
             self.nodes[selected_node].net_evaluation.wdl = wdl;
-            self.nodes[selected_node].net_evaluation.moves_left = 0.0; //TODO find alternative
+            self.nodes[selected_node].net_evaluation.moves_left = 0.0;
         }
 
         self.backpropagate(selected_node);

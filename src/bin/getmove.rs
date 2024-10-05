@@ -51,9 +51,9 @@ fn main() {
             .name("executor".to_string())
             .spawn(move |_| {
                 executor_static(
-                    r"nets/tz_4924.pt".to_string(),
+                    // r"nets/tz_4924.pt".to_string(),
                     // r"tz_6515.pt".to_string(),
-                    // r"chess_16x128_gen3634.pt".to_string(),
+                    r"chess_16x128_gen3634.pt".to_string(),
                     tensor_exe_recv,
                     ctrl_recv,
                     1,
@@ -69,6 +69,7 @@ fn main() {
             moves_left_clip: 20.0,
             moves_left_sharpness: 0.5,
         };
+        let max_nodes = 1000;
         let settings: SearchSettings = SearchSettings {
             fpu: FPUSettings {
                 root_fpu: Some(0.1),
@@ -80,7 +81,7 @@ fn main() {
                 root_c_puct: Some(2.0),
                 children_c_puct: Some(2.0),
             },
-            max_nodes: Some(1000),
+            max_nodes: Some(max_nodes),
             alpha: 0.03,
             eps: 0.25,
             search_type: NonTrainerSearch,
@@ -90,11 +91,11 @@ fn main() {
         let rt = Runtime::new().unwrap();
         let mut cache: LruCache<CacheEntryKey, ZeroEvaluationAbs> =
             LruCache::new(NonZeroUsize::new(100000).unwrap());
-        let (best_move, nn_data, _, _, _) = rt.block_on(async {
+        let (best_move, nn_data, _,_, _) = rt.block_on(async {
             get_move(bs, tensor_exe_send.clone(), settings, None, &mut cache).await
         });
         for (mv, score) in move_list.iter().zip(nn_data.policy.iter()) {
-            println!("{:#}, {}", mv, score);
+            println!("{:#}: {}%", mv, score);
         }
         println!("{:#}", best_move);
         println!("{:?}", nn_data);

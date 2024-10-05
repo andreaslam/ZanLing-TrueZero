@@ -133,7 +133,7 @@ mod tests {
         assert_eq!(selected_node, 0);
     }
 
-    // test PUCT with non-zero FPU, where the initial visit count is 0
+    /// test PUCT with non-zero FPU, where the initial visit count is 0
     #[test]
 
     fn test_puct_with_nonzero_fpu() {
