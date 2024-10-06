@@ -127,7 +127,7 @@ impl Tree {
         let step_debugger = TimeStampDebugger::create_debug();
 
         let (selected_node, input_b, (min_depth, max_depth)) = self.select();
-        
+
         if id % 512 == 0 {
             step_debugger.record("mcts select", &thread_name);
         }
@@ -191,7 +191,8 @@ impl Tree {
                 // add policy softmax temperature and Dirichlet noise
                 let mut sum = 0.0;
                 for child in self.nodes[0].children.clone() {
-                    self.nodes[child].policy = self.nodes[child].policy.powf(self.settings.pst);
+                    self.nodes[child].policy =
+                        self.nodes[child].policy.powf(self.settings.pst.root_pst);
                     sum += self.nodes[child].policy;
                 }
                 for child in self.nodes[0].children.clone() {
@@ -641,22 +642,16 @@ impl Node {
             total / (self.visits as f32)
         } else {
             match self.parent {
-                Some(_) => fpu.children_fpu.unwrap_or_else(|| fpu.default()),
-                None => fpu.root_fpu.unwrap_or_else(|| fpu.default()),
+                Some(_) => fpu.children_fpu,
+                None => fpu.root_fpu,
             }
         }
     }
 
     pub fn get_u_val(&self, parent_visits: u32, settings: SearchSettings) -> f32 {
         let c_puct = match self.parent {
-            Some(_) => settings
-                .c_puct
-                .children_c_puct
-                .unwrap_or_else(|| settings.c_puct.default()),
-            None => settings
-                .c_puct
-                .root_c_puct
-                .unwrap_or_else(|| settings.c_puct.default()),
+            Some(_) => settings.c_puct.children_c_puct,
+            None => settings.c_puct.root_c_puct,
         };
 
         c_puct * self.policy * ((parent_visits - 1) as f32).sqrt() / (1.0 + self.visits as f32)

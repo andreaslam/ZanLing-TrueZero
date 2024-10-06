@@ -11,31 +11,52 @@ pub struct SearchSettings {
     pub alpha: f32,
     pub eps: f32,
     pub search_type: TypeRequest,
-    pub pst: f32,
+    pub pst: PSTSettings,
     pub batch_size: usize,
     // pub cap_randomisation: Option<PlayoutCapSettings>,
 }
 
 #[derive(Clone, Debug, PartialEq, Copy)]
+pub struct PSTSettings {
+    pub root_pst: f32,
+    pub children_pst: f32,
+}
+impl PSTSettings {
+    /// returns the default value of FPUSettings
+    pub fn default(self) -> PSTSettings {
+        PSTSettings {
+            root_pst: 1.75,
+            children_pst: 1.5,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Copy)]
 pub struct FPUSettings {
-    pub root_fpu: Option<f32>,
-    pub children_fpu: Option<f32>,
+    pub root_fpu: f32,
+    pub children_fpu: f32,
 }
 impl FPUSettings {
     /// returns the default value of FPUSettings
-    pub fn default(self) -> f32 {
-        0.5
+    pub fn default(self) -> FPUSettings {
+        FPUSettings {
+            root_fpu: 0.1,
+            children_fpu: 0.2,
+        }
     }
 }
 #[derive(Clone, Debug, PartialEq, Copy)]
 pub struct CPUCTSettings {
-    pub root_c_puct: Option<f32>,
-    pub children_c_puct: Option<f32>,
+    pub root_c_puct: f32,
+    pub children_c_puct: f32,
 }
 impl CPUCTSettings {
     /// returns the default value of CPUCTSettings
-    pub fn default(self) -> f32 {
-        2.0
+    pub fn default(self) -> CPUCTSettings {
+        CPUCTSettings {
+            root_c_puct: 0.1,
+            children_c_puct: 0.2,
+        }
     }
 }
 #[derive(Clone, Debug, PartialEq, Copy)]

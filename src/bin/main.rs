@@ -21,7 +21,7 @@ use tzrust::{
     mcts_trainer::{EvalMode, TypeRequest::TrainerSearch},
     message_types::{DataFileType, Entity, MessageServer, MessageType, Statistics},
     selfplay::{CollectorMessage, DataGen},
-    settings::{CPUCTSettings, FPUSettings, MovesLeftSettings, SearchSettings},
+    settings::{CPUCTSettings, FPUSettings, MovesLeftSettings, PSTSettings, SearchSettings},
 };
 
 fn main() {
@@ -134,27 +134,30 @@ async fn generator_main(
     id: usize,
 ) {
     let m_settings = MovesLeftSettings {
-        moves_left_weight: 0.03,
+        moves_left_weight: 0.05,
         moves_left_clip: 20.0,
         moves_left_sharpness: 0.5,
     };
 
     let settings: SearchSettings = SearchSettings {
         fpu: FPUSettings {
-            root_fpu: Some(0.1),
-            children_fpu: Some(0.1),
+            root_fpu: 0.6,
+            children_fpu: 0.5,
         },
         wdl: EvalMode::Wdl,
         moves_left: Some(m_settings),
         c_puct: CPUCTSettings {
-            root_c_puct: Some(2.0),
-            children_c_puct: Some(2.0),
+            root_c_puct: 3.0,
+            children_c_puct: 2.0,
         },
         max_nodes: Some(1600),
         alpha: 0.03,
         eps: 0.25,
         search_type: TrainerSearch(None),
-        pst: 1.3,
+        pst: PSTSettings {
+            root_pst: 1.75,
+            children_pst: 1.5,
+        },
         batch_size: 1,
     };
 

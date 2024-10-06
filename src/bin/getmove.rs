@@ -15,7 +15,7 @@ use tzrust::{
     },
     mcts::get_move,
     mcts_trainer::{EvalMode, TypeRequest::NonTrainerSearch},
-    settings::{CPUCTSettings, FPUSettings, MovesLeftSettings, SearchSettings},
+    settings::{CPUCTSettings, FPUSettings, MovesLeftSettings, PSTSettings, SearchSettings},
 };
 fn main() {
     // test MCTS move outputs
@@ -72,26 +72,29 @@ fn main() {
         let max_nodes = 1000;
         let settings: SearchSettings = SearchSettings {
             fpu: FPUSettings {
-                root_fpu: Some(0.1),
-                children_fpu: Some(0.1),
+                root_fpu: 0.1,
+                children_fpu: 0.1,
             },
             wdl: EvalMode::Wdl,
             moves_left: Some(m_settings),
             c_puct: CPUCTSettings {
-                root_c_puct: Some(2.0),
-                children_c_puct: Some(2.0),
+                root_c_puct: 2.0,
+                children_c_puct: 2.0,
             },
             max_nodes: Some(max_nodes),
             alpha: 0.03,
             eps: 0.25,
             search_type: NonTrainerSearch,
-            pst: 1.0,
+            pst: PSTSettings {
+                root_pst: 1.75,
+                children_pst: 1.5,
+            },
             batch_size: 1,
         };
         let rt = Runtime::new().unwrap();
         let mut cache: LruCache<CacheEntryKey, ZeroEvaluationAbs> =
             LruCache::new(NonZeroUsize::new(100000).unwrap());
-        let (best_move, nn_data, _,_, _) = rt.block_on(async {
+        let (best_move, nn_data, _, _, _) = rt.block_on(async {
             get_move(bs, tensor_exe_send.clone(), settings, None, &mut cache).await
         });
         for (mv, score) in move_list.iter().zip(nn_data.policy.iter()) {

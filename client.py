@@ -60,7 +60,7 @@ def load_file(games_path):
 
 HOST = "127.0.0.1"
 PORT = 38475
-BUFFER_SIZE = 15000000
+BUFFER_SIZE = 1500000
 BATCH_SIZE = 2048
 MIN_SAMPLING = 50
 SAMPLING_RATIO = 0.75
@@ -155,9 +155,7 @@ def extract_incoming_data_given_bytes(loopbuf, log, raw_data):
     decoded_string = meta_data.decode("utf-8")
     data = json.loads(decoded_string)
     with open(path + ".json", "w") as file:
-        json.dump(
-            data, file, indent=4
-        )  # Use indent parameter for pretty formatting (optional)
+        json.dump(data, file, indent=4)
     with open("datafile.txt", "a") as f:
         f.write(path + "\n")
     print(path)

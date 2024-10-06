@@ -21,7 +21,7 @@ use tzrust::{
     mcts::get_move,
     mcts_trainer::{EvalMode, TypeRequest::NonTrainerSearch},
     selfplay::CollectorMessage,
-    settings::{CPUCTSettings, FPUSettings, MovesLeftSettings, SearchSettings},
+    settings::{CPUCTSettings, FPUSettings, MovesLeftSettings, PSTSettings, SearchSettings},
 };
 
 fn main() {
@@ -35,12 +35,12 @@ fn main() {
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
     let num_games = 1000000;
     let num_threads = 2048;
-    let engine_0: String = "nets/tz_304.pt".to_string(); // new engine
-                                                         // let engine_0: String = "tz_6515.pt".to_string(); // new engine
-                                                         //  let engine_1: String = "chess_16x128_gen3634.pt".to_string(); // old engine
-    let engine_1: String = "tz_6515.pt".to_string();
-    // let engine_1: String = "nets/tz_296.pt".to_string(); // new engine
-    // let engine_1: String = "nets/tz_151.pt".to_string();
+    let engine_0: String = "nets/tz_4939.pt".to_string(); // new engine
+                                                          // let engine_0: String = "tz_6515.pt".to_string(); // new engine
+    let engine_1: String = "chess_16x128_gen3634.pt".to_string(); // old engine
+                                                                  // let engine_1: String = "tz_6515.pt".to_string();
+                                                                  // let engine_1: String = "nets/tz_296.pt".to_string(); // new engine
+                                                                  // let engine_1: String = "nets/tz_151.pt".to_string();
     let num_executors = 2; // always be 2, 2 players, one each (one for each neural net)
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
     let pool = ThreadPool::builder().pool_size(6).create().unwrap();
@@ -143,20 +143,23 @@ async fn generator_main(
 
     let settings: SearchSettings = SearchSettings {
         fpu: FPUSettings {
-            root_fpu: Some(0.1),
-            children_fpu: Some(0.1),
+            root_fpu: 0.6,
+            children_fpu: 0.6,
         },
         wdl: EvalMode::Wdl,
         moves_left: Some(m_settings),
         c_puct: CPUCTSettings {
-            root_c_puct: Some(2.0),
-            children_c_puct: Some(2.0),
+            root_c_puct: 4.0,
+            children_c_puct: 2.0,
         },
-        max_nodes: Some(400),
+        max_nodes: Some(100),
         alpha: 0.03,
         eps: 0.25,
         search_type: NonTrainerSearch,
-        pst: 1.3,
+        pst: PSTSettings {
+            root_pst: 1.75,
+            children_pst: 1.5,
+        },
         batch_size: 1,
     };
     let _thread_name = format!("sprt-generator-{}", generator_id);

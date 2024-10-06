@@ -1,6 +1,6 @@
 // UCI code based on https://github.com/jw1912/monty
 use crate::dataformat::ZeroEvaluationAbs;
-use crate::settings::{CPUCTSettings, FPUSettings, MovesLeftSettings};
+use crate::settings::{CPUCTSettings, FPUSettings, MovesLeftSettings, PSTSettings};
 use crate::{
     boardmanager::BoardStack,
     cache::CacheEntryKey,
@@ -453,20 +453,23 @@ fn handle_go(
 
     let settings: SearchSettings = SearchSettings {
         fpu: FPUSettings {
-            root_fpu: Some(0.1),
-            children_fpu: Some(0.1),
+            root_fpu: 1.0,
+            children_fpu: 0.75,
         },
         wdl: EvalMode::Wdl,
         moves_left: Some(m_settings),
         c_puct: CPUCTSettings {
-            root_c_puct: Some(2.0),
-            children_c_puct: Some(2.0),
+            root_c_puct: 4.0,
+            children_c_puct: 2.0,
         },
         max_nodes: search_nodes,
         alpha: 0.03,
         eps: 0.25,
         search_type: UCISearch,
-        pst: 1.5,
+        pst: PSTSettings {
+            root_pst: 1.75,
+            children_pst: 1.5,
+        },
         batch_size,
     };
 
