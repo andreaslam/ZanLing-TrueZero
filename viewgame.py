@@ -1,9 +1,16 @@
 from lib.data.file import DataFile
 from lib.games import Game
 
+import argparse
+
+parser = argparse.ArgumentParser("View game file")
+parser.add_argument(
+    "file", help="path of game file", type=str
+)
+args = parser.parse_args()
 data = DataFile.open(
     Game.find("chess"),
-    r"games\gen_1_games_1725558424281596000",
+    args.file,
 )
 
 all_game_moves = []
