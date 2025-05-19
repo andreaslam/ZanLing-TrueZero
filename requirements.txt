@@ -7,4 +7,4 @@ PyQt5_sip==12.13.0
 pyqtgraph==0.12.4
 scipy==1.11.4
 torch==2.6.0
-setuptools==73.0.0
+setuptools==78.1.1
