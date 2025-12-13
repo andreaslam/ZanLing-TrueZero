@@ -54,8 +54,8 @@ impl CPUCTSettings {
     /// returns the default value of CPUCTSettings
     pub fn default(self) -> CPUCTSettings {
         CPUCTSettings {
-            root_c_puct: 0.1,
-            children_c_puct: 0.2,
+            root_c_puct: 1.0,
+            children_c_puct: 2.0,
         }
     }
 }

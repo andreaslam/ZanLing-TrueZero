@@ -1,11 +1,1 @@
 nets/tz_0.pt
-nets/tz_1.pt
-nets/tz_2.pt
-nets/tz_3.pt
-nets/tz_4.pt
-nets/tz_5.pt
-nets/tz_6.pt
-nets/tz_7.pt
-nets/tz_8.pt
-nets/tz_9.pt
-nets/tz_10.pt

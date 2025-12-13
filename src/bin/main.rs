@@ -141,13 +141,13 @@ async fn generator_main(
 
     let settings: SearchSettings = SearchSettings {
         fpu: FPUSettings {
-            root_fpu: 0.6,
+            root_fpu: 1.0,
             children_fpu: 0.5,
         },
         wdl: EvalMode::Wdl,
         moves_left: Some(m_settings),
         c_puct: CPUCTSettings {
-            root_c_puct: 3.0,
+            root_c_puct: 2.0,
             children_c_puct: 2.0,
         },
         max_nodes: Some(1600),
@@ -155,7 +155,7 @@ async fn generator_main(
         eps: 0.25,
         search_type: TrainerSearch(None),
         pst: PSTSettings {
-            root_pst: 1.75,
+            root_pst: 1.5,
             children_pst: 1.5,
         },
         batch_size: 1,
