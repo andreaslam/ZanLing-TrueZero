@@ -11,6 +11,7 @@
 .DS_Store
 *.npz
 *.txt
+*.csv
 *.pyc
 
 # Byte-compiled / optimized / DLL files
