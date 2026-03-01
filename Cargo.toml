@@ -36,5 +36,5 @@ crossbeam = "0.8.2"
 futures = { version = "0.3.29", default-features = false, features = ["executor", "thread-pool"] }
 itertools = "0.13.0"
 tokio = { version = "1", features = ["full"] }
-lru = "0.12.3"
+lru = "0.16.3"
 crossfire = "1.0.1"
