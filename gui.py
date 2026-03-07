@@ -452,7 +452,7 @@ class DataReceiver(QObject):
     def run_gui_testing(self, login_screen, experiment_tracker):
         password = "bar"
         print(
-            f"[Note]: this is the demo version of TrueScheduler. use '{password}' to access the rest of the GUI."
+            "[Note]: this is the demo version of TrueScheduler. Use the demo password to access the rest of the GUI."
         )
         print("debugging prints and logging enabled.")
         while True:
