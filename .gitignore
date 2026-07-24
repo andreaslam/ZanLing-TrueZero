@@ -4,7 +4,6 @@
 **/__pycache__/**
 /frames/
 /experiment_nets/
-.gitignore
 /runs/
 /python_client_games/
 /UHO_2024/
@@ -206,3 +205,5 @@ target/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 outputs.txt
+datafile.txt
+traininglog.txt

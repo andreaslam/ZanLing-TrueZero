@@ -70,7 +70,13 @@ assert BATCH_SIZE > 0 and (BATCH_SIZE & (BATCH_SIZE - 1)) == 0
 
 def main():
     game = Game.find("chess")
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        device = "cuda"
+    try:
+        if torch.backends.mps.is_available():
+            device = "mps"
+    except Exception:
+        device = "cpu"
     print(f"Using: {device}")
     os.makedirs("nets", exist_ok=True)
     os.makedirs("games", exist_ok=True)
