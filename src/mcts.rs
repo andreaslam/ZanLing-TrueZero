@@ -31,12 +31,14 @@ pub async fn get_move(
     }
     match settings.max_nodes {
         Some(max_nodes) => {
-            while tree.nodes[0].visits < max_nodes as u32 {
+            let min_visits_for_policy = 2;
+            let target_visits = (max_nodes as u32).max(min_visits_for_policy);
+            while tree.nodes[0].visits < target_visits {
                 debug_print!("step {}", tree.nodes[0].visits);
                 match stop_signal {
                     Some(ref signal) => match signal.try_recv() {
                         Ok(_) => {
-                            if tree.nodes[0].visits < 1 {
+                            if tree.nodes[0].visits < min_visits_for_policy {
                                 debug_print!("Debug: Insufficient search to produce output");
                                 tree.step(&tensor_exe_send, sw, 0, cache).await;
                             } else {
@@ -49,8 +51,12 @@ pub async fn get_move(
                             tree.step(&tensor_exe_send, sw, 0, cache).await;
                         }
                         Err(TryRecvError::Disconnected) => {
-                            debug_print!("Debug: Stop signal disconnected, breaking loop");
-                            break;
+                            if tree.nodes[0].visits < min_visits_for_policy {
+                                tree.step(&tensor_exe_send, sw, 0, cache).await;
+                            } else {
+                                debug_print!("Debug: Stop signal disconnected, breaking loop");
+                                break;
+                            }
                         }
                     },
                     None => {
@@ -61,13 +67,14 @@ pub async fn get_move(
         }
         None => {
             // go infinite/infinite search
+            let min_visits_for_policy = 2;
 
             loop {
                 debug_print!("step {}", tree.nodes[0].visits);
                 match stop_signal {
                     Some(ref signal) => match signal.try_recv() {
                         Ok(_) => {
-                            if tree.nodes[0].visits < 1 {
+                            if tree.nodes[0].visits < min_visits_for_policy {
                                 debug_print!("Debug: Insufficient search to produce output");
                                 tree.step(&tensor_exe_send, sw, 0, cache).await;
                             } else {
@@ -80,8 +87,12 @@ pub async fn get_move(
                             tree.step(&tensor_exe_send, sw, 0, cache).await;
                         }
                         Err(TryRecvError::Disconnected) => {
-                            debug_print!("Debug: Stop signal disconnected, breaking loop");
-                            break;
+                            if tree.nodes[0].visits < min_visits_for_policy {
+                                tree.step(&tensor_exe_send, sw, 0, cache).await;
+                            } else {
+                                debug_print!("Debug: Stop signal disconnected, breaking loop");
+                                break;
+                            }
                         }
                     },
                     None => {
@@ -163,7 +174,8 @@ pub async fn get_move(
         // search data
         values: tree.nodes[0].total_evaluation,
         policy: pi,
-    };
+    }
+    .get_average(tree.nodes[0].visits);
 
     debug_print!("Debug: Tree search completed");
 

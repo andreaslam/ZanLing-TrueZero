@@ -147,4 +147,16 @@ mod tests {
             node.puct_formula(1, 2.0, Color::White, settings)
         )
     }
+
+    #[test]
+    fn test_backup_adds_no_extra_move_at_evaluated_node() {
+        let board_stack = create_board_stack();
+        let settings = create_search_settings();
+        let mut tree = Tree::new(board_stack, settings);
+        tree.nodes[0].net_evaluation.moves_left = 0.0;
+
+        tree.backpropagate(0);
+
+        assert_eq!(tree.nodes[0].total_evaluation.moves_left, 0.0);
+    }
 }

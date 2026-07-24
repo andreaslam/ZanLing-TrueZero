@@ -7,7 +7,7 @@ import torch
 
 from lib.data.taker import Taker
 from lib.games import Game
-from lib.util import DEVICE, prod, map_none, map_none_or
+from lib.util import DEVICE, map_none, map_none_or, prod
 
 
 @dataclass
@@ -131,6 +131,47 @@ class Position:
         )
 
         data.finish()
+        self._validate_replay_contract(move_count)
+
+    def _validate_replay_contract(self, move_count: int):
+        assert 0 <= self.move_index <= move_count, "Invalid position index"
+        assert self.is_final == (self.move_index == move_count), (
+            "Final-position flag does not match position index"
+        )
+        assert np.isclose(
+            self.final_moves_left, move_count - self.move_index, atol=0.001
+        ), "Invalid final moves-left target"
+        assert (
+            len(self.policy_indices)
+            == len(self.policy_values)
+            == self.available_mv_count
+        )
+        assert np.all(
+            (0 <= self.policy_indices) & (self.policy_indices < self.game.policy_size)
+        ), "Policy index outside the game's policy space"
+
+        if self.available_mv_count:
+            assert np.isfinite(self.policy_values).all(), "Non-finite policy value"
+            assert np.isclose(self.policy_values.sum(), 1.0, atol=0.001), (
+                "Policy values must sum to one"
+            )
+
+        self._validate_wdl("final", self.final_wdl)
+        self._validate_wdl("zero", self.zero_wdl)
+        self._validate_wdl("net", self.net_wdl)
+        assert np.isclose(
+            self.final_v, self.final_wdl[0] - self.final_wdl[2], atol=0.001
+        ), "Final value and WDL target disagree"
+
+    @staticmethod
+    def _validate_wdl(name: str, wdl: np.ndarray):
+        if np.isnan(wdl).all():
+            return
+
+        assert np.isfinite(wdl).all(), f"Partially non-finite {name} WDL target"
+        assert np.isclose(wdl.sum(), 1.0, atol=0.001), (
+            f"{name} WDL target must sum to one"
+        )
 
     def map_symmetry_inplace(self, index: int):
         symmetries = self.game.symmetry
@@ -359,9 +400,9 @@ class UnrolledPositionBatch:
     ):
         assert unroll_steps >= 0, "Negative unroll steps don't make sense"
         for chain in chains:
-            assert (
-                len(chain) == unroll_steps + 1
-            ), f"Expected {unroll_steps + 1} positions, got chain with {len(chain)}"
+            assert len(chain) == unroll_steps + 1, (
+                f"Expected {unroll_steps + 1} positions, got chain with {len(chain)}"
+            )
 
         positions_by_step = [[] for _ in range(unroll_steps + 1)]
 
@@ -373,9 +414,9 @@ class UnrolledPositionBatch:
                     positions_by_step[si].append(p)
                     last_position = p
                 else:
-                    assert (
-                        last_position is not None
-                    ), "Each chain must contain at least one position"
+                    assert last_position is not None, (
+                        "Each chain must contain at least one position"
+                    )
                     positions_by_step[si].append(PostFinalPosition(last_position))
 
         self.unroll_steps = unroll_steps

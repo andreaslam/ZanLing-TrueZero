@@ -488,7 +488,7 @@ impl Tree {
         debug_print!("{}", &"    backpropagation:".to_string());
         let mut curr: Option<usize> = Some(node);
         let mut backprop_nodes_vec: Vec<usize> = Vec::new(); // keep track of the nodes used for backpropagation, for debug
-        let mut num_backprop_times = 1.0;
+        let mut num_backprop_times = 0.0;
         let current_node_net_eval = self.nodes[node].net_evaluation;
         while let Some(current) = curr {
             self.nodes[current].visits += 1;
@@ -787,7 +787,9 @@ pub async fn get_move(
     }
     match settings.max_nodes {
         Some(max_nodes) => {
-            while tree.nodes[0].visits < max_nodes as u32 {
+            let min_visits_for_policy = 2;
+            let target_visits = (max_nodes as u32).max(min_visits_for_policy);
+            while tree.nodes[0].visits < target_visits {
                 debug_print!("{}", &format!("step {}", tree.nodes[0].visits));
                 debug_print!(
                     "{}",

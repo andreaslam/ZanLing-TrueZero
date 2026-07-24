@@ -93,8 +93,8 @@ pub fn board_data(bs: &BoardStack) -> (Vec<f32>, Vec<bool>) {
         for piece in Piece::ALL {
             for tile in bs.board().colored_pieces(colour, piece) {
                 if li[0] == Color::Black {
-                    pieces_sqs[(63 - (tile.rank() as usize * 8 + (7 - tile.file() as usize)))
-                        + (64 * counter)] = true;
+                    let index = tile.rank() as usize * 8 + tile.file() as usize;
+                    pieces_sqs[(63 - index) + (64 * counter)] = true;
                 } else {
                     pieces_sqs[(tile.rank() as usize * 8 + tile.file() as usize) + 64 * counter] =
                         true;
@@ -118,7 +118,8 @@ pub fn board_data(bs: &BoardStack) -> (Vec<f32>, Vec<bool>) {
         } else {
             let row = Rank::Fifth;
             let ep_sq = Square::new(is_ep, row);
-            sq21[63 - (ep_sq.rank() as usize * 8 + (7 - ep_sq.file() as usize))] = true;
+            let index = ep_sq.rank() as usize * 8 + ep_sq.file() as usize;
+            sq21[63 - index] = true;
         }
     };
     pieces_sqs.extend(sq21);

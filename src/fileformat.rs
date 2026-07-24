@@ -138,10 +138,15 @@ impl BinaryOutput {
             self.min_game_length.unwrap_or(i32::MAX),
         ));
 
+        let is_terminal = final_board.is_terminal();
+        let hit_move_limit = !is_terminal;
+        if hit_move_limit {
+            self.hit_move_limit_count += 1;
+        }
         let winner: Option<Color> = match final_board.status() {
             GameStatus::Drawn => None,
             GameStatus::Won => Some(!final_board.board().side_to_move()),
-            GameStatus::Ongoing => panic!("Game is still ongoing!"),
+            GameStatus::Ongoing => None,
         }; // colour (if any) that won the game
 
         match winner {
@@ -187,41 +192,7 @@ impl BinaryOutput {
             let kdl_policy = f32::NAN;
             let moves_left = game_length as f32 - pos_index as f32;
             let stored_policy = &zero_evaluation.policy;
-
-            let final_values = match winner {
-                Some(colour_of_winner) => {
-                    if board.board().side_to_move() == colour_of_winner {
-                        ZeroValuesPov {
-                            value: 1.0,
-                            wdl: Wdl {
-                                w: 1.0,
-                                d: 0.0,
-                                l: 0.0,
-                            },
-                            moves_left,
-                        }
-                    } else {
-                        ZeroValuesPov {
-                            value: -1.0,
-                            wdl: Wdl {
-                                w: 0.0,
-                                d: 0.0,
-                                l: 1.0,
-                            },
-                            moves_left,
-                        }
-                    }
-                }
-                None => ZeroValuesPov {
-                    value: 0.0,
-                    wdl: Wdl {
-                        w: 0.0,
-                        d: 1.0,
-                        l: 0.0,
-                    },
-                    moves_left,
-                },
-            };
+            let final_values = final_values_pov(winner, board.board().side_to_move(), moves_left);
 
             let scalars = Scalars {
                 game_id,
@@ -243,32 +214,7 @@ impl BinaryOutput {
             self.append_position(board, &scalars, &policy_indices, stored_policy)?;
         }
 
-        let final_wdl = match winner {
-            Some(player) => match player {
-                Color::White => Wdl {
-                    w: 1.0,
-                    d: 0.0,
-                    l: 0.0,
-                },
-                Color::Black => Wdl {
-                    w: 0.0,
-                    d: 0.0,
-                    l: 1.0,
-                },
-            },
-            None => Wdl {
-                w: 0.0,
-                d: 1.0,
-                l: 0.0,
-            },
-        };
-
-        let final_v = final_wdl.w - final_wdl.l;
-        let final_values = ZeroValuesPov {
-            value: final_v,
-            wdl: final_wdl,
-            moves_left: game_length as f32,
-        };
+        let final_values = final_values_pov(winner, final_board.board().side_to_move(), 0.0);
 
         let scalars = Scalars {
             game_id,
@@ -277,8 +223,8 @@ impl BinaryOutput {
             zero_visits: 0,
             is_full_search: false,
             is_final_position: true,
-            is_terminal: final_board.is_terminal(),
-            hit_move_limit: !final_board.is_terminal(),
+            is_terminal,
+            hit_move_limit,
             available_mv_count: 0,
             played_mv: -1,
             kdl_policy: f32::NAN,
@@ -407,6 +353,42 @@ impl BinaryOutput {
     }
 }
 
+fn final_values_pov(
+    winner: Option<Color>,
+    player_to_move: Color,
+    moves_left: f32,
+) -> ZeroValuesPov {
+    match winner {
+        Some(winner) if winner == player_to_move => ZeroValuesPov {
+            value: 1.0,
+            wdl: Wdl {
+                w: 1.0,
+                d: 0.0,
+                l: 0.0,
+            },
+            moves_left,
+        },
+        Some(_) => ZeroValuesPov {
+            value: -1.0,
+            wdl: Wdl {
+                w: 0.0,
+                d: 0.0,
+                l: 1.0,
+            },
+            moves_left,
+        },
+        None => ZeroValuesPov {
+            value: 0.0,
+            wdl: Wdl {
+                w: 0.0,
+                d: 1.0,
+                l: 0.0,
+            },
+            moves_left,
+        },
+    }
+}
+
 fn collect_policy_indices(board: &BoardStack) -> (usize, Vec<u32>) {
     match board.status() {
         GameStatus::Ongoing => {
@@ -440,6 +422,57 @@ fn collect_policy_indices(board: &BoardStack) -> (usize, Vec<u32>) {
 
 fn assert_normalized_or_nan(x: f32) {
     assert!(x.is_nan() || (1.0 - x).abs() < 0.001);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cozy_chess::Board;
+
+    #[test]
+    fn black_board_data_rotates_both_rank_and_file() {
+        let board = Board::from_fen("8/k7/8/8/8/8/8/7K b - - 0 1", false).unwrap();
+        let (_, bools) = board_data(&BoardStack::new(board));
+
+        let black_king_rotated_index = 15; // a7 -> h2
+        let rank_only_reflection_index = 8; // a7 -> a2
+        assert!((0..12).any(|plane| bools[plane * 64 + black_king_rotated_index]));
+        assert!(!(0..12).any(|plane| bools[plane * 64 + rank_only_reflection_index]));
+    }
+
+    #[test]
+    fn final_values_are_player_relative_with_no_moves_remaining() {
+        let values = final_values_pov(Some(Color::White), Color::Black, 0.0);
+
+        assert_eq!(values.value, -1.0);
+        assert_eq!(
+            values.wdl,
+            Wdl {
+                w: 0.0,
+                d: 0.0,
+                l: 1.0
+            }
+        );
+        assert_eq!(values.moves_left, 0.0);
+    }
+
+    #[test]
+    fn truncated_simulation_counts_as_a_move_limit_result() {
+        let path =
+            std::env::temp_dir().join(format!("tzrust-fileformat-test-{}", std::process::id()));
+        let mut output = BinaryOutput::new(&path, "chess").unwrap();
+        let simulation = Simulation {
+            positions: vec![],
+            final_board: BoardStack::new(Board::default()),
+        };
+
+        output.append(&simulation).unwrap();
+        assert_eq!(output.hit_move_limit_count, 1);
+
+        for extension in ["bin", "off", "json", "json.tmp"] {
+            let _ = std::fs::remove_file(path.with_extension(extension));
+        }
+    }
 }
 
 impl Scalars {

@@ -13,10 +13,10 @@ from lib.games import Game
 from lib.logger import Logger
 from lib.networks import MuZeroNetworks
 from lib.util import (
+    DEVICE,
     calc_gradient_norms,
     calc_parameter_norm,
     fake_quantize_scale,
-    DEVICE,
 )
 
 
@@ -168,8 +168,8 @@ class TrainSettings:
 
             # TODO is a BN layer inside of the networks enough for hidden state normalization?
             std, mean = torch.std_mean(curr_state.flatten(1), dim=1)
-            logger.log(f"state", f"{log_prefix} std_{k}", std.mean())
-            logger.log(f"state", f"{log_prefix} mean_{k}", mean.mean())
+            logger.log("state", f"{log_prefix} std_{k}", std.mean())
+            logger.log("state", f"{log_prefix} mean_{k}", mean.mean())
 
             # TODO _why_ does the muzero paper scale the gradient here?
             #   maybe this is more important when working with SGD?
@@ -249,16 +249,11 @@ class TrainSettings:
         )
 
         # log terminal losses
-        terminal_count = batch.is_terminal.sum()
-        loss_wdl_terminal = (
-            loss_wdl_separate * batch.is_terminal
-        ).sum() / terminal_count
-        loss_value_terminal = (
-            loss_value_separate * batch.is_terminal
-        ).sum() / terminal_count
-        loss_moves_left_terminal = (
-            loss_moves_left * batch.is_terminal
-        ).sum() / terminal_count
+        loss_wdl_terminal = _masked_mean(loss_wdl_separate, batch.is_terminal)
+        loss_value_terminal = _masked_mean(loss_value_separate, batch.is_terminal)
+        loss_moves_left_terminal = _masked_mean(
+            loss_moves_left_separate, batch.is_terminal
+        )
 
         logger.log("loss-wdl", f"{log_prefix} wdl terminal", loss_wdl_terminal)
         logger.log("loss-value", f"{log_prefix} value terminal", loss_value_terminal)
@@ -373,6 +368,10 @@ VALUE_MASS_TOLERANCE = 0.01
 LOG_CLIPPING = 10
 
 
+def _masked_mean(values, mask):
+    return values[mask].mean()
+
+
 def evaluate_policy(
     logits, indices, values, mask_invalid_moves: bool
 ) -> PolicyEvaluation:
@@ -396,7 +395,7 @@ def evaluate_policy(
     # sum should be 1 or 0 (for no valid moves)
     value_mass = (values * (values != -1)).sum(dim=1)
     valid_and_1 = torch.logical_and(
-        has_valid, (1.0 - value_mass < VALUE_MASS_TOLERANCE)
+        has_valid, (1.0 - value_mass).abs() < VALUE_MASS_TOLERANCE
     )
     invalid_and_0 = torch.logical_and(~has_valid, value_mass == 0.0)
     assert torch.logical_or(valid_and_1, invalid_and_0).all(), "Invalid value mass"

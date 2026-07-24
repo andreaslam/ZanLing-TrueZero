@@ -3,7 +3,7 @@ from threading import Thread
 from typing import Optional, Union
 
 from lib.data.group import DataGroup
-from lib.data.position import PositionBatch, UnrolledPositionBatch, Position
+from lib.data.position import Position, PositionBatch, UnrolledPositionBatch
 from lib.queue import CQueue, CQueueClosed
 from lib.util import PIN_MEMORY
 
@@ -22,9 +22,9 @@ class PositionSampler:
         self.group = group
 
         if random_symmetries:
-            assert (
-                unroll_steps is None
-            ), "Random symmetries not yet supported for unrolled sampling"
+            assert unroll_steps is None, (
+                "Random symmetries not yet supported for unrolled sampling"
+            )
 
         self.batch_size = batch_size
         self.unroll_steps = unroll_steps
@@ -55,9 +55,9 @@ class PositionSampler:
         return self.queue.pop_blocking()
 
     def next_unrolled_batch(self) -> UnrolledPositionBatch:
-        assert (
-            self.unroll_steps is not None
-        ), "This sampler does not sample unrolled batches"
+        assert self.unroll_steps is not None, (
+            "This sampler does not sample unrolled batches"
+        )
         return self.queue.pop_blocking()
 
 
@@ -159,10 +159,11 @@ def sample_position(
             continue
 
         if include_final_for_each:
-            assert (
-                pos.simulation.includes_final
-            ), "Cannot include final position for file without any"
-            final_pos = group.positions[pi + int(pos.final_moves_left) - 1]
+            assert pos.simulation.includes_final, (
+                "Cannot include final position for file without any"
+            )
+            final_pos = group.positions[pi + int(pos.final_moves_left)]
+            assert final_pos.is_final, "Expected the appended final position"
             pos.final_position = final_pos
 
         return pi, pos
