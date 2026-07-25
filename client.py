@@ -6,7 +6,7 @@ import socket
 import time
 
 import torch
-import torch.optim as optim
+from torch import optim
 
 import network
 from lib.data.file import DataFile
@@ -63,19 +63,28 @@ PORT = 38475
 BUFFER_SIZE = 1500000
 BATCH_SIZE = 2048
 MIN_SAMPLING = 50
-SAMPLING_RATIO = 0.75
+# Don't start training until the replay window has at least this many positions, so the
+# network is not fit to a tiny, highly-correlated slice of one generation.
+MIN_BUFFER_TO_TRAIN = 250_000
+# Target number of times each *new* position is trained on per generation. AlphaZero/LC0
+# keep this near ~1; the old regime reached into the hundreds and overfit noisy targets.
+EPOCHS_PER_GEN = 1.0
 
 assert BATCH_SIZE > 0 and (BATCH_SIZE & (BATCH_SIZE - 1)) == 0
 
 
 def main():
     game = Game.find("chess")
+    # Pick a single, well-defined device. The previous version could select "mps"
+    # while batches were built on DEVICE ("cuda"/"cpu"), causing a device mismatch.
     if torch.cuda.is_available():
         device = "cuda"
-    try:
-        if torch.backends.mps.is_available():
-            device = "mps"
-    except Exception:
+    elif (
+        getattr(torch.backends, "mps", None) is not None
+        and torch.backends.mps.is_available()
+    ):
+        device = "mps"
+    else:
         device = "cpu"
     print(f"Using: {device}")
     os.makedirs("nets", exist_ok=True)
@@ -104,7 +113,10 @@ def main():
         clip_norm=5.0,
         mask_policy=True,
     )
-    op = optim.AdamW(params=model.parameters(), lr=1e-3)
+    # weight_decay decoupled weight decay (AdamW) matching the network-training norm
+    # for AlphaZero-style value/policy nets; without it the policy/value weights grow
+    # unchecked (param_norm drifts upward in log.npz).
+    op = optim.AdamW(params=model.parameters(), lr=1e-3, weight_decay=1e-4)
     log = load_previous_data(data_paths, loopbuf)
 
     while True:
@@ -116,9 +128,14 @@ def main():
         if "RequestingNet" in received_data:
             send_net_in_bytes(model, server)
 
+        # Train once per newly-received generation. The old condition
+        # `position_count >= BUFFER_SIZE` only fired during the initial fill and on
+        # eviction wrap-arounds, so generations were trained an inconsistent number of
+        # times (and sometimes not at all). We now trigger on every new generation once
+        # the buffer has warmed up past MIN_BUFFER_TO_TRAIN.
         if "JobSendPath" in received_data:
             data = extract_incoming_data_given_path(loopbuf, log, raw_data)
-            if loopbuf.position_count >= BUFFER_SIZE:
+            if loopbuf.position_count >= MIN_BUFFER_TO_TRAIN:
                 starting_gen += 1
                 full_train_and_send(
                     model, starting_gen, server, loopbuf, train_settings, op, log, data
@@ -126,7 +143,7 @@ def main():
 
         if "JobSendData" in received_data:
             data = extract_incoming_data_given_bytes(loopbuf, log, raw_data)
-            if loopbuf.position_count >= BUFFER_SIZE:
+            if loopbuf.position_count >= MIN_BUFFER_TO_TRAIN:
                 starting_gen += 1
                 full_train_and_send(
                     model, starting_gen, server, loopbuf, train_settings, op, log, data
@@ -246,16 +263,12 @@ def train_net(model, train_settings, op, log, train_sampler, num_steps_training)
 
 
 def get_num_steps_training(data, min_sampling):
-    num_steps_training = (len(data.positions) / BATCH_SIZE) * SAMPLING_RATIO
-    if num_steps_training < min_sampling:
-        print(
-            "[Warning] minimum training step is",
-            min_sampling,
-            "current training step is",
-            num_steps_training,
-        )
-        num_steps_training = min_sampling
-        print("[Warning] set training step to", min_sampling)
+    # Train each new generation ~EPOCHS_PER_GEN times. We scale by the size of the new
+    # generation (not the whole buffer) so the optimisation-to-new-data ratio stays sane
+    # regardless of how large the replay window grows.
+    new_positions = len(data.positions)
+    num_steps_training = (new_positions / BATCH_SIZE) * EPOCHS_PER_GEN
+    num_steps_training = max(num_steps_training, min_sampling)
     return int(num_steps_training)
 
 

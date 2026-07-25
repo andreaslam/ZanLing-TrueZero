@@ -53,13 +53,17 @@ impl DataGen {
             let (mv, v_p, _move_idx_piece, search_data, visits) =
                 get_move(bs.clone(), tensor_exe_send, *settings, id, cache).await;
             let _elapsed = _sw.elapsed().as_nanos() as f32 / 1e9;
-            let final_mv = if positions.len() > 30 {
-                // when tau is "infinitesimally small", pick the best move
+            // AlphaZero-style temperature: explore (sample) for the opening moves, then play
+            // greedily (argmax). `positions.len()` is the ply index of the CURRENT position,
+            // so the first TEMPERATURE_CUTOFF_PLIES plies are sampled.
+            const TEMPERATURE_CUTOFF_PLIES: usize = 30;
+            let final_mv = if positions.len() >= TEMPERATURE_CUTOFF_PLIES {
+                // tau -> 0: pick the most-visited move (already returned as `mv`)
                 mv
             } else {
+                // tau = 1: sample proportional to MCTS visit counts
                 let weighted_index = WeightedIndex::new(&search_data.policy).unwrap();
                 let mut rng = rand::thread_rng();
-                // // debug_print(&format!("{}, {:?}, {:?}", _thread_name, weighted_index, rng);
                 let sampled_idx = weighted_index.sample(&mut rng);
                 let mut legal_moves: Vec<Move> = Vec::new();
                 bs.board().generate_moves(|moves| {

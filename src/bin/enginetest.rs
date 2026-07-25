@@ -35,11 +35,11 @@ fn main() {
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(1);
     let num_games = 1000000;
     let num_threads = 2048;
-    let engine_0: String = "nets/tz_4939.pt".to_string(); // new engine
+    let engine_0: String = "nets/tz_14.pt".to_string(); // new engine
                                                           // let engine_0: String = "tz_6515.pt".to_string(); // new engine
-    let engine_1: String = "chess_16x128_gen3634.pt".to_string(); // old engine
+    // let engine_1: String = "chess_16x128_gen3634.pt".to_string(); // old engine
                                                                   // let engine_1: String = "tz_6515.pt".to_string();
-                                                                  // let engine_1: String = "nets/tz_296.pt".to_string(); // new engine
+    let engine_1: String = "nets/tz_0.pt".to_string(); // new engine
                                                                   // let engine_1: String = "nets/tz_151.pt".to_string();
     let num_executors = 2; // always be 2, 2 players, one each (one for each neural net)
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
