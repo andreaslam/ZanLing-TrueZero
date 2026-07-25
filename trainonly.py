@@ -1,19 +1,16 @@
 # train a brand new net instance without any selfplay
-import time
-from enum import Enum
-from lib.data.file import DataFile
-from lib.train import ScalarTarget, TrainSettings
-from lib.games import Game
-import torch
-from lib.loop import LoopBuffer
-from lib.logger import Logger
 import os
-import torch.optim as optim
-import network
+
+import torch
+from torch import optim
 from tqdm import tqdm
-import time
-import torch.nn as nn
-import client
+
+import network
+from lib.data.file import DataFile
+from lib.games import Game
+from lib.logger import Logger
+from lib.loop import LoopBuffer
+from lib.train import ScalarTarget, TrainSettings
 
 
 def load_file(games_path: str):
@@ -49,8 +46,21 @@ torch.jit.save(model, "experiment_nets/tz_test_0.pt")
 with open("log_experiment.npz", "w") as f:
     f.write("")
 
-BUFFER_SIZE = 10000000
+# --- Training-regime constants (see audit) -------------------------------------
+# The previous regime ran far too many optimizer steps per generation over a tiny
+# effective replay window, overfitting noisy self-play targets (policy loss stalled,
+# last-gen test loss > train loss). AlphaZero/LC0/KataGo keep the optimisation-to-new-
+# data ratio near ~1 epoch over a LARGE, decorrelated window of many recent generations.
+#
+# We therefore:
+#   * keep a large replay window (many generations) so targets are decorrelated,
+#   * cap the number of optimizer steps so each new generation is seen ~`EPOCHS_PER_GEN`
+#     times rather than hundreds of times.
+BUFFER_SIZE = 1_500_000  # ~ matches replay capacity; keep several generations
 BATCH_SIZE = 512
+# How many times each new position is (on average) trained on. ~1.0 is the AlphaZero/LC0
+# regime; the old config effectively used hundreds.
+EPOCHS_PER_GEN = 1.0
 loopbuf = LoopBuffer(
     Game.find("chess"), target_positions=BUFFER_SIZE, test_fraction=0.1
 )
@@ -92,7 +102,7 @@ if data_paths:
         try:
             log = log.load("log_experiment.npz")
             # print("loaded log")
-        except Exception as e:
+        except Exception:
             # print("[Error]", e)
             os.remove("log_experiment.npz")  # reset
     # print("[loaded files] buffer size:", loopbuf.position_count)
@@ -106,7 +116,14 @@ else:
 
 # print(loopbuf.position_count)
 
-num_steps_training = 10
+# Optimizer steps per generation. We derive this from the amount of NEW data added each
+# generation so that new positions are trained ~EPOCHS_PER_GEN times, instead of a fixed
+# (and previously wildly excessive) count. We read the current buffer's newest generation
+# size; if unavailable we fall back to a conservative default.
+POSITIONS_PER_GEN_ESTIMATE = 25_000  # measured: gen-size/positions ~ 2.5e4 in log.npz
+num_steps_training = max(
+    1, int(EPOCHS_PER_GEN * POSITIONS_PER_GEN_ESTIMATE / BATCH_SIZE)
+)
 starting_gen = 0
 while True:
     train_sampler = loopbuf.sampler(
