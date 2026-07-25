@@ -74,6 +74,9 @@ EPOCHS_PER_GEN = 1.0
 
 assert BATCH_SIZE > 0 and (BATCH_SIZE & (BATCH_SIZE - 1)) == 0
 
+DATAFILE_PATH = "./hidden/datafile.txt"
+TRAINING_LOG_PATH = "./hidden/traininglog.txt"
+
 
 def main():
     game = Game.find("chess")
@@ -181,7 +184,7 @@ def extract_incoming_data_given_bytes(loopbuf, log, raw_data):
     data = json.loads(decoded_string)
     with open(path + ".json", "w") as file:
         json.dump(data, file, indent=4)
-    with open("datafile.txt", "a") as f:
+    with open(DATAFILE_PATH, "a") as f:
         f.write(path + "\n")
     print(path)
     data = load_file(path)
@@ -229,10 +232,10 @@ def save_and_register_net(model, starting_gen):
     model.eval()
     with torch.no_grad():
         torch.jit.save(model, model_path)
-    with open("traininglog.txt", "a") as f:
+    with open(TRAINING_LOG_PATH, "a") as f:
         f.write(model_path + "\n")
-    if not os.path.exists("datafile.txt"):
-        with open("datafile.txt", "w"):
+    if not os.path.exists(DATAFILE_PATH):
+        with open(DATAFILE_PATH, "w"):
             pass
     return model_path
 
@@ -304,7 +307,7 @@ def initialise_samplers(loopbuf):
 
 def extract_incoming_data_given_path(loopbuf, log, raw_data):
     file_path = raw_data["purpose"]["JobSendPath"]
-    with open("datafile.txt", "a") as f:
+    with open(DATAFILE_PATH, "a") as f:
         f.write(file_path + "\n")
     data = load_file(file_path)
     loopbuf.append(log, data)
@@ -357,8 +360,8 @@ def get_verification(server, identity):
 
 def get_previous_data_paths():
     data_paths = None
-    if os.path.isfile("datafile.txt"):
-        with open("datafile.txt", "r") as f:
+    if os.path.isfile(DATAFILE_PATH):
+        with open(DATAFILE_PATH, "r") as f:
             data_paths = f.readlines()
             data_paths = [item.strip() for item in data_paths if item != ""]
             data_paths = [
@@ -369,24 +372,24 @@ def get_previous_data_paths():
                 and os.path.isfile(x.strip() + ".off")
             ]
     else:
-        with open("datafile.txt", "w+"):
+        with open(DATAFILE_PATH, "w+"):
             pass
     return data_paths
 
 
 def get_model_path(training_nets):
-    if os.path.isfile("traininglog.txt"):
-        with open("traininglog.txt", "r") as f:
+    if os.path.isfile(TRAINING_LOG_PATH):
+        with open(TRAINING_LOG_PATH, "r") as f:
             recorded_sessions = f.readlines()
             recorded_sessions = [
                 item.strip() for item in recorded_sessions if item != ""
             ]
         if recorded_sessions != training_nets:
-            with open("traininglog.txt", "w") as f:
+            with open(TRAINING_LOG_PATH, "w") as f:
                 f.write("\n".join(training_nets) + "\n")
             recorded_sessions = training_nets
     else:
-        with open("traininglog.txt", "w") as f:
+        with open(TRAINING_LOG_PATH, "w") as f:
             f.write(training_nets[-1] + "\n")
         recorded_sessions = training_nets
 
@@ -415,7 +418,7 @@ def check_net_exists(device, pattern):
             ).eval()
             torch.jit.save(net, "nets/tz_0.pt")
 
-        with open("traininglog.txt", "w+") as f:
+        with open(TRAINING_LOG_PATH, "w+") as f:
             f.write("nets/tz_0.pt\n")
 
         training_nets.append("nets/tz_0.pt")

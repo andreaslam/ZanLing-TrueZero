@@ -430,3 +430,4 @@ __marimo__/
 .streamlit/secrets.toml
 
 *.epd
+hidden

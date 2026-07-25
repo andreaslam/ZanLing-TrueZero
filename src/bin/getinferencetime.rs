@@ -4,9 +4,9 @@ use tzrust::{decoder::eval_state, mcts_trainer::Net};
 
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
-    let net = Net::new("nets/tz_0.pt");
+    let net = Net::new("tz_6515.pt");
     let mut avg = Vec::new();
-    const BATCH_SIZE: usize = 512;
+    const BATCH_SIZE: usize = 1024;
 
     // warmup loop
 

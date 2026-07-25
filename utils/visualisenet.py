@@ -1,0 +1,316 @@
+import argparse
+import os
+import re
+from multiprocessing import Pool
+
+import chess
+import cv2
+import imageio
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+
+from decoder import convert_board, decode_nn_output
+from network import TrueNet
+
+
+def extract_number_tz(filename):
+    return int(filename.split("tz_")[1].split(".")[0])
+
+
+def extract_number_frame(filename):
+    return int(filename.split("temp_frame")[1].split(".")[0])
+
+
+class ChessVisualiser:
+    def __init__(
+        self, model_path, video_name, gif_name, video_frame_size, video_fps, i_d
+    ):
+        self.frames = []
+        self.activations_startblock = []
+        self.activations_backbone = []
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = torch.jit.load(model_path, map_location=self.device)
+        self.model.eval()
+        self.i_d = i_d
+        # Architecture mirrors the live TrueNet; hooks only tap conv activations
+        # for the visualisation grids, so it never needs to match checkpoint
+        # weights (those are read from the TorchScript `self.model` instead).
+        self.architecture = TrueNet()
+        self.architecture.to(self.device).to(torch.float32)
+        self.architecture.eval()
+        self.video_name = video_name
+        self.gif_name = gif_name
+        self.video_frame_size = video_frame_size
+        self.video_fps = video_fps
+
+    def hook_startblock(self, module, input, output):
+        self.activations_startblock.append(output)
+
+    def hook_backbone(self, module, input, output):
+        self.activations_backbone.append(output)
+
+    def generate_gif(self):
+        board = chess.Board()
+        bigl = torch.tensor([])
+        with torch.no_grad():
+            while not board.is_game_over():
+                input_data, bigl = convert_board(board, bigl)
+                input_data = input_data.unsqueeze(0).to(self.device)
+                self._reset_activations()
+                self._register_hooks()
+                self.architecture(input_data)
+                self._remove_hooks()
+                fig = self._create_figure()
+                board.push(self._process_activations(board, fig))
+                self._save_frame(fig)
+                self.frames.append(
+                    cv2.cvtColor(cv2.imread("temp_frame.png"), cv2.COLOR_BGR2RGB)
+                )
+        imageio.mimsave(self.gif_name, self.frames, duration=1 / self.video_fps)
+        cv2.destroyAllWindows()
+
+    def generate_video(self):
+        video_writer = cv2.VideoWriter(
+            self.video_name,
+            cv2.VideoWriter_fourcc(*"mp4v"),
+            self.video_fps,
+            self.video_frame_size,
+        )
+        for frame in self.frames:
+            resized_frame = cv2.resize(
+                cv2.cvtColor(frame, cv2.COLOR_RGB2BGR), self.video_frame_size
+            )
+            video_writer.write(resized_frame)
+        video_writer.release()
+        cv2.destroyAllWindows()
+
+    def generate_evolution(self, max_pol, fen):
+        board = chess.Board(fen)
+        with torch.no_grad():
+            input_data, _ = convert_board(board, torch.tensor([]))
+            input_data = input_data.unsqueeze(0).to(self.device)
+            self._reset_activations()
+            self._register_hooks()
+            self.architecture(input_data)
+            self._remove_hooks()
+            fig = self._create_figure(title=f"TrueZero visualisation: {self.i_d}")
+            self._process_activations(board, fig, max_pol)
+            plt.savefig(f"frames/temp_frame{self.i_d}.png")
+            plt.close()
+
+    def make_gif(self, paths):
+        paths = sorted(paths, key=extract_number_frame)
+        images = [cv2.cvtColor(cv2.imread(file), cv2.COLOR_BGR2RGB) for file in paths]
+        imageio.mimsave("evostartpos.gif", images, duration=1 / self.video_fps)
+        cv2.destroyAllWindows()
+
+    def get_max_policy(self, max_pol, fen):
+        board = chess.Board(fen)
+        input_data, _ = convert_board(board, torch.tensor([]))
+        input_data = input_data.unsqueeze(0).to(self.device)
+        with torch.no_grad():
+            val, policy = self.model(input_data)
+        _, _, _, _, legal_lookup, _, _ = decode_nn_output(val, policy, board)
+        return max(max_pol, max(legal_lookup.values()))
+
+    def _reset_activations(self):
+        self.activations_startblock = []
+        self.activations_backbone = []
+
+    def _register_hooks(self):
+        self.hook_handles = [
+            self.architecture.startBlock.register_forward_hook(self.hook_startblock),
+        ] + [
+            block.register_forward_hook(self.hook_backbone)
+            for block in self.architecture.backBone
+        ]
+
+    def _remove_hooks(self):
+        for handle in self.hook_handles:
+            handle.remove()
+
+    def _create_figure(self, title="TrueZero Net Visualisation"):
+        plt.style.use("dark_background")
+        fig = plt.figure(figsize=(8, 8))
+        fig.suptitle(title)
+        fig.set_figheight(6)
+        fig.set_figwidth(20)
+        return fig
+
+    def _process_activations(self, board, fig, max_pol=None):
+        n_backbone = len(self.activations_backbone)
+        # grid: start block + one column per backbone block on the top row;
+        # value panel + policy bar chart on the bottom row.
+        n_width = 1 + n_backbone
+
+        plt.subplot(2, n_width, 1)
+        start = self.activations_startblock[0][0].detach().cpu().numpy()
+        plt.imshow(start.reshape(-1, 64), cmap="plasma")
+        plt.axis("off")
+        plt.title("Start Block")
+
+        for i, activation in enumerate(self.activations_backbone):
+            plt.subplot(2, n_width, i + 2)
+            plt.imshow(activation[0, 0].detach().cpu().numpy(), cmap="plasma")
+            plt.axis("off")
+            plt.title(f"Backbone {i}")
+
+        # decode real value/policy from the TorchScript model's head outputs
+        input_data, _ = convert_board(board, torch.tensor([]))
+        input_data = input_data.unsqueeze(0).to(self.device)
+        with torch.no_grad():
+            val_out, policy_out = self.model(input_data)
+        value, _, _, _, legal_lookup, _, best_move = decode_nn_output(
+            val_out, policy_out, board
+        )
+
+        # value panel (scalar broadcast over an 8x8 tile)
+        plt.subplot(2, n_width, n_width + 1)
+        value_img = np.full((8, 8), value, dtype=np.float32)
+        plt.imshow(value_img, cmap="plasma", vmin=-1, vmax=1)
+        plt.axis("off")
+        plt.title("Value: " + str(round(value, 5)))
+
+        # policy bar chart spanning the remaining bottom-row cells
+        plt.subplot(2, 1, 2)
+        if max_pol:
+            plt.ylim(0, max_pol)
+        vals = torch.tensor(list(legal_lookup.values()))
+        labels = list(legal_lookup.keys())
+        plt.bar(range(len(labels)), vals.cpu().numpy())
+        plt.xticks(range(len(labels)), labels, rotation=45)
+        plt.title("Policy")
+        return chess.Move.from_uci(best_move)
+
+    def _save_frame(self, fig):
+        fig.savefig("temp_frame.png")
+        plt.close(fig)
+
+
+def process_net(args):
+    (
+        net,
+        max_pol,
+        fen,
+        output_dir,
+        video_name,
+        gif_name,
+        video_frame_size,
+        video_fps,
+        i_d,
+    ) = args
+    visualiser = ChessVisualiser(
+        model_path=net,
+        video_name=video_name,
+        gif_name=gif_name,
+        video_frame_size=video_frame_size,
+        video_fps=video_fps,
+        i_d=i_d,
+    )
+    visualiser.generate_evolution(max_pol, fen)
+    return [os.path.join(output_dir, f"temp_frame{i_d}.png")]
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Chess Visualisation with Neural Networks"
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["evolution", "play"],
+        required=True,
+        help="Mode to run: 'evolution' or 'play'",
+    )
+    parser.add_argument(
+        "--nets_dir", default="nets", help="Directory containing neural network models"
+    )
+    parser.add_argument(
+        "--output_dir", default="frames", help="Directory for output frames"
+    )
+    parser.add_argument(
+        "--fen",
+        default="rnbqkbnr/pppp1p1p/6p1/4p2Q/4P3/8/PPPP1PPP/RNB1KBNR",
+        help="FEN string for chess board",
+    )
+    parser.add_argument(
+        "--video_name", default="chess_game.mp4", help="Output video name"
+    )
+    parser.add_argument("--gif_name", default="chess_game.gif", help="Output GIF name")
+    parser.add_argument(
+        "--video_frame_size",
+        type=int,
+        nargs=2,
+        default=(2000, 600),
+        help="Video frame size",
+    )
+    parser.add_argument("--video_fps", type=float, default=10, help="Video FPS")
+    args = parser.parse_args()
+
+    os.makedirs(args.output_dir, exist_ok=True)
+    all_nets = sorted(
+        [
+            os.path.join(args.nets_dir, net)
+            for net in os.listdir(args.nets_dir)
+            if re.match(r"tz_\d+\.pt", net)
+        ],
+        key=extract_number_tz,
+    )
+
+    if args.mode == "evolution":
+        max_pol = 0
+        for net in all_nets:
+            visualiser = ChessVisualiser(
+                model_path=net,
+                video_name=args.video_name,
+                gif_name=args.gif_name,
+                video_frame_size=args.video_frame_size,
+                video_fps=args.video_fps,
+                i_d=0,
+            )
+            max_pol = visualiser.get_max_policy(max_pol, args.fen)
+
+        pool_args = [
+            (
+                net,
+                max_pol,
+                args.fen,
+                args.output_dir,
+                args.video_name,
+                args.gif_name,
+                args.video_frame_size,
+                args.video_fps,
+                i,
+            )
+            for i, net in enumerate(all_nets)
+        ]
+
+        with Pool() as pool:
+            results = pool.map(process_net, pool_args)
+
+        all_frames = [frame for result in results for frame in result]
+        visualiser = ChessVisualiser(
+            model_path=all_nets[0],
+            video_name=args.video_name,
+            gif_name=args.gif_name,
+            video_frame_size=args.video_frame_size,
+            video_fps=args.video_fps,
+            i_d=0,
+        )
+        visualiser.make_gif(all_frames)
+
+    elif args.mode == "play":
+        visualiser = ChessVisualiser(
+            model_path=all_nets[-1],
+            video_name=args.video_name,
+            gif_name=args.gif_name,
+            video_frame_size=args.video_frame_size,
+            video_fps=args.video_fps,
+            i_d=0,
+        )
+        visualiser.generate_gif()
+        visualiser.generate_video()
+
+
+if __name__ == "__main__":
+    main()
