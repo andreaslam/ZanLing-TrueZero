@@ -266,6 +266,7 @@ pub fn process_board_output(
         CacheEntryKey {
             hash: bs.board().hash(),
             halfmove_clock: bs.board().halfmove_clock(),
+            repetitions: bs.get_reps() as u8,
         },
         ZeroEvaluationAbs {
             values: selected_node_net_evaluation,

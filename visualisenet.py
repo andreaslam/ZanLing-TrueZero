@@ -1,14 +1,17 @@
-import torch
-import matplotlib.pyplot as plt
-import cv2
-import imageio
-import chess
+import argparse
 import os
 import re
-import argparse
+from multiprocessing import Pool
+
+import chess
+import cv2
+import imageio
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+
 from decoder import convert_board, decode_nn_output
 from network import TrueNet
-from multiprocessing import Pool
 
 
 def extract_number_tz(filename):
@@ -26,17 +29,16 @@ class ChessVisualiser:
         self.frames = []
         self.activations_startblock = []
         self.activations_backbone = []
-        self.activations_policy = []
-        self.activations_value = []
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = torch.jit.load(model_path, map_location=self.device)
         self.model.eval()
         self.i_d = i_d
-        self.architecture = TrueNet(
-            num_resBlocks=8, num_hidden=64, head_channel_policy=8, head_channel_values=4
-        )
+        # Architecture mirrors the live TrueNet; hooks only tap conv activations
+        # for the visualisation grids, so it never needs to match checkpoint
+        # weights (those are read from the TorchScript `self.model` instead).
+        self.architecture = TrueNet()
         self.architecture.to(self.device).to(torch.float32)
-        self.architecture.load_state_dict(self.model.state_dict())
+        self.architecture.eval()
         self.video_name = video_name
         self.gif_name = gif_name
         self.video_frame_size = video_frame_size
@@ -47,12 +49,6 @@ class ChessVisualiser:
 
     def hook_backbone(self, module, input, output):
         self.activations_backbone.append(output)
-
-    def hook_policy(self, module, input, output):
-        self.activations_policy.append(output)
-
-    def hook_value(self, module, input, output):
-        self.activations_value.append(output)
 
     def generate_gif(self):
         board = chess.Board()
@@ -113,24 +109,21 @@ class ChessVisualiser:
         board = chess.Board(fen)
         input_data, _ = convert_board(board, torch.tensor([]))
         input_data = input_data.unsqueeze(0).to(self.device)
-        val, policy = self.model(input_data)
+        with torch.no_grad():
+            val, policy = self.model(input_data)
         _, _, _, _, legal_lookup, _, _ = decode_nn_output(val, policy, board)
         return max(max_pol, max(legal_lookup.values()))
 
     def _reset_activations(self):
         self.activations_startblock = []
         self.activations_backbone = []
-        self.activations_policy = []
-        self.activations_value = []
 
     def _register_hooks(self):
         self.hook_handles = [
             self.architecture.startBlock.register_forward_hook(self.hook_startblock),
-            self.architecture.policyHead.register_forward_hook(self.hook_policy),
-            self.architecture.valueHead.register_forward_hook(self.hook_value),
         ] + [
-            self.architecture.backBone[i].register_forward_hook(self.hook_backbone)
-            for i in range(8)
+            block.register_forward_hook(self.hook_backbone)
+            for block in self.architecture.backBone
         ]
 
     def _remove_hooks(self):
@@ -146,44 +139,48 @@ class ChessVisualiser:
         return fig
 
     def _process_activations(self, board, fig, max_pol=None):
-        n_width = 1 + len(self.hook_handles) - 2
+        n_backbone = len(self.activations_backbone)
+        # grid: start block + one column per backbone block on the top row;
+        # value panel + policy bar chart on the bottom row.
+        n_width = 1 + n_backbone
+
         plt.subplot(2, n_width, 1)
-        plt.imshow(
-            self.activations_startblock[0][0].cpu().numpy().reshape(64, 64),
-            cmap="plasma",
-        )
+        start = self.activations_startblock[0][0].detach().cpu().numpy()
+        plt.imshow(start.reshape(-1, 64), cmap="plasma")
         plt.axis("off")
         plt.title("Start Block")
+
         for i, activation in enumerate(self.activations_backbone):
             plt.subplot(2, n_width, i + 2)
-            plt.imshow(activation[0, 0].cpu().numpy(), cmap="plasma")
+            plt.imshow(activation[0, 0].detach().cpu().numpy(), cmap="plasma")
             plt.axis("off")
             plt.title(f"Backbone {i}")
-        for i, value in enumerate(self.activations_value):
-            plt.subplot(2, n_width, i + 10)
-            value, _, _, _, _, _, best_move = decode_nn_output(
-                value, self.activations_policy[i], board
-            )
-            plt.imshow(
-                value.cpu().numpy().repeat(64).reshape(8, 8),
-                cmap="plasma",
-                vmin=-1,
-                vmax=1,
-            )
-            plt.axis("off")
-            plt.title("Value: " + str(round(value.item(), 5)))
-        for i in range(len(self.activations_policy)):
-            plt.subplot(2, 1, 2)
-            if max_pol:
-                plt.ylim(0, max_pol)
-            _, _, _, _, legal_lookup, _, best_move = decode_nn_output(
-                self.activations_value[i], self.activations_policy[i], board
-            )
-            vals = torch.tensor(list(legal_lookup.values()))
-            labels = list(legal_lookup.keys())
-            plt.bar(range(len(labels)), vals.cpu().numpy())
-            plt.xticks(range(len(labels)), labels, rotation=45)
-            plt.title("Policy")
+
+        # decode real value/policy from the TorchScript model's head outputs
+        input_data, _ = convert_board(board, torch.tensor([]))
+        input_data = input_data.unsqueeze(0).to(self.device)
+        with torch.no_grad():
+            val_out, policy_out = self.model(input_data)
+        value, _, _, _, legal_lookup, _, best_move = decode_nn_output(
+            val_out, policy_out, board
+        )
+
+        # value panel (scalar broadcast over an 8x8 tile)
+        plt.subplot(2, n_width, n_width + 1)
+        value_img = np.full((8, 8), value, dtype=np.float32)
+        plt.imshow(value_img, cmap="plasma", vmin=-1, vmax=1)
+        plt.axis("off")
+        plt.title("Value: " + str(round(value, 5)))
+
+        # policy bar chart spanning the remaining bottom-row cells
+        plt.subplot(2, 1, 2)
+        if max_pol:
+            plt.ylim(0, max_pol)
+        vals = torch.tensor(list(legal_lookup.values()))
+        labels = list(legal_lookup.keys())
+        plt.bar(range(len(labels)), vals.cpu().numpy())
+        plt.xticks(range(len(labels)), labels, rotation=45)
+        plt.title("Policy")
         return chess.Move.from_uci(best_move)
 
     def _save_frame(self, fig):

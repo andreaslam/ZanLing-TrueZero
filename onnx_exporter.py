@@ -1,8 +1,10 @@
 import argparse
-import network
-import torch
-import onnx
 import sys
+
+import onnx
+import torch
+
+import network
 
 
 def main():
@@ -31,12 +33,7 @@ def main():
         print(f"Using device: {device}")
 
         # Initialize the model
-        torch_model = network.TrueNet(
-            num_resBlocks=8,
-            num_hidden=64,
-            head_channel_policy=8,
-            head_channel_values=4,
-        ).to(device)
+        torch_model = network.TrueNet().to(device)
 
         # Load the model state
         torch_model.load_state_dict(torch.jit.load(args.model_path).state_dict())

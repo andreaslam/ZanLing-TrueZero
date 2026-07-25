@@ -60,6 +60,8 @@ impl Net {
         maybe_init_cuda();
         let device = if has_cuda() {
             Device::Cuda(0)
+        } else if has_mps() {
+            Device::Mps
         } else {
             Device::Cpu
         };
@@ -144,6 +146,7 @@ impl Tree {
             let cache_key = CacheEntryKey {
                 hash: input_b.board().hash(),
                 halfmove_clock: input_b.board().halfmove_clock(),
+                repetitions: input_b.get_reps() as u8,
             };
 
             idx_li = match cache.get(&cache_key) {

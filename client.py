@@ -49,7 +49,9 @@ class Server:
 
 def serialise_net(model):
     buffer = io.BytesIO()
-    torch.jit.save(model, buffer)
+    with torch.no_grad():
+        model.eval()
+        torch.jit.save(model, buffer)
     return [byte for byte in buffer.getvalue()]
 
 
@@ -408,13 +410,8 @@ def check_net_exists(device, pattern):
     if not os.listdir("nets") or not training_nets:
         with torch.no_grad():
             net = torch.jit.script(
-                network.TrueNet(
-                    num_resBlocks=8,
-                    num_hidden=64,
-                    head_channel_policy=8,
-                    head_channel_values=4,
-                ).to(device)
-                # network.TrueNetXS(num_hidden=64).to(device)
+                # network.TrueNet().to(device)
+                network.TrueNetXS(num_hidden=64).to(device)
             ).eval()
             torch.jit.save(net, "nets/tz_0.pt")
 

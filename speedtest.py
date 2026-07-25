@@ -1,21 +1,26 @@
-import torch
 import time
+
+import torch
+
 import network
 
 batch_size = 2048
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+if torch.cuda.is_available():
+        device = "cuda"
+elif (
+    getattr(torch.backends, "mps", None) is not None
+    and torch.backends.mps.is_available()
+):
+    device = "mps"
+else:
+    device = "cpu"
+print(f"Using: {device}")
 iterations = 100
+warmups = 10
+x_warmup = torch.rand([warmups, batch_size, 21, 8, 8]).to(device)
+x_test = torch.rand([iterations, batch_size, 21, 8, 8]).to(device)
 
-x = torch.rand([batch_size, 21, 8, 8]).to(device)
-
-model = torch.jit.script(
-    network.TrueNet(
-        num_resBlocks=8,
-        num_hidden=64,
-        head_channel_policy=8,
-        head_channel_values=4,
-    ).to(device)
-)
+model = torch.jit.script(network.TrueNet().to(device))
 
 pytorch_total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(pytorch_total_params)
@@ -23,12 +28,12 @@ print(pytorch_total_params)
 model.eval()
 
 with torch.no_grad():
-    for _ in range(10):
-        _ = model(x)
+    for xi, _ in zip(x_warmup, range(warmups)):
+        y_ = model(xi)
 
 start_time = time.time()
-for _ in range(iterations):
-    _ = model(x)
+for xi, _ in zip(x_test, range(iterations)):
+    y_ = model(xi)
 end_time = time.time()
 
 
