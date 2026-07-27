@@ -32,10 +32,10 @@ Make sure you have Rust installed. If not, follow the instructions [here](https:
 Make sure you have Python installed. If not, download the latest version [here]([https://doc.rust-lang.org/book/ch01-01-installation.html](https://www.python.org/downloads/)). 
 Configure `tch-rs` from the instructions [here](https://github.com/LaurentMazare/tch-rs/blob/main/README.md). For now, the neural net for this project is not provided but the NN architecture is available [here](https://github.com/andreaslam/ZanLing-TrueZero/blob/main/network.py) for reference.
 
-Navigate to `ZanLing-TrueZero`:
+Navigate to the Rust crate (which lives in `src/rust`):
 
 ```
-cd ZanLing-TrueZero
+cd ZanLing-TrueZero/src/rust
 ```
 
 Then, build using `cargo`:
@@ -45,6 +45,8 @@ cargo build --release
 ```
 
 Then choose a binary to run!
+
+> **Project layout:** Rust binaries live in `src/rust/src/bin/` and are auto-discovered by Cargo. Data folders (`nets/`, `games/`, `hidden/`, `python_client_games/`, `experiment_nets/`, `frames/`) live at the **project root** (`ZanLing-TrueZero/`) and are resolved automatically — both the Rust code (`tzrust::data_path()`) and the Python code (`src/python/paths.py`) anchor paths to the project root, so you can run everything from any working directory.
 
 ### Using Docker
 
@@ -88,27 +90,39 @@ Before data generation, ensure that the loaded copy of the Repository is up-to-d
 git pull
 ```
 
-To run data generation, simply run the python training client `client.py`, `main` binary and the `server` binary as follows. Open a new terminal window for each.
+To run data generation, simply run the python training client `client.py`, the `main` binary and the `server` binary as follows. Open a new terminal window for each.
+
+Python side (from `src/python`):
 
 ```
+cd src/python
 python client.py
 ```
 
+Rust side (from `src/rust`):
+
 ```
+cd src/rust
 cargo run --bin main --release
 ```
 
 ```
+cd src/rust
 cargo run --bin server --release
 ```
 
+All data (`nets/`, `games/`, `hidden/`, `python_client_games/`, `log.npz`) is read from and written to the project root automatically, regardless of where you launch each process.
+
 ## Running the Engine in UCI
 
-To use TrueZero through UCI, simply run the following:
+To use TrueZero through UCI, run the following from `src/rust`:
 
 ```
+cd src/rust
 cargo run --bin ucimain --release
 ```
+
+The engine loads its network from `nets/` at the project root. The compiled binaries (in `src/rust/target/release/`) can also be launched directly from any directory.
 
 ## What each file does
 
