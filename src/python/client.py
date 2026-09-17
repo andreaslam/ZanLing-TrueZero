@@ -81,7 +81,6 @@ BATCH_SIZE = 2048
 # network is not fit to a tiny, highly-correlated slice of one generation.
 MIN_BUFFER_TO_TRAIN = 250_000
 # Target number of times each *new* position is trained on per generation. AlphaZero/LC0
-# keep this near ~1; the old regime reached into the hundreds and overfit noisy targets.
 EPOCHS_PER_GEN = 1.0
 # Uniform full-buffer sampling makes the newest generation only ~1/60 of batches once
 # the replay window is full. Mix in recent-generation batches so each generation has a

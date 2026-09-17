@@ -53,7 +53,7 @@ pub fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> 
 /// sq2 - black's turn
 /// sq3, sq4 - castling pos l + r (us)
 /// sq5, sq6 - castling pos l + r (opponent)
-/// sql7, sql8 -  sqs for bits for the repetition counter
+/// sq7, sq8 -  sqs for bits for the repetition counter
 /// sq9 - sq20 - sqs for turn to move + non-turn to move's pieces
 /// sq21 - en passant square if any
 
@@ -231,7 +231,7 @@ pub fn process_board_output(
     // step 4 - iteratively append nodes into class
     let mut counter = 0;
 
-    // ensure that moves_left is positive - there are no negative moves
+    // ensure that moves_left is not negative - there are no negative moves
     let moves_left = 0.0_f32.max(moves_left);
     let selected_node_net_evaluation = ZeroValuesPov {
         value,

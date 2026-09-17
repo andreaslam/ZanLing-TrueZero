@@ -1,4 +1,4 @@
-// UCI code based on https://github.com/jw1912/monty
+// UCI code based on https://github.com/official-monty/Monty
 use crate::dataformat::ZeroEvaluationAbs;
 use crate::settings::{CPUCTSettings, FPUSettings, MovesLeftSettings, PSTSettings};
 use crate::{
@@ -59,6 +59,46 @@ fn mb_to_items(mb: usize) -> usize {
     let (key_size, val_size) = get_cache_entry_size();
     debug_print!("cache size: {}", (mb * 1000000) / (key_size + val_size));
     (mb * 1000000) / (key_size + val_size)
+}
+
+pub fn time_to_nodes(
+    side_to_move: Color,
+    times: [Option<u64>; 2],
+    incs: [Option<u64>; 2],
+    movestogo: u64,
+    max_time: Option<u128>,
+) -> (Option<u128>, u128) {
+    let stm_num = match side_to_move {
+        Color::White => 0,
+        Color::Black => 1,
+    };
+
+    let mut time: Option<u128> = None;
+    let mut nodes: u128 = 1600;
+
+    if let Some(t) = times[stm_num] {
+        let mut base = t / movestogo.max(1);
+
+        if let Some(i) = incs[stm_num] {
+            base += i * 3 / 4;
+        }
+
+        time = Some(base as u128);
+        nodes = time.unwrap() / 10;
+    }
+
+    nodes = max(1, nodes);
+
+    if let Some(max) = max_time {
+        time = Some(time.unwrap_or(u128::MAX).min(max));
+        nodes = time.unwrap() / 10;
+    }
+
+    if let Some(t) = time.as_mut() {
+        *t = t.saturating_sub(5);
+    }
+
+    (time, nodes)
 }
 
 pub fn run_uci(net_path: &str) {
@@ -440,31 +480,10 @@ fn handle_go(
         }
     }
     debug_print!("mode: {}", mode);
-    let mut time: Option<u128> = None;
 
-    let stm = bs.board().side_to_move();
-    let stm_num = match stm {
-        Color::White => Some(0),
-        Color::Black => Some(1),
-    };
-    if let Some(t) = times[stm_num.unwrap()] {
-        let mut base = t / movestogo.max(1);
+    let (time, nodes) = time_to_nodes(bs.board().side_to_move(), times, incs, movestogo, max_time);
 
-        if let Some(i) = incs[stm_num.unwrap()] {
-            base += i * 3 / 4;
-        }
-        time = Some(base.try_into().unwrap());
-        nodes = time.unwrap() / 50;
-    }
-    nodes = max(1, nodes);
-    if let Some(max) = max_time {
-        time = Some(time.unwrap_or(u128::MAX).min(max));
-        nodes = time.unwrap() / 50;
-    }
-
-    if let Some(t) = time.as_mut() {
-        *t = t.saturating_sub(5);
-    }
+    debug_print!("time left: {:?}", time);
 
     let m_settings = MovesLeftSettings {
         moves_left_weight: 0.03,

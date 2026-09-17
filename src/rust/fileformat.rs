@@ -87,7 +87,6 @@ impl BinaryOutput {
             "Binary output path should not have an extension, .bin and .json are added automatically"
         );
 
-        //TODO try buffer sizes again
         let bin_write = BufWriter::new(File::create(path.with_extension("bin"))?);
         let off_write = BufWriter::new(File::create(path.with_extension("off"))?);
         let json_tmp_write = BufWriter::new(File::create(path.with_extension("json.tmp"))?);

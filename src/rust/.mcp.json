@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "openvisio": {
+      "command": "openvisio",
+      "args": [
+        "mcp",
+        ".",
+        "--watch"
+      ]
+    }
+  }
+}

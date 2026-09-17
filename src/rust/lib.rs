@@ -7,7 +7,6 @@ pub fn workspace_root() -> PathBuf {
 pub fn data_path(rel: &str) -> PathBuf {
     workspace_root().join(rel)
 }
-
 pub fn data_path_str(rel: &str) -> String {
     data_path(rel).to_string_lossy().into_owned()
 }

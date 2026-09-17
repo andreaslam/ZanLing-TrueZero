@@ -12,6 +12,9 @@ path = "lib.rs"
 
 [dependencies.pyo3]
 version = "0.24.1"
+
+[build-dependencies]
+dotenv = "0.15.0"
 # features = ["extension-module", "auto-initialize", "abi"]
 
 # [tool.maturin]
@@ -44,3 +47,8 @@ itertools = "0.13.0"
 tokio = { version = "1", features = ["full"] }
 lru = "0.16.3"
 crossfire = "1.0.1"
+litchee = "0.1.10"
+dotenv = "0.15.0"
+dotenv_codegen = "0.15.0"
+futures-util = "0.3.34"
+shakmaty = "0.30.1"

@@ -15,7 +15,7 @@ use std::{
 };
 use tch::Tensor;
 
-const PARTIAL_BATCH_TIMEOUT: Duration = Duration::from_micros(100);
+const PARTIAL_BATCH_TIMEOUT: Duration = Duration::from_micros(1);
 
 pub struct Packet {
     pub job: Tensor,

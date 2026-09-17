@@ -182,8 +182,15 @@ fn main() {
             let engine1 = tensor_exe_send_1.clone();
             let worker_cancelled_test = cancelled_test.clone();
             let fut = async move {
-                worker_main(job_recv, result_send, engine0, engine1, worker_cancelled_test, n)
-                    .await;
+                worker_main(
+                    job_recv,
+                    result_send,
+                    engine0,
+                    engine1,
+                    worker_cancelled_test,
+                    n,
+                )
+                .await;
             };
             pool.spawn_ok(fut);
         }
@@ -348,7 +355,10 @@ fn collector_main(
     loop {
         let msg = receiver.recv().unwrap();
         if completed_tests.contains(&msg.test_id) {
-            println!("[SPRT] Ignoring late result for completed test {}", msg.test_id);
+            println!(
+                "[SPRT] Ignoring late result for completed test {}",
+                msg.test_id
+            );
             continue;
         }
         match active_test_id {
@@ -408,7 +418,11 @@ fn collector_main(
                 score,
                 elo,
                 res.accept_new_net,
-                if early_reject { "early-reject" } else { "fixed-count" }
+                if early_reject {
+                    "early-reject"
+                } else {
+                    "fixed-count"
+                }
             );
             let message = MessageServer {
                 purpose: MessageType::TestResult(res),
@@ -486,7 +500,8 @@ fn commander_main(
                     if active_test || pending_jobs {
                         println!(
                             "[SPRT][Warning] Ignoring candidate {} while test {} is still active",
-                            checksum, next_test_id.saturating_sub(1)
+                            checksum,
+                            next_test_id.saturating_sub(1)
                         );
                         recv_msg.clear();
                         continue;
