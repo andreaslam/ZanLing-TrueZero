@@ -58,10 +58,8 @@ impl DataGen {
             let (mv, v_p, _move_idx_piece, search_data, visits) =
                 get_move(bs.clone(), tensor_exe_send, *settings, id, cache).await;
             let _elapsed = _sw.elapsed().as_nanos() as f32 / 1e9;
-            // AlphaZero-style temperature: explore (sample) for the opening moves, then play
-            // greedily (argmax). `positions.len()` is the ply index of the CURRENT position,
-            // so the first TEMPERATURE_CUTOFF_PLIES plies are sampled.
-            const TEMPERATURE_CUTOFF_PLIES: usize = 30;
+            // sample for the first 30 full moves (60 plies), then play greedily.
+            const TEMPERATURE_CUTOFF_PLIES: usize = 60;
             let final_mv = if positions.len() >= TEMPERATURE_CUTOFF_PLIES {
                 // tau -> 0: pick the most-visited move (already returned as `mv`)
                 mv

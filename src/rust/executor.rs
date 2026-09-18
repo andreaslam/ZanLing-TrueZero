@@ -159,7 +159,6 @@ pub fn executor_main(
             }
 
             let message = selector.wait();
-            // end_event();
 
             match message {
                 Message::StopServer => break,
@@ -182,11 +181,9 @@ pub fn executor_main(
                     let i_v = input_vec.make_contiguous();
                     let input_tensors = Tensor::cat(i_v, 0);
 
-                    // begin_event_with_color("eval", CL_BLUE);
                     evaluation_time_taken_debugger.reset();
                     let (board_eval, policy) =
                         eval_state(input_tensors, network).expect("Evaluation failed");
-                    // end_event();
                     evaluation_time_taken_debugger.record("evaluation_time_taken", &thread_name);
                     evaluation_time_taken_debugger.reset();
                     match evals_per_sec_sender {
@@ -198,7 +195,6 @@ pub fn executor_main(
                         None => {}
                     }
 
-                    // begin_event_with_color("packing", CL_RED);
                     packing_time_debugger.reset();
                     for i in 0..batch_size {
                         let sender: Sender<ReturnMessage> = output_senders
@@ -213,7 +209,6 @@ pub fn executor_main(
                             .send(ReturnMessage::ReturnMessage(Ok(return_pack)))
                             .expect("Should be able to send the result");
                     }
-                    // end_event();
 
                     packing_time_debugger.record("packing_time", &thread_name);
 
@@ -296,9 +291,12 @@ pub fn executor_static(
                             .expect("There should be an ID for each job");
                         let result = (board_eval.get(i as i64), policy.get(i as i64));
                         let return_pack = ReturnPacket { packet: result, id };
-                        sender
+                        if sender
                             .send(ReturnMessage::ReturnMessage(Ok(return_pack)))
-                            .expect("Should be able to send the result");
+                            .is_err()
+                        {
+                            eprintln!("Executor: result receiver dropped; discarding result.");
+                        }
                     }
                     drop(input_vec.drain(0..batch_size));
                 }

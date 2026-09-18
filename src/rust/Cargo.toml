@@ -31,6 +31,8 @@ tch = { version = "0.17.0", features = [
     "download-libtorch",
 ] } # TODO CHANGE VERSION
 rand = "0.8.6"
+reqwest = { version = "0.13", features = ["rustls"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
 rand_distr = "0.4.3"
 serde = { version = "1.0.188", features = ["derive"] }
 bytemuck = "1.14.0"
