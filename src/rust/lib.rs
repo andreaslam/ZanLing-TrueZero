@@ -19,6 +19,8 @@ pub mod dirichlet;
 pub mod elo;
 pub mod executor;
 pub mod fileformat;
+pub mod lichess_graph;
+pub mod lichess_time_control;
 pub mod mcts;
 pub mod mcts_trainer;
 pub mod message_types;
@@ -171,5 +173,170 @@ mod tests {
         tree.backpropagate(0);
 
         assert_eq!(tree.nodes[0].total_evaluation.moves_left, 0.0);
+    }
+
+    #[test]
+    fn matchmaking_pool_contains_expected_controls() {
+        use lichess_time_control::{TimeControl, MATCHMAKING_TIME_CONTROLS};
+
+        assert_eq!(
+            MATCHMAKING_TIME_CONTROLS,
+            [
+                TimeControl::Classical,
+                TimeControl::Rapid,
+                TimeControl::Blitz,
+                TimeControl::Bullet,
+            ]
+        );
+        assert_eq!(TimeControl::Classical.clock(), (1_800, 0));
+        assert_eq!(TimeControl::Rapid.clock(), (600, 5));
+        assert_eq!(TimeControl::Blitz.clock(), (180, 2));
+        assert_eq!(TimeControl::Bullet.clock(), (60, 0));
+        assert!(!TimeControl::Rapid.has_rating(None));
+    }
+
+    fn temporary_database_path() -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "truezero-player-graph-{}-{:?}.sqlite3",
+            std::process::id(),
+            std::thread::current().id()
+        ))
+    }
+
+    #[test]
+    fn migrates_legacy_graph_and_keeps_normalized_relationships() {
+        use lichess_graph::{graph_insert_edge, graph_insert_player, open_player_graph_database};
+        use rusqlite::Connection;
+
+        let path = temporary_database_path();
+        let _ = std::fs::remove_file(&path);
+        let path_string = path.to_string_lossy().into_owned();
+
+        {
+            let legacy = Connection::open(&path_string).unwrap();
+            legacy
+                .execute_batch(
+                    r#"
+                    CREATE TABLE players (
+                        username TEXT PRIMARY KEY,
+                        is_bot INTEGER,
+                        first_seen_at INTEGER NOT NULL,
+                        last_seen_online_at INTEGER,
+                        last_expanded_at INTEGER,
+                        discovered_from TEXT
+                    );
+                    CREATE TABLE player_edges (
+                        username TEXT NOT NULL,
+                        opponent TEXT NOT NULL,
+                        last_seen_at INTEGER NOT NULL,
+                        PRIMARY KEY (username, opponent)
+                    );
+                    CREATE TABLE human_challenges (
+                        username TEXT PRIMARY KEY,
+                        last_challenged_at INTEGER NOT NULL
+                    );
+                    INSERT INTO players VALUES
+                        ('HumanSeed', NULL, 1, 2, 3, 'online_human'),
+                        ('Opponent', 0, 4, NULL, NULL, 'game: HumanSeed');
+                    INSERT INTO player_edges VALUES
+                        ('HumanSeed', 'Opponent', 5);
+                    INSERT INTO human_challenges VALUES
+                        ('HumanSeed', 6);
+                    "#,
+                )
+                .unwrap();
+        }
+
+        let db = open_player_graph_database(&path_string).unwrap();
+        let player_count: i64 = db
+            .query_row("SELECT COUNT(*) FROM players", [], |row| row.get(0))
+            .unwrap();
+        let edge_count: i64 = db
+            .query_row("SELECT COUNT(*) FROM player_edges", [], |row| row.get(0))
+            .unwrap();
+        let challenge_count: i64 = db
+            .query_row("SELECT COUNT(*) FROM human_challenges", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+
+        assert_eq!(player_count, 2);
+        assert_eq!(edge_count, 1);
+        assert_eq!(challenge_count, 1);
+
+        graph_insert_player(&db, "HumanSeed", None, "online_human").unwrap();
+        graph_insert_edge(&db, "HumanSeed", "Opponent").unwrap();
+
+        let discovery_count: i64 = db
+            .query_row("SELECT COUNT(*) FROM player_discoveries", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(discovery_count, 2);
+
+        drop(db);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn prunes_old_unplayed_players_before_connected_players() {
+        use lichess_graph::{
+            graph_insert_edge, graph_prune_players, open_player_graph_database, MAX_GRAPH_PLAYERS,
+        };
+        use rusqlite::params;
+
+        let path = temporary_database_path();
+        let _ = std::fs::remove_file(&path);
+        let path_string = path.to_string_lossy().into_owned();
+        let db = open_player_graph_database(&path_string).unwrap();
+
+        for username in ["connected", "oldest", "played-peer"] {
+            db.execute(
+                "INSERT INTO players
+                 (username, first_seen_at, last_seen_online_at)
+                 VALUES (?1, 1, 1)",
+                params![username],
+            )
+            .unwrap();
+        }
+        for index in 0..(MAX_GRAPH_PLAYERS - 2) {
+            db.execute(
+                "INSERT INTO players
+                 (username, first_seen_at, last_seen_online_at)
+                 VALUES (?1, 2, 2)",
+                params![format!("player-{index}")],
+            )
+            .unwrap();
+        }
+
+        graph_insert_edge(&db, "connected", "played-peer").unwrap();
+        assert_eq!(graph_prune_players(&db).unwrap(), 1);
+
+        let oldest_exists: bool = db
+            .query_row(
+                "SELECT EXISTS(
+                    SELECT 1 FROM players
+                    WHERE username = 'oldest'
+                )",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let connected_exists: bool = db
+            .query_row(
+                "SELECT EXISTS(
+                    SELECT 1 FROM players
+                    WHERE username = 'connected'
+                )",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert!(!oldest_exists);
+        assert!(connected_exists);
+
+        drop(db);
+        std::fs::remove_file(path).unwrap();
     }
 }
