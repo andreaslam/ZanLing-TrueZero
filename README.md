@@ -111,6 +111,46 @@ cd src/rust
 cargo run --bin server --release
 ```
 
+### Lichess bot plus self-play
+
+`lichess` uses the same RustDataGen server connection, neural-network byte
+stream, batched `executor_main`, and `BinaryOutput` collector as `main`.
+It also runs autonomous self-play beside Lichess games, so both sources feed
+the same training batches. Start `server` and `client.py` as above, export
+`LICHESS_API_KEY`, then run:
+
+```
+cd src/rust
+cargo run --bin lichess --release
+```
+
+The client waits for the executor to load the first network supplied by the
+training server before it logs into Lichess, indexes the player graph, issues
+challenges, or starts self-play. After that barrier, self-play and Lichess
+game handling run concurrently; later networks are loaded by the same
+executor while both data sources continue operating.
+
+Executor and generator counts can be overridden without changing the binary:
+
+```powershell
+$env:TZ_NUM_EXECUTORS = "2"
+$env:TZ_BATCH_SIZE = "1024"
+$env:TZ_NUM_GENERATORS = "4"
+$env:TZ_TENSOR_QUEUE_CAPACITY = "4096"
+```
+
+By default, the Lichess client uses two executors, a batch size of 1024, and
+twice `executors * batch_size` generators, matching the regular data
+generation client. Self-play and Lichess searches use the full executor pool.
+The shared inference queue defaults to the generator count so executors can
+form full inference batches; setting `TZ_TENSOR_QUEUE_CAPACITY` lower reduces
+latency for live games but can cause undersized GPU batches and lower NPS.
+
+The bot never uses a hard-coded network path: it writes the network bytes
+received from the server under the project `nets/` directory. Lichess
+training records contain only positions where TrueZero was to move; the
+terminal board and result are retained for each recorded game.
+
 All data (`nets/`, `games/`, `hidden/`, `python_client_games/`, `log.npz`) is read from and written to the project root automatically, regardless of where you launch each process.
 
 ## Running the Engine in UCI

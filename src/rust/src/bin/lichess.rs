@@ -171,7 +171,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let token = env::var("LICHESS_API_KEY").expect("LICHESS_API_KEY must be set");
     let num_executors = env_usize("TZ_NUM_EXECUTORS", 2).max(1);
-    let batch_size = env_usize("TZ_BATCH_SIZE", 2048).max(1);
+    // Keep the Lichess self-play workload comparable to main.rs unless the
+    // operator explicitly overrides it.
+    let batch_size = env_usize("TZ_BATCH_SIZE", 1024).max(1);
     let num_generators = env_usize(
         "TZ_NUM_GENERATORS",
         num_executors
@@ -199,10 +201,17 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         net_receivers.push(receiver);
     }
     let (executor_ready_send, executor_ready_recv) = flume::unbounded::<bool>();
-    // Both workloads use the full executor pool. Keep this queue deliberately
-    // small: generators back-pressure instead of filling a large FIFO, so a
-    // live Lichess request reaches an executor promptly.
-    let queue_capacity = num_executors.saturating_mul(4).max(1);
+    // A queue smaller than the executor batch size forces handle_requests()
+    // to flush partial batches after its timeout. That produces many small
+    // GPU launches: utilization can look high while aggregate NPS collapses.
+    // Match main.rs by keeping enough pending requests to fill the configured
+    // batches. Pause self-play before starting a live game, so this backlog is
+    // bounded and does not grow while the game is being played.
+    let default_queue_capacity = num_generators
+        .max(batch_size.saturating_mul(num_executors))
+        .max(1);
+    let queue_capacity =
+        env_usize("TZ_TENSOR_QUEUE_CAPACITY", default_queue_capacity).max(1);
     let (tensor_send, tensor_recv) = flume::bounded::<Packet>(queue_capacity);
     let (collector_send, collector_recv) = flume::bounded::<CollectorMessage>(num_generators);
     let (id_send, id_recv) = flume::bounded::<usize>(1);
@@ -403,7 +412,16 @@ fn collector_main(
                     let message = MessageServer {
                         purpose: MessageType::JobSendData(data),
                     };
-                    let _ = writeln!(stream, "{}", serde_json::to_string(&message).unwrap());
+                    writeln!(stream, "{}", serde_json::to_string(&message).unwrap())
+                        .expect("failed to send generated lichess games");
+                    stream
+                        .flush()
+                        .expect("failed to flush generated lichess games");
+                    for suffix in files {
+                        let file_path = format!("{}{}", path, suffix);
+                        fs::remove_file(&file_path)
+                            .expect("failed to delete sent lichess game data file");
+                    }
                     path = data_path_str(&format!(
                         "games/lichess_gen_{}_{}",
                         id,

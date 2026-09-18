@@ -18,7 +18,7 @@ use tzrust::{
     data_path, data_path_str,
     dataformat::ZeroEvaluationAbs,
     debug_print,
-    executor::{executor_main, Packet},
+    executor::{executor_main, Packet, TEMP_NETWORK_PREFIX},
     fileformat::BinaryOutput,
     mcts_trainer::{EvalMode, TypeRequest::TrainerSearch},
     message_types::{DataFileType, Entity, MessageServer, MessageType, Statistics},
@@ -89,6 +89,7 @@ fn main() {
         }
 
         let (id_send, id_recv) = flume::bounded::<usize>(1);
+        let (executor_ready_send, executor_ready_recv) = flume::unbounded::<bool>();
 
         let _ = s
             .builder()
@@ -98,6 +99,8 @@ fn main() {
                     vec_communicate_exe_send,
                     &mut stream.try_clone().expect("clone failed"),
                     id_send,
+                    executor_ready_recv,
+                    num_executors,
                 )
             })
             .unwrap();
@@ -108,6 +111,7 @@ fn main() {
         for (exec_id, communicate_exe_recv) in vec_communicate_exe_recv.into_iter().enumerate() {
             let eval_per_sec_sender = game_sender.clone();
             let tensor_exe_recv_clone = tensor_exe_recv.clone();
+            let executor_ready = executor_ready_send.clone();
             let _ = s
                 .builder()
                 .name(format!("executor-{}", exec_id).to_string())
@@ -117,7 +121,7 @@ fn main() {
                         tensor_exe_recv_clone,
                         batch_size,
                         Some(eval_per_sec_sender),
-                        None,
+                        Some(executor_ready),
                         exec_id,
                     )
                 })
@@ -280,6 +284,10 @@ fn collector_main(
                         serde_json::to_string(&message).expect("serialisation failed");
                     serialised += "\n";
                     server_handle.write_all(serialised.as_bytes()).unwrap();
+                    for file in files {
+                        let file_path = format!("{}{}", path, file);
+                        fs::remove_file(&file_path).expect("failed to delete sent game data file");
+                    }
 
                     let file_save_time = SystemTime::now();
                     let file_save_time_duration = file_save_time
@@ -335,6 +343,8 @@ fn commander_main(
     vec_exe_sender: Vec<Sender<String>>,
     server_handle: &mut TcpStream,
     id_sender: Sender<usize>,
+    executor_ready_receiver: Receiver<bool>,
+    num_executors: usize,
 ) {
     let mut curr_net = String::new();
     let mut is_initialised = false;
@@ -391,7 +401,8 @@ fn commander_main(
                     }
                     println!("[Datagen] new net data {}", checksum);
                     net_path = data_path_str(&format!(
-                        "nets/tz_temp_net_{}_{}_{}.pt",
+                        "nets/{}{}_{}_{}.pt",
+                        TEMP_NETWORK_PREFIX,
                         generator_id, net_path_counter, net_save_timestamp
                     ));
                     let mut file = File::create(net_path.clone()).expect("Unable to create file");
@@ -451,6 +462,18 @@ fn commander_main(
             for exe_sender in &vec_exe_sender {
                 exe_sender.send(net_path.clone()).unwrap();
                 debug_print!("sent net!");
+            }
+            for _ in 0..num_executors {
+                executor_ready_receiver
+                    .recv()
+                    .expect("executor disconnected before loading network");
+            }
+            if Path::new(&net_path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with(TEMP_NETWORK_PREFIX))
+            {
+                fs::remove_file(&net_path).expect("failed to delete loaded temporary network");
             }
 
             curr_net = net_path.clone();
