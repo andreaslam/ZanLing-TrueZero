@@ -15,11 +15,12 @@ use litchee::{
         challenges::{LichessChallengeColor, LichessChallengeStatus},
         games::LichessGameStatusName,
     },
-    model::{LichessColor, LichessTitle},
+    model::{LichessColor, LichessPerfs, LichessTitle},
     LichessClient,
 };
 
 use lru::LruCache;
+use rand::seq::SliceRandom;
 use shakmaty::{
     fen::Fen,
     uci::UciMove,
@@ -146,27 +147,90 @@ const MAX_GRAPH_PLAYERS_PER_SCAN: usize = 10;
  * row in `player_expansions`.
  */
 const GRAPH_REEXPAND_INTERVAL_SECS: u64 = 1_800;
+const MAX_GRAPH_PLAYERS: usize = 10_000;
 
 /*
- * Outgoing challenge time control.
+ * Outgoing matchmaking time controls.
  *
- * 3+2 rated.
+ * A control is selected independently for every challenge. Keeping the
+ * presets here makes the supported range explicit and easy to adjust.
  */
-const BOT_CHALLENGE_INITIAL_SECONDS: u32 = 180;
-const BOT_CHALLENGE_INCREMENT_SECONDS: u32 = 2;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TimeControl {
+    Classical,
+    Rapid,
+    Blitz,
+    Bullet,
+}
+
+impl TimeControl {
+    fn clock(self) -> (u32, u32) {
+        match self {
+            Self::Classical => (1_800, 0),
+            Self::Rapid => (600, 5),
+            Self::Blitz => (180, 2),
+            Self::Bullet => (60, 0),
+        }
+    }
+
+    fn has_rating(self, perfs: Option<&LichessPerfs>) -> bool {
+        let Some(perfs) = perfs else {
+            return false;
+        };
+
+        match self {
+            Self::Classical => perfs.classical.is_some(),
+            Self::Rapid => perfs.rapid.is_some(),
+            Self::Blitz => perfs.blitz.is_some(),
+            Self::Bullet => perfs.bullet.is_some(),
+        }
+    }
+}
+
+const MATCHMAKING_TIME_CONTROLS: [TimeControl; 4] = [
+    TimeControl::Classical,
+    TimeControl::Rapid,
+    TimeControl::Blitz,
+    TimeControl::Bullet,
+];
+
+fn random_time_control() -> TimeControl {
+    *MATCHMAKING_TIME_CONTROLS
+        .as_slice()
+        .choose(&mut rand::thread_rng())
+        .expect("matchmaking time controls must not be empty")
+}
+
 const BOT_CHALLENGE_RATED: bool = true;
 
 /*
- * Humans use the same challenge settings as bots.
+ * Humans use the same rated setting and time-control pool as bots.
  */
-const HUMAN_CHALLENGE_INITIAL_SECONDS: u32 =
-    BOT_CHALLENGE_INITIAL_SECONDS;
-
-const HUMAN_CHALLENGE_INCREMENT_SECONDS: u32 =
-    BOT_CHALLENGE_INCREMENT_SECONDS;
-
 const HUMAN_CHALLENGE_RATED: bool =
     BOT_CHALLENGE_RATED;
+
+#[cfg(test)]
+mod time_control_tests {
+    use super::*;
+
+    #[test]
+    fn matchmaking_pool_contains_expected_controls() {
+        assert_eq!(
+            MATCHMAKING_TIME_CONTROLS,
+            [
+                TimeControl::Classical,
+                TimeControl::Rapid,
+                TimeControl::Blitz,
+                TimeControl::Bullet,
+            ]
+        );
+        assert_eq!(TimeControl::Classical.clock(), (1_800, 0));
+        assert_eq!(TimeControl::Rapid.clock(), (600, 5));
+        assert_eq!(TimeControl::Blitz.clock(), (180, 2));
+        assert_eq!(TimeControl::Bullet.clock(), (60, 0));
+        assert!(!TimeControl::Rapid.has_rating(None));
+    }
+}
 
 struct ActiveGameGuard(Arc<AtomicUsize>);
 
@@ -883,13 +947,19 @@ async fn challenge_online_bots(
                 &bot.username,
             );
 
+        let time_control =
+            random_time_control();
+        let (initial_seconds, increment_seconds) =
+            time_control.clock();
+
         println!(
-            "Challenging online bot {} as {:?} \
-             with {}+{} rated ({}/{})",
+            "Challenging online bot {} as {:?} with \
+             {:?} ({}+{} rated) ({}/{})",
             bot.username,
             challenge_color,
-            BOT_CHALLENGE_INITIAL_SECONDS / 60,
-            BOT_CHALLENGE_INCREMENT_SECONDS,
+            time_control,
+            initial_seconds / 60,
+            increment_seconds,
             challenge_count,
             MAX_BOT_CHALLENGES_PER_SCAN
         );
@@ -903,10 +973,7 @@ async fn challenge_online_bots(
                 .challenge(&bot.username)
                 .color(challenge_color)
                 .rated(BOT_CHALLENGE_RATED)
-                .clock(
-                    BOT_CHALLENGE_INITIAL_SECONDS,
-                    BOT_CHALLENGE_INCREMENT_SECONDS,
-                )
+                .clock(initial_seconds, increment_seconds)
                 .send()
                 .await
         };
@@ -1293,6 +1360,110 @@ fn graph_insert_edge(
     )?;
 
     Ok(())
+}
+
+/*
+ * Keep the graph bounded. Players with a recorded game relationship are
+ * retained ahead of players that were only discovered from an online scan.
+ * Within either group, the least recently online players are evicted first.
+ */
+fn graph_prune_players(
+    db: &Connection,
+) -> Result<usize, rusqlite::Error> {
+    let player_count:
+        usize =
+        db.query_row(
+            "SELECT COUNT(*) FROM players",
+            [],
+            |row| row.get(0),
+        )?;
+
+    let remove_count =
+        player_count.saturating_sub(
+            MAX_GRAPH_PLAYERS,
+        );
+
+    if remove_count == 0 {
+        return Ok(0);
+    }
+
+    db.execute_batch("BEGIN IMMEDIATE;")?;
+
+    let result =
+        (|| {
+            let mut statement =
+                db.prepare(
+                    r#"
+                    SELECT players.id
+                    FROM players
+                    WHERE NOT EXISTS (
+                        SELECT 1
+                        FROM human_challenges
+                        WHERE human_challenges.player_id = players.id
+                    )
+                    ORDER BY
+                        CASE WHEN EXISTS (
+                            SELECT 1
+                            FROM player_edges
+                            WHERE player_edges.player_id = players.id
+                               OR player_edges.opponent_id = players.id
+                        ) THEN 1 ELSE 0 END ASC,
+                        COALESCE(players.last_seen_online_at, 0) ASC,
+                        players.first_seen_at ASC,
+                        players.id ASC
+                    LIMIT ?1
+                    "#,
+                )?;
+
+            let ids =
+                statement
+                    .query_map(
+                        params![remove_count as i64],
+                        |row| row.get::<_, i64>(0),
+                    )?
+                    .collect::<Result<Vec<_>, _>>()?;
+
+            for id in &ids {
+                db.execute(
+                    "DELETE FROM player_edges
+                     WHERE player_id = ?1 OR opponent_id = ?1",
+                    params![id],
+                )?;
+                db.execute(
+                    "DELETE FROM player_discoveries
+                     WHERE player_id = ?1",
+                    params![id],
+                )?;
+                db.execute(
+                    "DELETE FROM player_expansions
+                     WHERE player_id = ?1",
+                    params![id],
+                )?;
+                db.execute(
+                    "DELETE FROM human_challenges
+                     WHERE player_id = ?1",
+                    params![id],
+                )?;
+                db.execute(
+                    "DELETE FROM players WHERE id = ?1",
+                    params![id],
+                )?;
+            }
+
+            Ok(ids.len())
+        })();
+
+    match result {
+        Ok(removed) => {
+            db.execute_batch("COMMIT;")?;
+            Ok(removed)
+        }
+        Err(error) => {
+            let _ =
+                db.execute_batch("ROLLBACK;");
+            Err(error)
+        }
+    }
 }
 
 fn graph_get_expansion_candidates(
@@ -1743,6 +1914,22 @@ async fn expand_player_graph(
         );
     }
 
+    let pruned =
+        {
+            let db =
+                graph_db.lock().await;
+
+            graph_prune_players(&db)?
+        };
+
+    if pruned > 0 {
+        println!(
+            "Graph: pruned {} players to stay within the {}-player limit.",
+            pruned,
+            MAX_GRAPH_PLAYERS
+        );
+    }
+
     let graph_size:
         usize =
         {
@@ -1979,8 +2166,18 @@ async fn challenge_online_humans(
         "Scanning currently-online Lichess humans..."
     );
 
+    let our_perfs =
+        current_perfs(client).await?;
+
     let our_rating =
-        match current_blitz_rating(client).await? {
+        match our_perfs
+            .as_ref()
+            .and_then(|perfs| {
+                perfs.blitz
+                    .as_ref()
+                    .map(|blitz| blitz.rating)
+            })
+        {
             Some(rating) => rating,
 
             None => {
@@ -2249,17 +2446,29 @@ async fn challenge_online_humans(
                 &username,
             );
 
+        let time_control =
+            random_time_control();
+        let (initial_seconds, increment_seconds) =
+            time_control.clock();
+        let rated =
+            HUMAN_CHALLENGE_RATED
+                && time_control.has_rating(
+                    our_perfs.as_ref(),
+                );
+
         println!(
             "Challenging online human {} \
              (Blitz {}, ours {}, difference {:+}) \
-             as {:?} with {}+{} rated ({}/{})",
+             as {:?} with {:?} ({}+{} {}, {}/{})",
             username,
             candidate_rating,
             our_rating,
             rating_difference,
             challenge_color,
-            HUMAN_CHALLENGE_INITIAL_SECONDS / 60,
-            HUMAN_CHALLENGE_INCREMENT_SECONDS,
+            time_control,
+            initial_seconds / 60,
+            increment_seconds,
+            if rated { "rated" } else { "casual" },
             challenge_count,
             MAX_HUMAN_CHALLENGES_PER_SCAN
         );
@@ -2272,11 +2481,8 @@ async fn challenge_online_humans(
                 .challenges()
                 .challenge(&username)
                 .color(challenge_color)
-                .rated(HUMAN_CHALLENGE_RATED)
-                .clock(
-                    HUMAN_CHALLENGE_INITIAL_SECONDS,
-                    HUMAN_CHALLENGE_INCREMENT_SECONDS,
-                )
+                .rated(rated)
+                .clock(initial_seconds, increment_seconds)
                 .send()
                 .await
         };
@@ -2345,10 +2551,10 @@ async fn challenge_online_humans(
     Ok(())
 }
 
-async fn current_blitz_rating(
+async fn current_perfs(
     client: &LichessClient,
 ) -> Result<
-    Option<u32>,
+    Option<LichessPerfs>,
     Box<dyn std::error::Error + Send + Sync>,
 > {
     let me =
@@ -2357,22 +2563,7 @@ async fn current_blitz_rating(
             .profile()
             .await?;
 
-    Ok(
-        me.user
-            .perfs
-            .as_ref()
-            .and_then(
-                |perfs| {
-                    perfs.blitz
-                        .as_ref()
-                        .map(
-                            |blitz| {
-                                blitz.rating
-                            },
-                        )
-                },
-            ),
-    )
+    Ok(me.user.perfs)
 }
 
 async fn fetch_online_player_usernames(
@@ -2483,8 +2674,9 @@ mod graph_database_tests {
 
     fn temporary_database_path() -> PathBuf {
         env::temp_dir().join(format!(
-            "truezero-player-graph-{}.sqlite3",
-            std::process::id()
+            "truezero-player-graph-{}-{:?}.sqlite3",
+            std::process::id(),
+            std::thread::current().id()
         ))
     }
 
@@ -2585,6 +2777,90 @@ mod graph_database_tests {
             )
             .unwrap();
         assert_eq!(discovery_count, 2);
+
+        drop(db);
+        remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn prunes_old_unplayed_players_before_connected_players() {
+        let path =
+            temporary_database_path();
+        let _ =
+            remove_file(&path);
+        let path_string =
+            path.to_string_lossy().into_owned();
+        let db =
+            open_player_graph_database(&path_string)
+                .unwrap();
+
+        db.execute(
+            "INSERT INTO players
+             (username, first_seen_at, last_seen_online_at)
+             VALUES (?1, 1, 1)",
+            params!["connected"],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO players
+             (username, first_seen_at, last_seen_online_at)
+             VALUES (?1, 1, 1)",
+            params!["oldest"],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO players
+             (username, first_seen_at, last_seen_online_at)
+             VALUES (?1, 1, 1)",
+            params!["played-peer"],
+        )
+        .unwrap();
+
+        for index in 0..(MAX_GRAPH_PLAYERS - 2) {
+            db.execute(
+                "INSERT INTO players
+                 (username, first_seen_at, last_seen_online_at)
+                 VALUES (?1, 2, 2)",
+                params![format!("player-{index}")],
+            )
+            .unwrap();
+        }
+
+        graph_insert_edge(
+            &db,
+            "connected",
+            "played-peer",
+        )
+        .unwrap();
+
+        assert_eq!(
+            graph_prune_players(&db).unwrap(),
+            1
+        );
+
+        let oldest_exists: bool =
+            db.query_row(
+                "SELECT EXISTS(
+                    SELECT 1 FROM players
+                    WHERE username = 'oldest'
+                )",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let connected_exists: bool =
+            db.query_row(
+                "SELECT EXISTS(
+                    SELECT 1 FROM players
+                    WHERE username = 'connected'
+                )",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert!(!oldest_exists);
+        assert!(connected_exists);
 
         drop(db);
         remove_file(path).unwrap();
