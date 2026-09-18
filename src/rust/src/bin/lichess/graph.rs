@@ -513,6 +513,21 @@ pub(super) async fn challenge_online_humans(
         .take(MAX_ONLINE_HUMAN_CANDIDATES)
         .collect::<Vec<_>>();
 
+    let stale_pending = {
+        let db = graph_db.lock().await;
+        pending_challenges
+            .iter()
+            .filter_map(|username| match graph_player_exists(&db, username) {
+                Ok(true) => None,
+                Ok(false) => Some(Ok(username.clone())),
+                Err(error) => Some(Err(error)),
+            })
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    for username in stale_pending {
+        pending_challenges.remove(&username);
+    }
+
     if candidate_usernames.is_empty() {
         println!(
             "No online human candidates after \

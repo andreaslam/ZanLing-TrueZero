@@ -199,6 +199,7 @@ async fn generator_main(
                 id,
                 &mut cache,
                 None,
+                None,
             )
             .await;
         sender_collector

@@ -6,6 +6,7 @@ use crate::{
     executor::Packet,
     mcts_trainer::get_move,
     settings::SearchSettings,
+    uci::UCIMsg,
 };
 use cozy_chess::{Board, Color, GameStatus, Move};
 use flume::Sender;
@@ -13,6 +14,7 @@ use lru::LruCache;
 use rand::prelude::*;
 use rand_distr::WeightedIndex;
 use std::time::Instant;
+use tokio::sync::watch;
 // selfplay code
 #[derive(Clone, Debug)]
 pub enum CollectorMessage {
@@ -41,6 +43,7 @@ impl DataGen {
         id: usize,
         cache: &mut LruCache<CacheEntryKey, ZeroEvaluationAbs>,
         custom_startpos: Option<BoardStack>,
+        mut pause_receiver: Option<watch::Receiver<bool>>,
     ) -> Simulation {
         let _sw = Instant::now();
         let mut bs = match custom_startpos {
@@ -54,9 +57,40 @@ impl DataGen {
             .unwrap_or("unnamed")
             .to_owned();
         while bs.status() == GameStatus::Ongoing {
+            wait_until_resumed(&mut pause_receiver).await;
+
+            let (stop_receiver, stop_task) = match pause_receiver.as_ref() {
+                Some(receiver) => {
+                    let (stop_sender, stop_receiver) = flume::bounded::<UCIMsg>(1);
+                    let mut receiver = receiver.clone();
+                    let task = tokio::spawn(async move {
+                        while !*receiver.borrow() {
+                            if receiver.changed().await.is_err() {
+                                return;
+                            }
+                        }
+                        let _ = stop_sender.send(UCIMsg::UCIStopMessage);
+                    });
+                    (Some(stop_receiver), Some(task))
+                }
+                None => (None, None),
+            };
+
             let _sw = Instant::now();
-            let (mv, v_p, _move_idx_piece, search_data, visits) =
-                get_move(bs.clone(), tensor_exe_send, *settings, id, cache).await;
+            let (mv, v_p, _move_idx_piece, search_data, visits) = get_move(
+                bs.clone(),
+                tensor_exe_send,
+                *settings,
+                id,
+                cache,
+                stop_receiver,
+            )
+            .await;
+            if let Some(task) = stop_task {
+                task.abort();
+            }
+
+            wait_until_resumed(&mut pause_receiver).await;
             let _elapsed = _sw.elapsed().as_nanos() as f32 / 1e9;
             // sample for the first 30 full moves (60 plies), then play greedily.
             const TEMPERATURE_CUTOFF_PLIES: usize = 60;
@@ -119,5 +153,17 @@ impl DataGen {
         );
         debug_print!("{}", &"one done!".to_string());
         tz
+    }
+}
+
+async fn wait_until_resumed(pause_receiver: &mut Option<watch::Receiver<bool>>) {
+    let Some(receiver) = pause_receiver.as_mut() else {
+        return;
+    };
+
+    while *receiver.borrow() {
+        if receiver.changed().await.is_err() {
+            return;
+        }
     }
 }

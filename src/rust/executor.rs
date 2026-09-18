@@ -205,9 +205,14 @@ pub fn executor_main(
                             .expect("There should be an ID for each job");
                         let result = (board_eval.get(i as i64), policy.get(i as i64));
                         let return_pack = ReturnPacket { packet: result, id };
-                        sender
+                        if sender
                             .send(ReturnMessage::ReturnMessage(Ok(return_pack)))
-                            .expect("Should be able to send the result");
+                            .is_err()
+                        {
+                            debug_print!(
+                                "Executor: search request was cancelled before the result arrived"
+                            );
+                        }
                     }
 
                     packing_time_debugger.record("packing_time", &thread_name);

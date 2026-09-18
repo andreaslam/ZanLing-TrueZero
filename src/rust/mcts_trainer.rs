@@ -12,7 +12,7 @@ use crate::{
     utils::TimeStampDebugger,
 };
 use cozy_chess::{Color, GameStatus, Move};
-use flume::Sender;
+use flume::{Receiver, Sender, TryRecvError};
 use lru::LruCache;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::{
@@ -775,6 +775,7 @@ pub async fn get_move(
     settings: SearchSettings,
     id: usize,
     cache: &mut LruCache<CacheEntryKey, ZeroEvaluationAbs>,
+    stop_signal: Option<Receiver<crate::uci::UCIMsg>>,
 ) -> (
     Move,
     ZeroEvaluationAbs,
@@ -793,6 +794,17 @@ pub async fn get_move(
             let min_visits_for_policy = 2;
             let target_visits = (max_nodes as u32).max(min_visits_for_policy);
             while tree.nodes[0].visits < target_visits {
+                if let Some(ref signal) = stop_signal {
+                    match signal.try_recv() {
+                        Ok(_) if tree.nodes[0].visits >= min_visits_for_policy => break,
+                        Err(TryRecvError::Disconnected)
+                            if tree.nodes[0].visits >= min_visits_for_policy =>
+                        {
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
                 debug_print!("{}", &format!("step {}", tree.nodes[0].visits));
                 debug_print!(
                     "{}",

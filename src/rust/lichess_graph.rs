@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const MAX_GRAPH_PLAYERS: usize = 10_000;
@@ -265,6 +265,65 @@ pub fn graph_mark_expanded(db: &Connection, username: &str) -> Result<(), rusqli
     )?;
 
     Ok(())
+}
+
+pub fn graph_player_count(db: &Connection) -> Result<usize, rusqlite::Error> {
+    db.query_row("SELECT COUNT(*) FROM players", [], |row| row.get(0))
+}
+
+pub fn graph_player_exists(db: &Connection, username: &str) -> Result<bool, rusqlite::Error> {
+    db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM players WHERE username = ?1)",
+        params![username],
+        |row| row.get(0),
+    )
+}
+
+pub fn graph_remove_player(db: &Connection, username: &str) -> Result<bool, rusqlite::Error> {
+    let player_id = db
+        .query_row(
+            "SELECT id FROM players WHERE username = ?1",
+            params![username],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()?;
+
+    let Some(player_id) = player_id else {
+        return Ok(false);
+    };
+
+    db.execute_batch("BEGIN IMMEDIATE;")?;
+    let result = (|| {
+        db.execute(
+            "DELETE FROM player_edges WHERE player_id = ?1 OR opponent_id = ?1",
+            params![player_id],
+        )?;
+        db.execute(
+            "DELETE FROM player_discoveries WHERE player_id = ?1",
+            params![player_id],
+        )?;
+        db.execute(
+            "DELETE FROM player_expansions WHERE player_id = ?1",
+            params![player_id],
+        )?;
+        db.execute(
+            "DELETE FROM human_challenges WHERE player_id = ?1",
+            params![player_id],
+        )?;
+        db.execute("DELETE FROM players WHERE id = ?1", params![player_id])?;
+        Ok(())
+    })();
+
+    match result {
+        Ok(()) => {
+            db.execute_batch("COMMIT;")?;
+            Ok(true)
+        }
+        Err(error) => {
+            let _ = db.execute_batch("ROLLBACK;");
+            Err(error)
+        }
+    }
 }
 
 pub fn graph_insert_edge(

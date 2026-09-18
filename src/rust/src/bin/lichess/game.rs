@@ -5,16 +5,20 @@ pub(super) async fn run_game_owned(
     game_id: String,
     our_color: LichessColor,
     tensor_exe_send: Sender<Packet>,
+    collector_send: Sender<CollectorMessage>,
     active_games: Arc<AtomicUsize>,
     api_request_lock: Arc<Mutex<()>>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    _game_permit: OwnedSemaphorePermit,
+) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
     run_game(
         &client,
         &game_id,
         our_color,
         &tensor_exe_send,
+        collector_send,
         active_games,
         api_request_lock,
+        _game_permit,
     )
     .await
 }
@@ -24,9 +28,11 @@ pub(super) async fn run_game(
     game_id: &str,
     our_color: LichessColor,
     tensor_exe_send: &Sender<Packet>,
+    collector_send: Sender<CollectorMessage>,
     active_games: Arc<AtomicUsize>,
     api_request_lock: Arc<Mutex<()>>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    _game_permit: OwnedSemaphorePermit,
+) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
     let _guard = ActiveGameGuard::new(Arc::clone(&active_games));
 
     let bot_api = client.bot();
@@ -43,6 +49,7 @@ pub(super) async fn run_game(
     let mut rematch_clock: Option<(u32, u32)> = None;
 
     let mut last_processed_moves: Option<String> = None;
+    let mut positions = Vec::new();
 
     loop {
         println!("Opening game stream for {}...", game_id);
@@ -134,6 +141,14 @@ pub(super) async fn run_game(
                     if game_finished(game.state.status) {
                         println!("Game {} already finished: {:?}", game_id, game.state.status);
 
+                        record_finished_game(
+                            &collector_send,
+                            &mut positions,
+                            &initial_fen,
+                            &game.state.moves,
+                        )
+                        .await?;
+
                         offer_rematch(
                             client,
                             game_id,
@@ -145,7 +160,7 @@ pub(super) async fn run_game(
                         )
                         .await;
 
-                        return Ok(());
+                        return Ok(opponent_username.clone());
                     }
 
                     let current_moves = game.state.moves.clone();
@@ -176,7 +191,15 @@ pub(super) async fn run_game(
 
                             bot_api.handle_draw(game_id, true).await?;
 
-                            return Ok(());
+                            record_finished_game(
+                                &collector_send,
+                                &mut positions,
+                                &initial_fen,
+                                &game.state.moves,
+                            )
+                            .await?;
+
+                            return Ok(opponent_username.clone());
                         }
                     }
 
@@ -197,6 +220,7 @@ pub(super) async fn run_game(
                         tensor_exe_send,
                         &mut cache,
                         active_games.load(Ordering::Relaxed),
+                        &mut positions,
                     )
                     .await?;
                 }
@@ -204,6 +228,13 @@ pub(super) async fn run_game(
                 LichessBoardEvent::GameState(state) => {
                     if game_finished(state.status) {
                         println!("Game {} finished: {:?}", game_id, state.status);
+                        record_finished_game(
+                            &collector_send,
+                            &mut positions,
+                            &initial_fen,
+                            &state.moves,
+                        )
+                        .await?;
 
                         offer_rematch(
                             client,
@@ -216,7 +247,7 @@ pub(super) async fn run_game(
                         )
                         .await;
 
-                        return Ok(());
+                        return Ok(opponent_username.clone());
                     }
 
                     let current_moves = state.moves.clone();
@@ -247,7 +278,15 @@ pub(super) async fn run_game(
 
                             bot_api.handle_draw(game_id, true).await?;
 
-                            return Ok(());
+                            record_finished_game(
+                                &collector_send,
+                                &mut positions,
+                                &initial_fen,
+                                &state.moves,
+                            )
+                            .await?;
+
+                            return Ok(opponent_username.clone());
                         }
 
                         println!(
@@ -274,6 +313,7 @@ pub(super) async fn run_game(
                         tensor_exe_send,
                         &mut cache,
                         active_games.load(Ordering::Relaxed),
+                        &mut positions,
                     )
                     .await?;
                 }
@@ -320,6 +360,27 @@ pub(super) async fn run_game(
 
         sleep(Duration::from_millis(GAME_STREAM_RECONNECT_DELAY_MS)).await;
     }
+}
+
+async fn record_finished_game(
+    collector_send: &Sender<CollectorMessage>,
+    positions: &mut Vec<TrainingPosition>,
+    initial_fen: &str,
+    moves: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let fen = fen_from_position(initial_fen, moves)?;
+    let board = Board::from_fen(&fen, false)
+        .map_err(|error| format!("Invalid final Lichess board FEN: {error}"))?;
+
+    collector_send
+        .send_async(CollectorMessage::FinishedGame(Simulation {
+            positions: std::mem::take(positions),
+            final_board: BoardStack::new(board),
+        }))
+        .await
+        .map_err(|error| format!("Failed to send Lichess game to collector: {error}"))?;
+
+    Ok(())
 }
 
 pub(super) async fn offer_rematch(
@@ -442,6 +503,7 @@ pub(super) async fn play_position(
     tensor_exe_send: &Sender<Packet>,
     cache: &mut LruCache<CacheEntryKey, ZeroEvaluationAbs>,
     active_games_count: usize,
+    positions: &mut Vec<TrainingPosition>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let fen = fen_from_position(initial_fen, &state.moves)?;
 
@@ -451,7 +513,7 @@ pub(super) async fn play_position(
 
     let draw_offer_pending = draw_offer_exists(state, our_color);
 
-    let (uci_move, eval) = if draw_offer_pending && !clocked_game {
+    let (uci_move, eval, search_position) = if draw_offer_pending && !clocked_game {
         println!(
             "Game {}: draw offer pending in \
                  non-timed game. Running quick evaluation.",
@@ -462,7 +524,7 @@ pub(super) async fn play_position(
 
         let quick_time = 5_000;
 
-        let (q_move, q_eval) = get_engine_move(
+        let (q_move, q_eval, _) = get_engine_move(
             &fen,
             state,
             our_color,
@@ -518,7 +580,6 @@ pub(super) async fn play_position(
         )
         .await?
     };
-
     println!(
         "Game {} engine wants to play UCI: {} \
          (eval={})",
@@ -545,6 +606,10 @@ pub(super) async fn play_position(
         bot_api.handle_draw(game_id, true).await?;
 
         return Ok(());
+    }
+
+    if let Some(training_position) = search_position {
+        positions.push(training_position);
     }
 
     let offer_draw = not_advantageous || low_on_time;
@@ -587,7 +652,7 @@ pub(super) async fn get_engine_move(
     node_limit_override: Option<u128>,
     time_limit_override: Option<u64>,
     active_games_count: usize,
-) -> Result<(String, f64), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(String, f64, Option<TrainingPosition>), Box<dyn std::error::Error + Send + Sync>> {
     println!("Engine input: {}", fen);
 
     let chess = chess_from_fen(fen)?;
@@ -684,9 +749,24 @@ pub(super) async fn get_engine_move(
             calculated_nodes.min(MAX_ENGINE_NODES as u128)
         };
 
-        nodes = (raw_nodes / concurrent_games).max(100);
+        let allocated_ms = (_time.unwrap_or(0) as u64) / concurrent_games.max(1) as u64;
+        let reserve_ms = if allocated_ms < 1_000 {
+            SHORT_TIME_RESERVE_MS.min(allocated_ms.saturating_div(3))
+        } else {
+            ((allocated_ms as f64) * LONG_TIME_RESERVE_FRACTION) as u64
+        };
+        let search_budget_ms = allocated_ms
+            .saturating_sub(reserve_ms)
+            .max(MIN_SEARCH_TIME_MS);
+        let time_budget_ms = time_limit_override
+            .unwrap_or(search_budget_ms.min(ENGINE_WALL_TIMEOUT_MS))
+            .min(search_budget_ms.max(MIN_SEARCH_TIME_MS));
 
-        wall_timeout_ms = time_limit_override.unwrap_or(ENGINE_WALL_TIMEOUT_MS);
+        nodes = (raw_nodes / concurrent_games.max(1) as u128)
+            .min((time_budget_ms as u128).saturating_div(5).max(1))
+            .max(1);
+
+        wall_timeout_ms = time_budget_ms;
     }
 
     println!("Final node budget: {}", nodes);
@@ -742,25 +822,42 @@ pub(super) async fn get_engine_move(
         nodes, wall_timeout_ms
     );
 
+    let (stop_sender, stop_receiver) = flume::bounded(1);
+    let stop_task = tokio::spawn(async move {
+        sleep(Duration::from_millis(wall_timeout_ms)).await;
+        let _ = stop_sender.send(UCIMsg::UCIStopMessage);
+    });
+
     let search_result = timeout(
-        Duration::from_millis(wall_timeout_ms),
-        get_move(bs, tensor_exe_send.clone(), settings, None, cache),
+        Duration::from_millis(wall_timeout_ms.saturating_add(ENGINE_TIMEOUT_GRACE_MS)),
+        get_move(
+            bs.clone(),
+            tensor_exe_send.clone(),
+            settings,
+            Some(stop_receiver),
+            cache,
+        ),
     )
     .await;
+    stop_task.abort();
 
-    let (best_move, _eval, _pv, root_eval, searched_nodes) = match search_result {
+    let (best_move, net_evaluation, _pv, search_data, searched_nodes) = match search_result {
         Ok(result) => result,
 
         Err(_) => {
             eprintln!(
-                "ENGINE TIMEOUT: search exceeded \
-                     {} ms",
-                wall_timeout_ms
+                "ENGINE HARD TIMEOUT: search did not return within \
+                     {} ms (+{} ms grace; node budget={}, active games={}); \
+                     using legal fallback",
+                wall_timeout_ms,
+                ENGINE_TIMEOUT_GRACE_MS,
+                nodes,
+                active_games_count
             );
 
             let fallback = first_legal_move(fen)?;
 
-            return Ok((fallback, f64::INFINITY));
+            return Ok((fallback, f64::INFINITY, None));
         }
     };
 
@@ -770,11 +867,13 @@ pub(super) async fn get_engine_move(
         searched_nodes, best_move
     );
 
-    let eval: f64 = root_eval.values.value as f64;
+    let eval: f64 = search_data.values.value as f64;
 
     println!("ENGINE: root evaluation = {}", eval);
 
-    let mut uci_move = format!("{}{}", best_move.from, best_move.to);
+    let from = best_move.from;
+    let to = best_move.to;
+    let mut uci_move = format!("{}{}", from, to);
 
     if let Some(promotion) = best_move.promotion {
         uci_move.push(match promotion {
@@ -811,10 +910,24 @@ pub(super) async fn get_engine_move(
 
         let fallback = first_legal_move(fen)?;
 
-        return Ok((fallback, f64::INFINITY));
+        return Ok((fallback, f64::INFINITY, None));
     }
 
-    Ok((uci_move, eval))
+    let training_position = TrainingPosition {
+        board: bs.clone(),
+        is_full_search: true,
+        played_mv: best_move,
+        zero_visits: searched_nodes as u64,
+        zero_evaluation: ZeroEvaluationPov {
+            values: search_data.values.to_relative(bs.board().side_to_move()),
+            policy: search_data.policy,
+        },
+        net_evaluation: ZeroEvaluationPov {
+            values: net_evaluation.values.to_relative(bs.board().side_to_move()),
+            policy: net_evaluation.policy,
+        },
+    };
+    Ok((uci_move, eval, Some(training_position)))
 }
 
 pub(super) fn first_legal_move(
@@ -826,9 +939,12 @@ pub(super) fn first_legal_move(
         .legal_moves()
         .into_iter()
         .next()
-        .ok_or_else(|| "Position has no legal moves".to_string())?;
+        .ok_or_else(|| "TrainingPosition has no legal moves".to_string())?;
 
-    let mut uci_move = format!("{:?}{}", legal_move.from(), legal_move.to());
+    let from = legal_move
+        .from()
+        .ok_or_else(|| "Legal move has no source square".to_string())?;
+    let mut uci_move = format!("{}{}", from, legal_move.to());
 
     if let Some(promotion) = legal_move.promotion() {
         uci_move.push(match promotion {
@@ -936,7 +1052,7 @@ pub(super) fn fen_from_position(
         ply_count += 1;
     }
 
-    let mut fen_string = Fen::from_position(&chess, EnPassantMode::Legal).to_string();
+    let fen_string = Fen::from_position(&chess, EnPassantMode::Legal).to_string();
 
     let expected_turn = if ply_count % 2 == 0 {
         initial_turn
@@ -958,21 +1074,36 @@ pub(super) fn fen_from_position(
         );
     }
 
-    let expected_turn_char = match expected_turn {
-        Color::White => "w",
+    Ok(fen_string)
+}
 
-        Color::Black => "b",
-    };
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let mut fields = fen_string.split_whitespace().collect::<Vec<_>>();
-
-    if fields.len() < 6 {
-        return Err(format!("Generated invalid FEN: {}", fen_string).into());
+    #[test]
+    fn replay_preserves_side_to_move() {
+        assert_eq!(
+            fen_from_position("startpos", "").unwrap(),
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+        );
+        assert_eq!(
+            fen_from_position("startpos", "e2e4").unwrap(),
+            "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"
+        );
+        assert_eq!(
+            fen_from_position("startpos", "e2e4 e7e5").unwrap(),
+            "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2"
+        );
     }
 
-    fields[1] = expected_turn_char;
-
-    fen_string = fields.join(" ");
-
-    Ok(fen_string)
+    #[test]
+    fn replay_handles_black_to_move_initial_fen() {
+        let fen = fen_from_position(
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1",
+            "",
+        )
+        .unwrap();
+        assert_eq!(fen.split_whitespace().nth(1), Some("b"));
+    }
 }

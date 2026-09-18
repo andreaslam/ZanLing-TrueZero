@@ -4,7 +4,23 @@ use tzrust::lichess_graph::*;
 pub(super) async fn game_loop(
     token: String,
     tensor_exe_send: Sender<Packet>,
+    collector_send: Sender<CollectorMessage>,
+    executor_ready_recv: Receiver<bool>,
+    num_executors: usize,
+    num_generators: usize,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    println!("Waiting for the training server to provide and load the first network...");
+    for _ in 0..num_executors {
+        executor_ready_recv
+            .recv_async()
+            .await
+            .map_err(|error| format!("Executor did not load the first network: {error}"))?;
+    }
+    println!("Initial network loaded; starting self-play and Lichess services.");
+
+    let (pause_sender, pause_receiver) = watch::channel(false);
+    let (discovery_sender, discovery_receiver) = watch::channel(true);
+
     let client = Arc::new(
         LichessClient::builder()
             .token(&token)
@@ -37,14 +53,36 @@ pub(super) async fn game_loop(
     }
 
     let api_request_lock = Arc::new(Mutex::new(()));
+    let graph_db = Arc::new(Mutex::new(open_player_graph_database(
+        PLAYER_GRAPH_DB_PATH,
+    )?));
 
     let active_games = Arc::new(AtomicUsize::new(0));
+    let max_concurrent_games = env_usize(
+        "TZ_MAX_CONCURRENT_GAMES",
+        DEFAULT_MAX_CONCURRENT_GAMES,
+    )
+    .max(1);
+    let game_slots = Arc::new(Semaphore::new(max_concurrent_games));
+    println!(
+        "Lichess concurrent game limit: {}",
+        max_concurrent_games
+    );
+
+    spawn_selfplay_generators(
+        &tensor_exe_send,
+        &collector_send,
+        num_generators,
+        pause_receiver,
+    );
 
     let event_client = Arc::clone(&client);
 
     let event_tensor_send = tensor_exe_send.clone();
 
     let event_api_lock = Arc::clone(&api_request_lock);
+    let event_graph_db = Arc::clone(&graph_db);
+    let event_discovery_sender = discovery_sender.clone();
 
     let event_active_games = Arc::clone(&active_games);
 
@@ -52,8 +90,13 @@ pub(super) async fn game_loop(
         event_loop(
             event_client,
             event_tensor_send,
+            collector_send.clone(),
             event_api_lock,
             event_active_games,
+            game_slots,
+            pause_sender,
+            event_graph_db,
+            event_discovery_sender,
         )
         .await
     });
@@ -65,16 +108,29 @@ pub(super) async fn game_loop(
     let matchmaking_client = Arc::clone(&client);
 
     let matchmaking_api_lock = Arc::clone(&api_request_lock);
+    let matchmaking_active_games = Arc::clone(&active_games);
+    let matchmaking_graph_db = Arc::clone(&graph_db);
+    let matchmaking_discovery_receiver = discovery_receiver;
+    let matchmaking_discovery_sender = discovery_sender;
 
     let username = me.user.username.clone();
 
     let matchmaking_task = tokio::spawn(async move {
-        matchmaking_loop(matchmaking_client, username, matchmaking_api_lock).await
+        matchmaking_loop(
+            matchmaking_client,
+            username,
+            matchmaking_api_lock,
+            matchmaking_active_games,
+            matchmaking_graph_db,
+            matchmaking_discovery_receiver,
+            matchmaking_discovery_sender,
+        )
+        .await
     });
 
     tokio::select! {
         result = event_task => {
-            match result {
+            return match result {
                 Ok(Ok(())) => {
                     Err(
                         "Lichess event task terminated unexpectedly"
@@ -95,11 +151,11 @@ pub(super) async fn game_loop(
                         .into()
                     )
                 }
-            }
+            };
         }
 
         result = matchmaking_task => {
-            match result {
+            return match result {
                 Ok(Ok(())) => {
                     Err(
                         "Matchmaking task terminated unexpectedly"
@@ -120,16 +176,86 @@ pub(super) async fn game_loop(
                         .into()
                     )
                 }
-            }
+            };
         }
+    }
+}
+
+fn spawn_selfplay_generators(
+    tensor_exe_send: &Sender<Packet>,
+    collector_send: &Sender<CollectorMessage>,
+    num_generators: usize,
+    pause_receiver: watch::Receiver<bool>,
+) {
+    for id in 0..num_generators {
+        let tensor_send = tensor_exe_send.clone();
+        let collector = collector_send.clone();
+        let generator_pause_receiver = pause_receiver.clone();
+        tokio::spawn(async move {
+
+            let datagen = DataGen { iterations: 1 };
+            let settings = SearchSettings {
+                fpu: FPUSettings {
+                    root_fpu: 1.0,
+                    children_fpu: 0.5,
+                },
+                wdl: EvalMode::Wdl,
+                moves_left: Some(MovesLeftSettings {
+                    moves_left_weight: 0.05,
+                    moves_left_clip: 20.0,
+                    moves_left_sharpness: 0.5,
+                }),
+                c_puct: CPUCTSettings {
+                    root_c_puct: 2.0,
+                    children_c_puct: 2.0,
+                },
+                max_nodes: Some(1600),
+                alpha: 0.03,
+                eps: 0.25,
+                search_type: TrainerSearch(None),
+                pst: PSTSettings {
+                    root_pst: 1.5,
+                    children_pst: 1.5,
+                },
+                batch_size: 1,
+            };
+            let mut cache = LruCache::new(NonZeroUsize::new(1600).unwrap());
+
+            loop {
+                let sim = datagen
+                    .play_game(
+                        &tensor_send,
+                        &collector,
+                        &settings,
+                        id,
+                        &mut cache,
+                        None,
+                        Some(generator_pause_receiver.clone()),
+                    )
+                    .await;
+                if collector
+                    .send_async(CollectorMessage::FinishedGame(sim))
+                    .await
+                    .is_err()
+                {
+                    eprintln!("Self-play generator {id} stopped: collector disconnected.");
+                    break;
+                }
+            }
+        });
     }
 }
 
 pub(super) async fn event_loop(
     client: Arc<LichessClient>,
     tensor_exe_send: Sender<Packet>,
+    collector_send: Sender<CollectorMessage>,
     api_request_lock: Arc<Mutex<()>>,
     active_games: Arc<AtomicUsize>,
+    game_slots: Arc<Semaphore>,
+    pause_sender: watch::Sender<bool>,
+    graph_db: Arc<Mutex<Connection>>,
+    discovery_sender: watch::Sender<bool>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     loop {
         println!("Opening Lichess bot event stream...");
@@ -220,6 +346,18 @@ pub(super) async fn event_loop(
 
                     println!("Game started: {} ({:?})", game_id, our_color);
 
+                    let game_permit = match Arc::clone(&game_slots).try_acquire_owned() {
+                        Ok(permit) => permit,
+                        Err(_) => {
+                            eprintln!(
+                                "Game {} exceeds TZ_MAX_CONCURRENT_GAMES; \
+                                 not starting another game worker.",
+                                game_id
+                            );
+                            continue;
+                        }
+                    };
+
                     let game_client = Arc::clone(&client);
 
                     let game_tensor_send = tensor_exe_send.clone();
@@ -227,19 +365,48 @@ pub(super) async fn event_loop(
                     let game_active_games = Arc::clone(&active_games);
 
                     let game_api_lock = Arc::clone(&api_request_lock);
+                    let game_collector_send = collector_send.clone();
+                    let game_pause_sender = pause_sender.clone();
+                    let game_graph_db = Arc::clone(&graph_db);
+                    let game_discovery_sender = discovery_sender.clone();
+                    let _ = game_pause_sender.send(true);
 
                     tokio::spawn(async move {
-                        if let Err(error) = run_game_owned(
+                        match run_game_owned(
                             game_client,
                             game_id.clone(),
                             our_color,
                             game_tensor_send,
-                            game_active_games,
+                            game_collector_send,
+                            Arc::clone(&game_active_games),
                             game_api_lock,
+                            game_permit,
                         )
-                        .await
-                        {
-                            eprintln!("Game {} error: {}", game_id, error);
+                        .await {
+                            Ok(Some(opponent)) => {
+                                let db = game_graph_db.lock().await;
+                                match graph_remove_player(&db, &opponent) {
+                                    Ok(true) => println!(
+                                        "Removed successfully played player {} from graph.",
+                                        opponent
+                                    ),
+                                    Ok(false) => println!(
+                                        "Successfully played {}, but it was not in the graph.",
+                                        opponent
+                                    ),
+                                    Err(error) => eprintln!(
+                                        "Failed to remove successfully played player {}: {}",
+                                        opponent, error
+                                    ),
+                                }
+                                let _ = game_discovery_sender.send(true);
+                            }
+                            Ok(None) => {}
+                            Err(error) => eprintln!("Game {} error: {}", game_id, error),
+                        }
+
+                        if game_active_games.load(Ordering::Acquire) == 0 {
+                            let _ = game_pause_sender.send(false);
                         }
 
                         println!("Game {} finished.", game_id);
@@ -272,15 +439,11 @@ pub(super) async fn matchmaking_loop(
     client: Arc<LichessClient>,
     our_username: String,
     api_request_lock: Arc<Mutex<()>>,
+    active_games: Arc<AtomicUsize>,
+    graph_db: Arc<Mutex<Connection>>,
+    discovery_receiver: watch::Receiver<bool>,
+    discovery_sender: watch::Sender<bool>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    /*
-     * Open the graph database once for the lifetime of the matchmaking
-     * task.
-     */
-    let graph_db = Arc::new(Mutex::new(open_player_graph_database(
-        PLAYER_GRAPH_DB_PATH,
-    )?));
-
     let mut bot_challenge_cooldowns: HashMap<String, Instant> = HashMap::new();
 
     let mut bot_pending_challenges: HashSet<String> = HashSet::new();
@@ -292,6 +455,12 @@ pub(super) async fn matchmaking_loop(
 
     loop {
         scan_interval.tick().await;
+
+        wait_for_no_active_games(&active_games, "player discovery").await;
+
+        if !*discovery_receiver.borrow() {
+            continue;
+        }
 
         /*
          * EXISTING BOT MATCHMAKING.
@@ -308,14 +477,29 @@ pub(super) async fn matchmaking_loop(
             eprintln!("Online bot matchmaking error: {}", error);
         }
 
-        /*
-         * NEW GRAPH DISCOVERY SOURCE.
-         *
-         * This happens independently of the actual human challenge scan.
-         */
-        if let Err(error) = expand_player_graph(&client, &our_username, &graph_db).await {
-            eprintln!("Player graph expansion error: {}", error);
-        }
+        let graph_has_capacity = {
+            let db = graph_db.lock().await;
+            graph_player_count(&db).map(|count| count < MAX_GRAPH_PLAYERS)
+        };
+
+        let graph_has_capacity = match graph_has_capacity {
+            Ok(true) => {
+                if let Err(error) = expand_player_graph(&client, &our_username, &graph_db).await {
+                    eprintln!("Player graph expansion error: {}", error);
+                }
+                true
+            }
+            Ok(false) => {
+                println!(
+                    "Player graph is full; skipping discovery and leaving graph unchanged."
+                );
+                false
+            }
+            Err(error) => {
+                eprintln!("Could not inspect player graph capacity: {}", error);
+                false
+            }
+        };
 
         /*
          * EXISTING DIRECT ONLINE-HUMAN SOURCE.
@@ -323,17 +507,36 @@ pub(super) async fn matchmaking_loop(
          * This remains unchanged conceptually and is still useful because
          * it discovers currently-online users independently of the graph.
          */
-        if let Err(error) = challenge_online_humans(
-            &client,
-            &our_username,
-            &mut human_pending_challenges,
-            &api_request_lock,
-            &graph_db,
-        )
-        .await
-        {
-            eprintln!("Online human matchmaking error: {}", error);
+        if graph_has_capacity {
+            if let Err(error) = challenge_online_humans(
+                &client,
+                &our_username,
+                &mut human_pending_challenges,
+                &api_request_lock,
+                &graph_db,
+            )
+            .await
+            {
+                eprintln!("Online human matchmaking error: {}", error);
+            }
         }
+
+        let _ = discovery_sender.send(false);
+    }
+
+}
+
+async fn wait_for_no_active_games(active_games: &AtomicUsize, workload: &str) {
+    let mut paused = false;
+    while active_games.load(Ordering::Acquire) > 0 {
+        if !paused {
+            println!("Pausing {workload} while Lichess games are active.");
+            paused = true;
+        }
+        sleep(Duration::from_millis(250)).await;
+    }
+    if paused {
+        println!("Resuming {workload}; no Lichess games are active.");
     }
 }
 
