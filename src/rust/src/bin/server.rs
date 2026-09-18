@@ -9,14 +9,14 @@ use std::{
 use sha2::{Digest, Sha256};
 use tzrust::{
     debug_print,
-    message_types::{Entity, MessageServer, MessageType, SPRTResult},
+    message_types::{Entity, GateTesterResult, MessageServer, MessageType},
 };
 
 fn net_checksum(data: &[u8]) -> String {
     format!("{:x}", Sha256::digest(data))
 }
 
-// serialise a message with the trailing newline delimiter the wire protocol expects.
+// Serialise a message with the trailing newline delimiter the wire protocol expects.
 fn to_wire(message: &MessageServer) -> String {
     let mut serialised = serde_json::to_string(message).expect("serialisation failed");
     serialised += "\n";
@@ -28,20 +28,26 @@ fn write_to_live_streams(streams: &mut Vec<TcpStream>, wire: &str) -> usize {
     streams.len()
 }
 
-fn rejection_result() -> SPRTResult {
-    SPRTResult {
+fn rejection_result() -> GateTesterResult {
+    GateTesterResult {
         elo: (0.0, 0.0, 0.0),
         accept_new_net: false,
     }
 }
 
-fn notify_trainers_of_rejection(training_streams: &Arc<Mutex<Vec<TcpStream>>>, reason: &str) {
+fn notify_trainers_of_rejection(
+    training_streams: &Arc<Mutex<Vec<TcpStream>>>,
+    reason: &str,
+) {
     println!("[Server] Resetting pending candidate: {}", reason);
+
     let result_wire = to_wire(&MessageServer {
         purpose: MessageType::TestResult(rejection_result()),
     });
+
     let mut trainers = training_streams.lock().unwrap();
     let n_trainers = write_to_live_streams(&mut trainers, &result_wire);
+
     println!(
         "[Server] Sent candidate reset to {} Python trainer(s)",
         n_trainers
@@ -51,12 +57,20 @@ fn notify_trainers_of_rejection(training_streams: &Arc<Mutex<Vec<TcpStream>>>, r
 fn clear_pending_candidate(
     pending_candidate: &Arc<Mutex<Option<Vec<u8>>>>,
     pending_candidate_checksum: &Arc<Mutex<Option<String>>>,
+    pending_tester_peer: &Arc<Mutex<Option<String>>>,
 ) -> bool {
     let mut pending = pending_candidate.lock().unwrap();
     let mut pending_checksum = pending_candidate_checksum.lock().unwrap();
-    let had_pending = pending.is_some() || pending_checksum.is_some();
+    let mut pending_tester = pending_tester_peer.lock().unwrap();
+
+    let had_pending = pending.is_some()
+        || pending_checksum.is_some()
+        || pending_tester.is_some();
+
     *pending = None;
     *pending_checksum = None;
+    *pending_tester = None;
+
     had_pending
 }
 
@@ -74,7 +88,8 @@ fn handle_client(
     latest_net_checksum: Arc<Mutex<Option<String>>>,
     pending_candidate: Arc<Mutex<Option<Vec<u8>>>>,
     pending_candidate_checksum: Arc<Mutex<Option<String>>>,
-    sprt_streams: Arc<Mutex<Vec<TcpStream>>>,
+    pending_tester_peer: Arc<Mutex<Option<String>>>,
+    gate_tester_streams: Arc<Mutex<Vec<TcpStream>>>,
     training_streams: Arc<Mutex<Vec<TcpStream>>>,
     datagen_streams: Arc<Mutex<Vec<TcpStream>>>,
     h0_sent_to_datagen: Arc<Mutex<bool>>,
@@ -84,12 +99,15 @@ fn handle_client(
     let mut has_net = false;
     let mut needs_tb_link = false;
     let mut client_entity: Option<Entity> = None;
+
     let peer_addr = stream
         .peer_addr()
         .map(|a| a.to_string())
         .unwrap_or_else(|_| "unknown".to_string());
+
     loop {
         let mut recv_msg = String::new();
+
         if reader.read_line(&mut recv_msg).is_err() {
             recv_msg.clear();
             break;
@@ -111,176 +129,276 @@ fn handle_client(
             let mut net_data = net_data.lock().unwrap();
             let mut tb_link = tb_link.lock().unwrap();
             let mut transfer_in_progress = transfer_in_progress.lock().unwrap();
+
             let saved_msg: MessageServer = message.clone();
             let purpose = message.purpose;
 
             match purpose {
                 MessageType::TestResult(result) => {
                     println!("[Test-result] {:?}", result);
+
                     let mut pending = pending_candidate.lock().unwrap();
                     let mut pending_checksum = pending_candidate_checksum.lock().unwrap();
+                    let mut pending_tester = pending_tester_peer.lock().unwrap();
+
                     if result.accept_new_net {
-                        println!("[Test-result]: New network accepted, releasing to generators");
+                        println!(
+                            "[Test-result]: New network accepted, releasing to generators"
+                        );
+
                         if let Some(candidate) = pending.take() {
-                            // promote the candidate to the latest net and release it to every data generator.
+                            // Promote the candidate to the latest net and release it
+                            // to every data generator.
                             *latest_net.lock().unwrap() = Some(candidate.clone());
-                            *latest_net_checksum.lock().unwrap() = pending_checksum.take();
+                            *latest_net_checksum.lock().unwrap() =
+                                pending_checksum.take();
+
+                            // The candidate is no longer being tested.
+                            *pending_tester = None;
+
                             let release = to_wire(&MessageServer {
                                 purpose: MessageType::NewNetworkData(candidate),
                             });
+
                             let mut datagens = datagen_streams.lock().unwrap();
-                            let n_datagens = write_to_live_streams(&mut datagens, &release);
+                            let n_datagens =
+                                write_to_live_streams(&mut datagens, &release);
+
                             println!(
                                 "[Server] Released accepted candidate to {} data generator(s)",
                                 n_datagens
                             );
+                        } else {
+                            // Keep the state consistent even if a stray TestResult
+                            // arrives when no candidate is pending.
+                            *pending_checksum = None;
+                            *pending_tester = None;
                         }
                     } else {
-                        // rejected: drop the candidate, generators keep the current net
+                        // Rejected: drop the candidate; generators keep the current net.
                         *pending = None;
                         *pending_checksum = None;
-                        println!("[Test-result]: Candidate rejected, keeping old network");
+                        *pending_tester = None;
+
+                        println!(
+                            "[Test-result]: Candidate rejected, keeping old network"
+                        );
                     }
+
                     let result_wire = to_wire(&MessageServer {
                         purpose: MessageType::TestResult(result),
                     });
+
                     let mut trainers = training_streams.lock().unwrap();
                     write_to_live_streams(&mut trainers, &result_wire);
-                    let mut sprts = sprt_streams.lock().unwrap();
-                    write_to_live_streams(&mut sprts, &result_wire);
+
+                    let mut gate_testers = gate_tester_streams.lock().unwrap();
+                    write_to_live_streams(&mut gate_testers, &result_wire);
+
                     recv_msg.clear();
                     continue;
                 }
+
                 MessageType::Initialise(entity) => {
-                    debug_print!("Initialise message received for entity: {:?}", entity);
+                    debug_print!(
+                        "Initialise message received for entity: {:?}",
+                        entity
+                    );
+
                     client_entity = Some(entity.clone());
+
                     let message_send: MessageServer;
+
                     match entity {
                         Entity::RustDataGen => {
                             all_messages.push(saved_msg.clone());
+
                             let id = all_messages
                                 .iter()
                                 .filter(|&n| {
                                     *n == MessageServer {
-                                        purpose: MessageType::Initialise(Entity::RustDataGen),
+                                        purpose: MessageType::Initialise(
+                                            Entity::RustDataGen,
+                                        ),
                                     }
                                 })
                                 .count();
+
                             message_send = MessageServer {
-                                purpose: MessageType::IdentityConfirmation((entity, id)),
+                                purpose: MessageType::IdentityConfirmation((
+                                    entity, id,
+                                )),
                             };
-                            // register as a data generator so accepted candidate nets can be released to it
+
                             if let Ok(clone) = stream.try_clone() {
-                                let mut datagens = datagen_streams.lock().unwrap();
+                                let mut datagens =
+                                    datagen_streams.lock().unwrap();
+
                                 datagens.retain(|c| {
                                     c.peer_addr()
                                         .map(|a| a.to_string() != peer_addr)
                                         .unwrap_or(false)
                                 });
+
                                 datagens.push(clone);
                             }
                         }
+
                         Entity::PythonTraining => {
                             all_messages.push(saved_msg.clone());
+
                             let id = all_messages
                                 .iter()
                                 .filter(|&n| {
                                     *n == MessageServer {
-                                        purpose: MessageType::Initialise(Entity::PythonTraining),
+                                        purpose: MessageType::Initialise(
+                                            Entity::PythonTraining,
+                                        ),
                                     }
                                 })
                                 .count();
+
                             message_send = MessageServer {
-                                purpose: MessageType::IdentityConfirmation((entity, id)),
+                                purpose: MessageType::IdentityConfirmation((
+                                    entity, id,
+                                )),
                             };
+
                             if !has_net {
                                 let extra_request = to_wire(&MessageServer {
                                     purpose: MessageType::RequestingNet(),
                                 });
-                                if let Err(msg) = cloned_handle.write_all(extra_request.as_bytes())
+
+                                if let Err(msg) =
+                                    cloned_handle.write_all(extra_request.as_bytes())
                                 {
-                                    eprintln!("Error sending identification! {}", msg);
+                                    eprintln!(
+                                        "Error sending identification! {}",
+                                        msg
+                                    );
                                     break;
                                 } else {
                                     println!("[Server] Requesting net");
                                 }
                             }
+
                             if let Ok(clone) = stream.try_clone() {
-                                let mut trainers = training_streams.lock().unwrap();
+                                let mut trainers =
+                                    training_streams.lock().unwrap();
+
                                 trainers.retain(|c| {
                                     c.peer_addr()
                                         .map(|a| a.to_string() != peer_addr)
                                         .unwrap_or(false)
                                 });
+
                                 trainers.push(clone);
                             }
                         }
+
                         Entity::GUIMonitor => {
                             all_messages.push(saved_msg.clone());
+
                             let id = all_messages
                                 .iter()
                                 .filter(|&n| {
                                     *n == MessageServer {
-                                        purpose: MessageType::Initialise(Entity::GUIMonitor),
+                                        purpose: MessageType::Initialise(
+                                            Entity::GUIMonitor,
+                                        ),
                                     }
                                 })
                                 .count();
+
                             message_send = MessageServer {
-                                purpose: MessageType::IdentityConfirmation((entity, id)),
+                                purpose: MessageType::IdentityConfirmation((
+                                    entity, id,
+                                )),
                             };
                         }
+
                         Entity::TBHost => {
                             all_messages.push(saved_msg.clone());
+
                             let id = all_messages
                                 .iter()
                                 .filter(|&n| {
                                     *n == MessageServer {
-                                        purpose: MessageType::Initialise(Entity::GUIMonitor),
+                                        purpose: MessageType::Initialise(
+                                            Entity::GUIMonitor,
+                                        ),
                                     }
                                 })
                                 .count();
+
                             message_send = MessageServer {
-                                purpose: MessageType::IdentityConfirmation((entity, id)),
+                                purpose: MessageType::IdentityConfirmation((
+                                    entity, id,
+                                )),
                             };
+
                             let tb_link_request = MessageServer {
                                 purpose: MessageType::TBLinkRequest(),
                             };
 
                             println!("[Server] Requested TensorBoard link");
 
-                            let mut serialised = serde_json::to_string(&tb_link_request)
-                                .expect("serialisation failed");
+                            let mut serialised =
+                                serde_json::to_string(&tb_link_request)
+                                    .expect("serialisation failed");
+
                             serialised += "\n";
-                            if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
-                                eprintln!("Error sending identification! {}", msg);
+
+                            if let Err(msg) =
+                                cloned_handle.write_all(serialised.as_bytes())
+                            {
+                                eprintln!(
+                                    "Error sending identification! {}",
+                                    msg
+                                );
                                 break;
                             } else {
                                 println!("[Server] Requesting net");
                             }
                         }
-                        Entity::SPRTRunner => {
-                            // register this connection as the SPRT runner so new candidate nets can be routed to it exclusively
+
+                        Entity::GateTesterRunner => {
+                            // Register this connection as the GateTester runner.
                             message_send = MessageServer {
-                                purpose: MessageType::IdentityConfirmation((entity, 1)),
+                                purpose: MessageType::IdentityConfirmation((
+                                    entity, 1,
+                                )),
                             };
+
                             match stream.try_clone() {
                                 Ok(clone) => {
-                                    let mut sprts = sprt_streams.lock().unwrap();
-                                    sprts.retain(|c| {
+                                    let mut gate_testers =
+                                        gate_tester_streams.lock().unwrap();
+
+                                    gate_testers.retain(|c| {
                                         c.peer_addr()
                                             .map(|a| a.to_string() != peer_addr)
                                             .unwrap_or(false)
                                     });
-                                    sprts.push(clone);
+
+                                    gate_testers.push(clone);
                                 }
+
                                 Err(e) => {
-                                    eprintln!("[Server] Failed to register SPRT stream: {}", e)
+                                    eprintln!(
+                                        "[Server] Failed to register GateTester stream: {}",
+                                        e
+                                    );
                                 }
                             }
                         }
                     }
+
                     let serialised = to_wire(&message_send);
-                    if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
+
+                    if let Err(msg) =
+                        cloned_handle.write_all(serialised.as_bytes())
+                    {
                         eprintln!("Error sending identification! {}", msg);
                         break;
                     } else {
@@ -290,150 +408,277 @@ fn handle_client(
                             message_send
                         );
                     }
-                    if matches!(client_entity, Some(Entity::SPRTRunner)) {
+
+                    if matches!(
+                        client_entity,
+                        Some(Entity::GateTesterRunner)
+                    ) {
                         let latest = latest_net.lock().unwrap().clone();
                         let pending = pending_candidate.lock().unwrap().clone();
+
                         if let Some(net) = latest {
                             let h0_wire = to_wire(&MessageServer {
                                 purpose: MessageType::NewNetworkData(net),
                             });
-                            if let Err(msg) = cloned_handle.write_all(h0_wire.as_bytes()) {
-                                eprintln!("[Server] Failed to send H0 to SPRT runner: {}", msg);
-                                break;
-                            }
-                            println!("[Server] Sent accepted H0 to SPRT runner");
-                        }
-                        if let Some(candidate) = pending {
-                            let h1_wire = to_wire(&MessageServer {
-                                purpose: MessageType::NewNetworkData(candidate),
-                            });
-                            if let Err(msg) = cloned_handle.write_all(h1_wire.as_bytes()) {
+
+                            if let Err(msg) =
+                                cloned_handle.write_all(h0_wire.as_bytes())
+                            {
                                 eprintln!(
-                                    "[Server] Failed to send pending H1 to SPRT runner: {}",
+                                    "[Server] Failed to send H0 to GateTester runner: {}",
                                     msg
                                 );
                                 break;
                             }
-                            println!("[Server] Sent pending candidate H1 to SPRT runner");
+
+                            println!(
+                                "[Server] Sent accepted H0 to GateTester runner"
+                            );
+                        }
+
+                        if let Some(candidate) = pending {
+                            let h1_wire = to_wire(&MessageServer {
+                                purpose: MessageType::NewNetworkData(
+                                    candidate,
+                                ),
+                            });
+
+                            if let Err(msg) =
+                                cloned_handle.write_all(h1_wire.as_bytes())
+                            {
+                                eprintln!(
+                                    "[Server] Failed to send pending H1 to GateTester runner: {}",
+                                    msg
+                                );
+                                break;
+                            }
+
+                            // This newly connected GateTester is now the tester
+                            // responsible for the pending candidate.
+                            *pending_tester_peer.lock().unwrap() =
+                                Some(peer_addr.clone());
+
+                            println!(
+                                "[Server] Sent pending H1 to GateTester runner {}",
+                                peer_addr
+                            );
                         }
                     }
+
                     recv_msg.clear();
                     continue;
                 }
+
                 MessageType::JobSendPath(_) => {
                     debug_print!("JobSendPath message received");
+
                     let refresh_msg = MessageServer {
                         purpose: MessageType::TBLinkRequest(),
                     };
+
                     let mut serialised =
-                        serde_json::to_string(&refresh_msg).expect("serialisation failed");
+                        serde_json::to_string(&refresh_msg)
+                            .expect("serialisation failed");
+
                     serialised += "\n";
-                    if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
+
+                    if let Err(msg) =
+                        cloned_handle.write_all(serialised.as_bytes())
+                    {
                         eprintln!("Error sending identification! {}", msg);
                         break;
                     }
                 }
+
                 MessageType::StatisticsSend(statistics) => {
-                    debug_print!("StatisticsSend message received: {:?}", statistics);
-                    let mut stats = stats_counters.lock().unwrap_or_else(|e| e.into_inner());
-                    let mut start_time = start_time.lock().unwrap_or_else(|e| e.into_inner());
-                    let elapsed = start_time.elapsed().as_secs_f32() as usize;
+                    debug_print!(
+                        "StatisticsSend message received: {:?}",
+                        statistics
+                    );
+
+                    let mut stats =
+                        stats_counters.lock().unwrap_or_else(|e| e.into_inner());
+
+                    let mut start_time =
+                        start_time.lock().unwrap_or_else(|e| e.into_inner());
+
+                    let elapsed =
+                        start_time.elapsed().as_secs_f32() as usize;
+
                     match statistics {
-                        tzrust::message_types::Statistics::NodesPerSecond(nps) => {
+                        tzrust::message_types::Statistics::NodesPerSecond(
+                            nps,
+                        ) => {
                             stats.0 += nps;
                         }
-                        tzrust::message_types::Statistics::EvalsPerSecond(evals_per_sec) => {
+
+                        tzrust::message_types::Statistics::EvalsPerSecond(
+                            evals_per_sec,
+                        ) => {
                             stats.1 += evals_per_sec;
                         }
                     }
+
                     if elapsed >= 1 {
                         println!("[Statistics-nps] {}", stats.0);
                         println!("[Statistics-evals] {}", stats.1);
+
                         *stats = (0, 0);
                         *start_time = Instant::now();
                     }
+
                     recv_msg.clear();
                     continue;
                 }
+
                 MessageType::RequestingNet() => {
                     debug_print!("RequestingNet message received");
+
                     if !has_net {
-                        let requested_net = if matches!(client_entity, Some(Entity::SPRTRunner)) {
-                            latest_net.lock().unwrap().clone()
-                        } else {
-                            net_data.clone()
-                        };
+                        let requested_net =
+                            if matches!(
+                                client_entity,
+                                Some(Entity::GateTesterRunner)
+                            ) {
+                                latest_net.lock().unwrap().clone()
+                            } else {
+                                net_data.clone()
+                            };
+
                         if let Some(path) = requested_net {
                             let extra_request = MessageServer {
                                 purpose: MessageType::NewNetworkData(path),
                             };
-                            let mut serialised = serde_json::to_string(&extra_request)
-                                .expect("serialisation failed");
+
+                            let mut serialised =
+                                serde_json::to_string(&extra_request)
+                                    .expect("serialisation failed");
+
                             serialised += "\n";
-                            if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
-                                eprintln!("Error sending identification! {}", msg);
+
+                            if let Err(msg) =
+                                cloned_handle.write_all(serialised.as_bytes())
+                            {
+                                eprintln!(
+                                    "Error sending identification! {}",
+                                    msg
+                                );
                                 break;
                             }
                         }
+
                         recv_msg.clear();
                         continue;
                     } else {
                         has_net = false;
                     }
                 }
+
                 MessageType::NewNetworkPath(path) => {
-                    debug_print!("NewNetworkPath message received: {}", path);
+                    debug_print!(
+                        "NewNetworkPath message received: {}",
+                        path
+                    );
+
                     *net_path = Some(path);
+
                     recv_msg.clear();
                     continue;
                 }
+
                 MessageType::IdentityConfirmation(_) => {
-                    println!("[Warning] Identity Confirmation Message type is not possible")
+                    println!(
+                        "[Warning] Identity Confirmation Message type is not possible"
+                    )
                 }
+
                 MessageType::JobSendData(_) => {
                     debug_print!("JobSendData message received");
+
                     let refresh_msg = MessageServer {
                         purpose: MessageType::TBLinkRequest(),
                     };
+
                     let mut serialised =
-                        serde_json::to_string(&refresh_msg).expect("serialisation failed");
+                        serde_json::to_string(&refresh_msg)
+                            .expect("serialisation failed");
+
                     serialised += "\n";
-                    if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
+
+                    if let Err(msg) =
+                        cloned_handle.write_all(serialised.as_bytes())
+                    {
                         eprintln!("Error sending identification! {}", msg);
                         break;
                     }
                 }
+
                 MessageType::NewNetworkData(data) => {
-                    debug_print!("NewNetworkData message received: {:?}", data);
+                    debug_print!(
+                        "NewNetworkData message received: {:?}",
+                        data
+                    );
+
                     let checksum = net_checksum(&data);
+
                     if *transfer_in_progress {
-                        // Another transfer is mid-flight; forward as a follow-up chunk.
-                        let follow_up_msg = to_wire(&MessageServer {
-                            purpose: MessageType::NewNetworkData(data.clone()),
-                        });
+                        // Another transfer is mid-flight; forward as a
+                        // follow-up chunk.
+                        let follow_up_msg = to_wire(
+                            &MessageServer {
+                                purpose: MessageType::NewNetworkData(
+                                    data.clone(),
+                                ),
+                            },
+                        );
+
                         thread::sleep(Duration::from_millis(1));
-                        if let Err(msg) = cloned_handle.write_all(follow_up_msg.as_bytes()) {
-                            eprintln!("Error sending follow-up net data! {}", msg);
+
+                        if let Err(msg) =
+                            cloned_handle.write_all(follow_up_msg.as_bytes())
+                        {
+                            eprintln!(
+                                "Error sending follow-up net data! {}",
+                                msg
+                            );
                         }
                     } else {
                         *transfer_in_progress = true;
                         *net_data = Some(data.clone());
 
                         let mut latest = latest_net.lock().unwrap();
-                        let mut latest_checksum = latest_net_checksum.lock().unwrap();
-                        let mut pending = pending_candidate.lock().unwrap();
-                        let mut pending_checksum = pending_candidate_checksum.lock().unwrap();
-                        let mut h0_sent = h0_sent_to_datagen.lock().unwrap();
+                        let mut latest_checksum =
+                            latest_net_checksum.lock().unwrap();
+                        let mut pending =
+                            pending_candidate.lock().unwrap();
+                        let mut pending_checksum =
+                            pending_candidate_checksum.lock().unwrap();
+                        let mut pending_tester =
+                            pending_tester_peer.lock().unwrap();
+                        let mut h0_sent =
+                            h0_sent_to_datagen.lock().unwrap();
 
-                        if latest_checksum.as_deref() == Some(checksum.as_str()) {
-                            println!("[Server] Ignoring duplicate latest net {}", checksum);
+                        if latest_checksum.as_deref()
+                            == Some(checksum.as_str())
+                        {
+                            println!(
+                                "[Server] Ignoring duplicate latest net {}",
+                                checksum
+                            );
+
                             *transfer_in_progress = false;
                             recv_msg.clear();
                             continue;
                         }
 
-                        if pending_checksum.as_deref() == Some(checksum.as_str()) {
-                            println!("[Server] Ignoring duplicate pending candidate {}", checksum);
+                        if pending_checksum.as_deref()
+                            == Some(checksum.as_str())
+                        {
+                            println!(
+                                "[Server] Ignoring duplicate pending candidate {}",
+                                checksum
+                            );
+
                             *transfer_in_progress = false;
                             recv_msg.clear();
                             continue;
@@ -441,115 +686,247 @@ fn handle_client(
 
                         if pending.is_some() {
                             println!(
-                                "[Server][Warning] Candidate {} arrived while another candidate is pending; ignoring until the current SPRT finishes",
+                                "[Server][Warning] Candidate {} arrived while another candidate is pending; ignoring until the current GateTester finishes",
                                 checksum
                             );
+
                             *transfer_in_progress = false;
                             recv_msg.clear();
                             continue;
                         }
 
-                        if latest.is_none() && pending.is_none() && !*h0_sent {
-                            // this is the very first net. Everyone gets it so generators can start producing data and the SPRT runner has its initial benchmark
+                        if latest.is_none()
+                            && pending.is_none()
+                            && !*h0_sent
+                        {
+                            // This is the very first net. Everyone gets it so
+                            // generators can start producing data and the
+                            // GateTester runner has its initial benchmark.
                             *latest = Some(data.clone());
                             *latest_checksum = Some(checksum.clone());
                             *h0_sent = true;
+
+                            // There is no candidate under test, so there is
+                            // deliberately no pending_tester_peer here.
+                            *pending_tester = None;
+
                             let h0_wire = to_wire(&MessageServer {
-                                purpose: MessageType::NewNetworkData(data.clone()),
+                                purpose: MessageType::NewNetworkData(
+                                    data.clone(),
+                                ),
                             });
+
                             {
-                                let mut sprts = sprt_streams.lock().unwrap();
-                                let n_sprt = write_to_live_streams(&mut sprts, &h0_wire);
-                                println!("[Server] H0 sent to {} SPRT runner(s)", n_sprt);
+                                let mut gate_testers =
+                                    gate_tester_streams.lock().unwrap();
+
+                                let n_gate_testers =
+                                    write_to_live_streams(
+                                        &mut gate_testers,
+                                        &h0_wire,
+                                    );
+
+                                println!(
+                                    "[Server] H0 sent to {} GateTester runner(s)",
+                                    n_gate_testers
+                                );
                             }
+
                             {
-                                let mut datagens = datagen_streams.lock().unwrap();
-                                let n_datagens = write_to_live_streams(&mut datagens, &h0_wire);
+                                let mut datagens =
+                                    datagen_streams.lock().unwrap();
+
+                                let n_datagens =
+                                    write_to_live_streams(
+                                        &mut datagens,
+                                        &h0_wire,
+                                    );
+
                                 println!(
                                     "[Server] H0 {} sent to {} data generator(s)",
-                                    checksum, n_datagens
+                                    checksum,
+                                    n_datagens
                                 );
                             }
                         } else {
-                            // hold candidate as pending and route it ONLY to the SPRT runner for gating. Generators do NOT get it until the test passes
+                            // Hold candidate as pending and route it ONLY to
+                            // one GateTester runner. That runner becomes the
+                            // owner of this test.
                             let cand_wire = to_wire(&MessageServer {
-                                purpose: MessageType::NewNetworkData(data.clone()),
+                                purpose: MessageType::NewNetworkData(
+                                    data.clone(),
+                                ),
                             });
-                            let mut sprts = sprt_streams.lock().unwrap();
-                            let n_sprt = write_to_live_streams(&mut sprts, &cand_wire);
-                            *pending = Some(data.clone());
-                            *pending_checksum = Some(checksum.clone());
-                            if n_sprt == 0 {
-                                println!(
-                                    "[Server] Candidate net {} held pending until an SPRT runner connects",
-                                    checksum
-                                );
+
+                            let mut gate_testers =
+                                gate_tester_streams.lock().unwrap();
+
+                            // Remove dead GateTester connections first.
+                            gate_testers.retain_mut(|tester| {
+                                tester.write_all(&[]).is_ok()
+                            });
+
+                            if let Some(tester) = gate_testers.first_mut() {
+                                let tester_peer = tester
+                                    .peer_addr()
+                                    .map(|a| a.to_string())
+                                    .unwrap_or_else(|_| {
+                                        "unknown".to_string()
+                                    });
+
+                                match tester.write_all(cand_wire.as_bytes()) {
+                                    Ok(()) => {
+                                        *pending = Some(data.clone());
+                                        *pending_checksum =
+                                            Some(checksum.clone());
+                                        *pending_tester =
+                                            Some(tester_peer.clone());
+
+                                        println!(
+                                            "[Server] Candidate net {} routed to GateTester runner {} for testing",
+                                            checksum,
+                                            tester_peer
+                                        );
+                                    }
+
+                                    Err(e) => {
+                                        eprintln!(
+                                            "[Server] Failed to send candidate {} to GateTester runner {}: {}",
+                                            checksum,
+                                            tester_peer,
+                                            e
+                                        );
+
+                                        // The failed tester is removed. Do not
+                                        // create a pending candidate with no
+                                        // valid tester.
+                                        gate_testers.retain(|tester| {
+                                            tester
+                                                .peer_addr()
+                                                .map(|a| {
+                                                    a.to_string()
+                                                        != tester_peer
+                                                })
+                                                .unwrap_or(false)
+                                        });
+
+                                        println!(
+                                            "[Server] Candidate net {} held until a GateTester runner connects",
+                                            checksum
+                                        );
+                                    }
+                                }
                             } else {
                                 println!(
-                                    "[Server] Candidate net {} routed to {} SPRT runner(s) for testing",
-                                    checksum, n_sprt
+                                    "[Server] Candidate net {} held pending until a GateTester runner connects",
+                                    checksum
                                 );
+
+                                *pending = Some(data.clone());
+                                *pending_checksum =
+                                    Some(checksum.clone());
+                                *pending_tester = None;
                             }
                         }
+
                         *transfer_in_progress = false;
                     }
+
                     recv_msg.clear();
                     continue;
                 }
+
                 MessageType::TBLink(ref msg) => {
                     debug_print!("TBLink message received: {:?}", msg);
+
                     *tb_link = Some(msg.clone());
+
                     if needs_tb_link {
                         let tb_link_msg = MessageServer {
                             purpose: MessageType::TBLink(msg.clone()),
                         };
+
                         let mut serialised =
-                            serde_json::to_string(&tb_link_msg).expect("serialisation failed");
+                            serde_json::to_string(&tb_link_msg)
+                                .expect("serialisation failed");
+
                         serialised += "\n";
-                        if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
-                            eprintln!("Error sending TensorBoard link! {}", msg);
+
+                        if let Err(msg) =
+                            cloned_handle.write_all(serialised.as_bytes())
+                        {
+                            eprintln!(
+                                "Error sending TensorBoard link! {}",
+                                msg
+                            );
                             break;
                         }
+
                         needs_tb_link = false;
                     }
                 }
+
                 MessageType::CreateTB() => {
                     debug_print!("CreateTB message received");
                     needs_tb_link = true;
                 }
+
                 MessageType::TBLinkRequest() => match *tb_link {
                     Some(ref link) => {
                         let tb_link_msg = MessageServer {
                             purpose: MessageType::TBLink(link.clone()),
                         };
-                        println!("[Server] TensorBoard Link: {:?}", tb_link_msg);
+
+                        println!(
+                            "[Server] TensorBoard Link: {:?}",
+                            tb_link_msg
+                        );
+
                         let mut serialised =
-                            serde_json::to_string(&tb_link_msg).expect("serialisation failed");
+                            serde_json::to_string(&tb_link_msg)
+                                .expect("serialisation failed");
+
                         serialised += "\n";
-                        if let Err(msg) = cloned_handle.write_all(serialised.as_bytes()) {
-                            eprintln!("Error sending TensorBoard link! {}", msg);
+
+                        if let Err(msg) =
+                            cloned_handle.write_all(serialised.as_bytes())
+                        {
+                            eprintln!(
+                                "Error sending TensorBoard link! {}",
+                                msg
+                            );
                             break;
                         }
+
                         needs_tb_link = false;
                     }
+
                     None => {
                         needs_tb_link = true;
                     }
                 },
+
                 MessageType::EvaluationRequest(_input_data) => {
-                    debug_print!("EvaluationRequest message received: {:?}", _input_data);
+                    debug_print!(
+                        "EvaluationRequest message received: {:?}",
+                        _input_data
+                    );
                 }
             }
 
             let all_clients = clients.lock().unwrap();
+
             for mut client in all_clients.iter() {
                 if client.write_all(recv_msg.as_bytes()).is_err() {
                     continue;
                 }
+
                 let mut disp_msg = recv_msg.clone();
                 disp_msg.retain(|c| c != '\n');
+
                 debug_print!("Sent message to client: {:?}", disp_msg);
             }
+
             recv_msg.clear();
             continue;
         } else {
@@ -557,75 +934,161 @@ fn handle_client(
         }
     }
 
-    if matches!(client_entity, Some(Entity::SPRTRunner)) {
+    // Remove this connection from the appropriate GateTester registry.
+    if matches!(client_entity, Some(Entity::GateTesterRunner)) {
         {
-            let mut sprts = sprt_streams.lock().unwrap();
-            sprts.retain(|c| {
+            let mut gate_testers =
+                gate_tester_streams.lock().unwrap();
+
+            gate_testers.retain(|c| {
                 c.peer_addr()
                     .map(|a| a.to_string() != peer_addr)
                     .unwrap_or(false)
             });
         }
 
-        let no_sprt_runners = sprt_streams.lock().unwrap().is_empty();
-        if no_sprt_runners
-            && clear_pending_candidate(&pending_candidate, &pending_candidate_checksum)
-        {
-            notify_trainers_of_rejection(
-                &training_streams,
-                "SPRT runner disconnected before completing the test",
-            );
+        // IMPORTANT:
+        //
+        // Only reject the candidate if THIS connection was the GateTester
+        // actually testing it.
+        //
+        // A different GateTester disconnecting must not affect the candidate.
+        let owns_pending_test = {
+            let pending_tester =
+                pending_tester_peer.lock().unwrap();
+
+            pending_tester.as_deref() == Some(peer_addr.as_str())
+        };
+
+        if owns_pending_test {
+            if clear_pending_candidate(
+                &pending_candidate,
+                &pending_candidate_checksum,
+                &pending_tester_peer,
+            ) {
+                notify_trainers_of_rejection(
+                    &training_streams,
+                    "GateTester runner testing the candidate disconnected",
+                );
+            }
         }
     }
 }
 
 fn main() {
-    let listener = TcpListener::bind("0.0.0.0:38475").expect("Failed to bind address");
-    let clients: Arc<Mutex<Vec<TcpStream>>> = Arc::new(Mutex::new(Vec::new()));
-    let messages: Arc<Mutex<Vec<MessageServer>>> = Arc::new(Mutex::new(Vec::new()));
-    let net_path: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-    let net_data: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
-    let tb_link: Arc<Mutex<Option<(String, String)>>> = Arc::new(Mutex::new(None));
-    let stats_counters: Arc<Mutex<(usize, usize)>> = Arc::new(Mutex::new((0, 0)));
-    let start_time: Arc<Mutex<Instant>> = Arc::new(Mutex::new(Instant::now()));
-    let transfer_in_progress: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
-    let latest_net: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
-    let latest_net_checksum: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-    let pending_candidate: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
-    let pending_candidate_checksum: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-    let sprt_streams: Arc<Mutex<Vec<TcpStream>>> = Arc::new(Mutex::new(Vec::new()));
-    let training_streams: Arc<Mutex<Vec<TcpStream>>> = Arc::new(Mutex::new(Vec::new()));
-    let datagen_streams: Arc<Mutex<Vec<TcpStream>>> = Arc::new(Mutex::new(Vec::new()));
-    let h0_sent_to_datagen: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
+    let listener =
+        TcpListener::bind("0.0.0.0:38475")
+            .expect("Failed to bind address");
+
+    let clients: Arc<Mutex<Vec<TcpStream>>> =
+        Arc::new(Mutex::new(Vec::new()));
+
+    let messages: Arc<Mutex<Vec<MessageServer>>> =
+        Arc::new(Mutex::new(Vec::new()));
+
+    let net_path: Arc<Mutex<Option<String>>> =
+        Arc::new(Mutex::new(None));
+
+    let net_data: Arc<Mutex<Option<Vec<u8>>>> =
+        Arc::new(Mutex::new(None));
+
+    let tb_link: Arc<Mutex<Option<(String, String)>>> =
+        Arc::new(Mutex::new(None));
+
+    let stats_counters: Arc<Mutex<(usize, usize)>> =
+        Arc::new(Mutex::new((0, 0)));
+
+    let start_time: Arc<Mutex<Instant>> =
+        Arc::new(Mutex::new(Instant::now()));
+
+    let transfer_in_progress: Arc<Mutex<bool>> =
+        Arc::new(Mutex::new(false));
+
+    let latest_net: Arc<Mutex<Option<Vec<u8>>>> =
+        Arc::new(Mutex::new(None));
+
+    let latest_net_checksum: Arc<Mutex<Option<String>>> =
+        Arc::new(Mutex::new(None));
+
+    let pending_candidate: Arc<Mutex<Option<Vec<u8>>>> =
+        Arc::new(Mutex::new(None));
+
+    let pending_candidate_checksum: Arc<Mutex<Option<String>>> =
+        Arc::new(Mutex::new(None));
+
+    // Peer address of the GateTester connection currently responsible for
+    // testing pending_candidate.
+    let pending_tester_peer: Arc<Mutex<Option<String>>> =
+        Arc::new(Mutex::new(None));
+
+    let gate_tester_streams: Arc<Mutex<Vec<TcpStream>>> =
+        Arc::new(Mutex::new(Vec::new()));
+
+    let training_streams: Arc<Mutex<Vec<TcpStream>>> =
+        Arc::new(Mutex::new(Vec::new()));
+
+    let datagen_streams: Arc<Mutex<Vec<TcpStream>>> =
+        Arc::new(Mutex::new(Vec::new()));
+
+    let h0_sent_to_datagen: Arc<Mutex<bool>> =
+        Arc::new(Mutex::new(false));
 
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
                 let cloned_clients = Arc::clone(&clients);
                 let cloned_messages = Arc::clone(&messages);
-                let cloned_stats_counters = Arc::clone(&stats_counters);
-                let cloned_start_time = Arc::clone(&start_time);
-                let addr = stream.peer_addr().expect("Failed to get peer address");
-                let cloned_net_path = Arc::clone(&net_path);
-                let cloned_net_data = Arc::clone(&net_data);
-                let cloned_tb_link = Arc::clone(&tb_link);
-                let cloned_transfer_in_progress = Arc::clone(&transfer_in_progress);
-                let cloned_latest_net = Arc::clone(&latest_net);
-                let cloned_latest_net_checksum = Arc::clone(&latest_net_checksum);
-                let cloned_pending_candidate = Arc::clone(&pending_candidate);
-                let cloned_pending_candidate_checksum = Arc::clone(&pending_candidate_checksum);
-                let cloned_sprt_streams = Arc::clone(&sprt_streams);
-                let cloned_training_streams = Arc::clone(&training_streams);
-                let cloned_datagen_streams = Arc::clone(&datagen_streams);
-                let cloned_h0_sent = Arc::clone(&h0_sent_to_datagen);
+                let cloned_stats_counters =
+                    Arc::clone(&stats_counters);
+                let cloned_start_time =
+                    Arc::clone(&start_time);
+
+                let addr = stream
+                    .peer_addr()
+                    .expect("Failed to get peer address");
+
+                let cloned_net_path =
+                    Arc::clone(&net_path);
+                let cloned_net_data =
+                    Arc::clone(&net_data);
+                let cloned_tb_link =
+                    Arc::clone(&tb_link);
+                let cloned_transfer_in_progress =
+                    Arc::clone(&transfer_in_progress);
+                let cloned_latest_net =
+                    Arc::clone(&latest_net);
+                let cloned_latest_net_checksum =
+                    Arc::clone(&latest_net_checksum);
+                let cloned_pending_candidate =
+                    Arc::clone(&pending_candidate);
+                let cloned_pending_candidate_checksum =
+                    Arc::clone(&pending_candidate_checksum);
+                let cloned_pending_tester_peer =
+                    Arc::clone(&pending_tester_peer);
+                let cloned_gate_tester_streams =
+                    Arc::clone(&gate_tester_streams);
+                let cloned_training_streams =
+                    Arc::clone(&training_streams);
+                let cloned_datagen_streams =
+                    Arc::clone(&datagen_streams);
+                let cloned_h0_sent =
+                    Arc::clone(&h0_sent_to_datagen);
+
                 println!("[Server] New connection: {}", addr);
 
                 {
-                    let mut all_clients = cloned_clients.lock().unwrap();
-                    all_clients.push(stream.try_clone().expect("Failed to clone stream"));
+                    let mut all_clients =
+                        cloned_clients.lock().unwrap();
+
+                    all_clients.push(
+                        stream
+                            .try_clone()
+                            .expect("Failed to clone stream"),
+                    );
                 }
 
                 let cloned_clients = Arc::clone(&clients);
+
                 thread::spawn(move || {
                     handle_client(
                         stream,
@@ -641,13 +1104,15 @@ fn main() {
                         cloned_latest_net_checksum,
                         cloned_pending_candidate,
                         cloned_pending_candidate_checksum,
-                        cloned_sprt_streams,
+                        cloned_pending_tester_peer,
+                        cloned_gate_tester_streams,
                         cloned_training_streams,
                         cloned_datagen_streams,
                         cloned_h0_sent,
                     );
                 });
             }
+
             Err(e) => {
                 eprintln!("Error: {}", e);
             }

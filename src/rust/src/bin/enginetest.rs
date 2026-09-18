@@ -159,7 +159,7 @@ async fn generator_main(
         },
         batch_size: 1,
     };
-    let _thread_name = format!("sprt-generator-{}", generator_id);
+    let _thread_name = format!("tester-generator-{}", generator_id);
     debug_print!("{} Generator settings initialized", _thread_name);
 
     let openings = read_epd_file(&data_path_str("hidden/8moves_v3.epd")).unwrap();

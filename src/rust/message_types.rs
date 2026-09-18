@@ -29,13 +29,13 @@ pub enum MessageType {
     TBLink((String, String)),
     CreateTB(),
     TBLinkRequest(),
-    TestResult(SPRTResult),
+    TestResult(GateTesterResult),
     EvaluationRequest(ExternalPacket), // use Vec<f32> to handle raw input data
 }
 
 #[pyclass]
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-pub struct SPRTResult {
+pub struct GateTesterResult {
     pub elo: (f64, f64, f64),
     pub accept_new_net: bool,
 }
@@ -63,7 +63,7 @@ pub enum Entity {
     PythonTraining,
     TBHost,
     GUIMonitor,
-    SPRTRunner,
+    GateTesterRunner,
 }
 
 #[pyclass]

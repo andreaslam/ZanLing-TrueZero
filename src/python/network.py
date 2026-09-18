@@ -93,8 +93,7 @@ class TrueNetXS(nn.Module):
 
     Same interface and design as `TrueNet` (pre-activation ResNet trunk, AZ-style
     convolutional policy head, value head with a hidden layer) but with far fewer
-    residual blocks and channels, so inference is much cheaper. Suitable for
-    AlphaZero training/inference; not the toy dense net it replaces.
+    residual blocks and channels, so inference is much cheaper.
 
     Forward returns ``(value, policy)`` with shapes ``(b, 5)`` and ``(b, 1880)``,
     exactly like `TrueNet`.

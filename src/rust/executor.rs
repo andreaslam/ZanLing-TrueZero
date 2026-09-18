@@ -72,7 +72,7 @@ fn handle_requests(
     let mut id_vec: VecDeque<String> = VecDeque::new();
     // maximum time a partial batch may wait before being flushed to the GPU. Self-play
     // datagen fills its large batch well within this window, so this only triggers for
-    // finite/low-concurrency workloads (e.g. the SPRT match tail), preventing the
+    // finite/low-concurrency workloads (e.g. the GateTester match tail), preventing the
     // partial-batch deadlock where the executor waits forever for a batch that never fills.
     let flush_batch = |input_vec: &mut VecDeque<Tensor>,
                        output_senders: &mut VecDeque<Sender<ReturnMessage>>,
