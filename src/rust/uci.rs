@@ -441,7 +441,7 @@ fn handle_go(
                     debug_print!(
                         "{}",
                         &format!("Debug: Initiating infinite search {}", movestogo)
-                    )
+                    );
                 }
                 "nodes" => {
                     nodes = cmd.parse().unwrap_or(nodes);
@@ -564,7 +564,7 @@ fn job_listener(job_receiver: Receiver<UCIRequest>, finished_move_sender: Sender
                         "Debug: Resized cache from {} to {}",
                         old_cache_cap,
                         cache.cap()
-                    )
+                    );
                 }
                 let castling_board = search_request.board.clone();
                 let (mut best_move, _, _, _, _) = rt.block_on(async {

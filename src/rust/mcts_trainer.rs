@@ -539,80 +539,98 @@ impl Tree {
     }
 
     /// Displays information on a node (debug)
+    #[cfg(debug_assertions)]
     pub fn display_node(&self, id: usize) -> String {
-        if cfg!(debug_assertions) {
-            let u: f32;
-            let puct: f32;
+        let u: f32;
+        let puct: f32;
 
-            // get moves
-            let mut curr: Option<usize> = Some(id);
-            let mut bs_clone = self.board.clone();
-            let mut mv_vec: Vec<Move> = Vec::new();
-            while let Some(current) = curr {
-                if let Some(mv) = self.nodes[current].mv {
-                    mv_vec.push(mv)
-                }
-                curr = self.nodes[current].parent;
-            }
-            mv_vec.reverse();
-            for mv in mv_vec {
-                bs_clone.play(mv);
-            }
+        // get moves
+        let mut curr: Option<usize> = Some(id);
+        let mut bs_clone = self.board.clone();
+        let mut mv_vec: Vec<Move> = Vec::new();
 
-            match &self.nodes[id].parent {
-                Some(parent) => {
-                    if self.nodes[*parent].visits == 0 {
-                        u = f32::NAN;
-                        puct = f32::NAN;
-                    } else {
-                        u = self.nodes[id].get_u_val(self.nodes[*parent].visits, self.settings);
-                        puct = self.nodes[id].puct_formula(
-                            self.nodes[*parent].visits,
-                            self.nodes[*parent].total_evaluation.moves_left
-                                / self.nodes[*parent].visits as f32,
-                            !bs_clone.board().side_to_move(),
-                            self.settings,
-                        );
-                    }
-                }
-                None => {
+        while let Some(current) = curr {
+            if let Some(mv) = self.nodes[current].mv {
+                mv_vec.push(mv)
+            }
+            curr = self.nodes[current].parent;
+        }
+
+        mv_vec.reverse();
+
+        for mv in mv_vec {
+            bs_clone.play(mv);
+        }
+
+        match &self.nodes[id].parent {
+            Some(parent) => {
+                if self.nodes[*parent].visits == 0 {
                     u = f32::NAN;
                     puct = f32::NAN;
+                } else {
+                    u = self.nodes[id].get_u_val(self.nodes[*parent].visits, self.settings);
+
+                    puct = self.nodes[id].puct_formula(
+                        self.nodes[*parent].visits,
+                        self.nodes[*parent].total_evaluation.moves_left
+                            / self.nodes[*parent].visits as f32,
+                        !bs_clone.board().side_to_move(),
+                        self.settings,
+                    );
                 }
             }
-            let mv_n: String;
-            match &self.nodes[id].mv {
-                Some(mv) => {
-                    mv_n = format!("{}", mv);
-                }
-                None => {
-                    mv_n = "Null".to_string();
-                }
+            None => {
+                u = f32::NAN;
+                puct = f32::NAN;
             }
-            let relative_evaluation = self.nodes[id]
-                .total_evaluation
-                .to_relative(!bs_clone.board().side_to_move());
-            format!(
-                "Node(action= {}, V= {}, N={}, W={}, P={}, Q={}, U={}, PUCT={}, len_children={}, wdl={}, w={}, d={}, l={}, M={}, M_total={})",
-                mv_n,
-                self.nodes[id].net_evaluation.value,
-                self.nodes[id].visits,
-                self.nodes[id].total_evaluation.value,
-                self.nodes[id].policy,
-                self.nodes[id].get_q_val(self.settings, relative_evaluation),
-                u,
-                puct,
-                self.nodes[id].children.len(),
-                self.nodes[id].net_evaluation.wdl.w - self.nodes[id].net_evaluation.wdl.l,
-                self.nodes[id].net_evaluation.wdl.w,
-                self.nodes[id].net_evaluation.wdl.d,
-                self.nodes[id].net_evaluation.wdl.l,
-                self.nodes[id].net_evaluation.moves_left,
-                self.nodes[id].total_evaluation.moves_left/self.nodes[id].visits as f32,
-            )
-        } else {
-            String::new()
         }
+
+        let mv_n: String;
+
+        match &self.nodes[id].mv {
+            Some(mv) => {
+                mv_n = format!("{}", mv);
+            }
+            None => {
+                mv_n = "Null".to_string();
+            }
+        }
+
+        let relative_evaluation = self.nodes[id]
+            .total_evaluation
+            .to_relative(!bs_clone.board().side_to_move());
+
+        format!(
+            "Node(action= {}, V= {}, N={}, W={}, P={}, Q={}, U={}, PUCT={}, len_children={}, wdl={}, w={}, d={}, l={}, M={}, M_total={})",
+            mv_n,
+            self.nodes[id].net_evaluation.value,
+            self.nodes[id].visits,
+            self.nodes[id].total_evaluation.value,
+            self.nodes[id].policy,
+            self.nodes[id].get_q_val(self.settings, relative_evaluation),
+            u,
+            puct,
+            self.nodes[id].children.len(),
+            self.nodes[id].net_evaluation.wdl.w
+                - self.nodes[id].net_evaluation.wdl.l,
+            self.nodes[id].net_evaluation.wdl.w,
+            self.nodes[id].net_evaluation.wdl.d,
+            self.nodes[id].net_evaluation.wdl.l,
+            self.nodes[id].net_evaluation.moves_left,
+            self.nodes[id].total_evaluation.moves_left
+                / self.nodes[id].visits as f32,
+        )
+    }
+
+    /// Release-mode stub.
+    ///
+    /// Calls to this function normally disappear because they occur
+    /// inside debug_print!, but this keeps the API type-correct if
+    /// the function is referenced elsewhere.
+    #[cfg(not(debug_assertions))]
+    #[inline(always)]
+    pub fn display_node(&self, _id: usize) -> String {
+        String::new()
     }
 }
 
@@ -717,28 +735,33 @@ impl Node {
     }
 
     /// recursively prints the tree containing information about each node (debug)
+    #[cfg(debug_assertions)]
     pub fn layer_p(&self, depth: u8, max_tree_print_depth: u8, tree: &Tree) {
-        if cfg!(debug_assertions) {
-            let _indent = "    ".repeat(depth as usize + 2);
-            if depth <= max_tree_print_depth && !self.children.is_empty() {
-                for c in self.children.clone() {
-                    debug_print!("{}", &format!("{}{}", _indent, tree.display_node(c)));
-                    tree.nodes[c].layer_p(depth + 1, max_tree_print_depth, tree);
-                }
+        let indent = "    ".repeat(depth as usize + 2);
+
+        if depth <= max_tree_print_depth && !self.children.is_empty() {
+            for c in self.children.clone() {
+                debug_print!("{}", &format!("{}{}", indent, tree.display_node(c)));
+                tree.nodes[c].layer_p(depth + 1, max_tree_print_depth, tree);
             }
         }
     }
 
-    /// prints the entire tree with all node information (debug)
+    /// recursively prints the tree containing information about each node.
+    ///
+    /// No release implementation is required because this is purely
+    /// a debug utility.
+    #[cfg(debug_assertions)]
     pub fn display_full_tree(&self, tree: &Tree) {
-        if cfg!(debug_assertions) {
-            debug_print!("{}", &"        root node:".to_string());
-            debug_print!("{}", &format!("            {}", tree.display_node(0)));
-            debug_print!("{}", &"        children:".to_string());
-            let max_tree_print_depth: u8 = 3;
-            debug_print!("{}", &format!("    {}", tree.display_node(0)));
-            self.layer_p(0, max_tree_print_depth, tree);
-        }
+        debug_print!("{}", &"        root node:".to_string());
+        debug_print!("{}", &format!("            {}", tree.display_node(0)));
+        debug_print!("{}", &"        children:".to_string());
+
+        let max_tree_print_depth: u8 = 3;
+
+        debug_print!("{}", &format!("    {}", tree.display_node(0)));
+
+        self.layer_p(0, max_tree_print_depth, tree);
     }
 }
 

@@ -56,10 +56,13 @@ pub fn directory_exists<P: AsRef<Path>>(path: P) -> bool {
 #[cfg(debug_assertions)]
 #[macro_export]
 macro_rules! debug_print {
-    ($($x:tt)*) => { println!($($x)*) }
+    ($($x:tt)*) => {
+        println!($($x)*)
+    };
 }
+
 #[cfg(not(debug_assertions))]
 #[macro_export]
 macro_rules! debug_print {
-    ($($x:tt)*) => {{}};
+    ($($x:tt)*) => {};
 }
