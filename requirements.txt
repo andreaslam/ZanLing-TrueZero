@@ -3,8 +3,9 @@
 darkdetect==0.5.1
 numpy==1.26.4
 PyQt5==5.15.11
-PyQt5_sip==12.13.0
+PyQt5_sip==12.17.1
 pyqtgraph==0.12.4
 scipy==1.11.4
-torch==2.8.0
+torch==2.14.0
+torchvision==0.29.0
 setuptools==83.0.0
