@@ -15,7 +15,7 @@ pub(super) async fn fetch_player_opponents(
         .get(&url)
         .header(
             reqwest::header::USER_AGENT,
-            "ZanLing-TrueZero Lichess player discovery",
+            "TrueZero Lichess player discovery",
         )
         .header(reqwest::header::ACCEPT, "application/x-ndjson")
         .send()
@@ -725,7 +725,7 @@ pub(super) async fn fetch_online_player_usernames(
         .get(ONLINE_HUMAN_PAGE_URL)
         .header(
             reqwest::header::USER_AGENT,
-            "ZanLing-TrueZero Lichess matchmaking",
+            "TrueZero Lichess matchmaking",
         )
         .send()
         .await?

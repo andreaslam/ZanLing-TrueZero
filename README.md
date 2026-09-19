@@ -1,17 +1,15 @@
 
 <div align="center">
 
-<img src="https://github.com/andreaslam/ZanLing-TrueZero/blob/main/TrueZero.png" alt="TrueZero logo">
+<img src="https://github.com/andreaslam/TrueZero/blob/main/TrueZero.png" alt="TrueZero logo">
 
 ### A Python and Rust chess engine that starts from Zero.
 <img src="https://img.shields.io/badge/Powered%20by-Rust-b7410e" alt="Powered by Rust">
 <img src="https://img.shields.io/badge/Powered%20by-Python-306998" alt="Powered by Python">
-<img src="https://badgen.net/github/commits/andreaslam/ZanLing-TrueZero/main" alt="Total commits">
+<img src="https://badgen.net/github/commits/andreaslam/TrueZero/main" alt="Total commits">
 </div>
 
 ## About the Engine 
-The name of the Engine is 真零 (TrueZero), which is Chinese for "True Zero" and romanised using [Jyutping](https://en.wikipedia.org/wiki/Jyutping) for Cantonese (Zan1 Ling4).
-
 Instead of using hand-crafted evaluations (HCE), this AI learns how to play through playing against itself, starting with zero prior knowledge except for the rules of chess.
 
 The chess engine will then play games against itself using the evaluation to evaluate chess positions, done using [Monte Carlo Tree Search (MCTS)](https://en.wikipedia.org/wiki/Monte_Carlo_tree_search).
@@ -25,17 +23,17 @@ This project is still very much work-in-progress.
 Firstly, download this repository onto your computer. 
 
 ```
-git clone https://github.com/andreaslam/ZanLing-TrueZero
+git clone https://github.com/andreaslam/TrueZero
 ```
 
 Make sure you have Rust installed. If not, follow the instructions [here](https://doc.rust-lang.org/book/ch01-01-installation.html). 
 Make sure you have Python installed. If not, download the latest version [here]([https://doc.rust-lang.org/book/ch01-01-installation.html](https://www.python.org/downloads/)). 
-Configure `tch-rs` from the instructions [here](https://github.com/LaurentMazare/tch-rs/blob/main/README.md). For now, the neural net for this project is not provided but the NN architecture is available [here](https://github.com/andreaslam/ZanLing-TrueZero/blob/main/network.py) for reference.
+Configure `tch-rs` from the instructions [here](https://github.com/LaurentMazare/tch-rs/blob/main/README.md). For now, the neural net for this project is not provided but the NN architecture is available [here](https://github.com/andreaslam/TrueZero/blob/main/network.py) for reference.
 
 Navigate to the Rust crate (which lives in `src/rust`):
 
 ```
-cd ZanLing-TrueZero/src/rust
+cd TrueZero/src/rust
 ```
 
 Then, build using `cargo`:
@@ -46,7 +44,7 @@ cargo build --release
 
 Then choose a binary to run!
 
-> **Project layout:** Rust binaries live in `src/rust/src/bin/` and are auto-discovered by Cargo. Data folders (`nets/`, `games/`, `hidden/`, `python_client_games/`, `experiment_nets/`, `frames/`) live at the **project root** (`ZanLing-TrueZero/`) and are resolved automatically — both the Rust code (`tzrust::data_path()`) and the Python code (`src/python/paths.py`) anchor paths to the project root, so you can run everything from any working directory.
+> **Project layout:** Rust binaries live in `src/rust/src/bin/` and are auto-discovered by Cargo. Data folders (`nets/`, `games/`, `hidden/`, `python_client_games/`, `experiment_nets/`, `frames/`) live at the **project root** (`TrueZero/`) and are resolved automatically — both the Rust code (`tzrust::data_path()`) and the Python code (`src/python/paths.py`) anchor paths to the project root, so you can run everything from any working directory.
 
 ### Using Docker
 
@@ -208,7 +206,7 @@ The engine loads its network from `nets/` at the project root. The compiled bina
 - `gui.py` - GUI code for `scheduler.py`. Code is currently work in progress. Running this file directly launches a demo version without server backend.
 - `onnx_exporter.py` - contains code to convert `.pt` model weights to `.onnx`
 - `scheduler.py` - code for TrueScheduler, an experiment scheduler for scheduling experiments and monitoring server controls. This GUI also supports remote SSH logins to schedule experiments on external devices. 
-- `visualiser.py` - visualises training data and monitoring key performance indicators logged in `client.py`, where code from `lib/plotter.py`. For more details on the `lib` folder see [here](https://github.com/andreaslam/ZanLing-TrueZero?tab=readme-ov-file#credits-and-acknowledgements).
+- `visualiser.py` - visualises training data and monitoring key performance indicators logged in `client.py`, where code from `lib/plotter.py`. For more details on the `lib` folder see [here](https://github.com/andreaslam/TrueZero?tab=readme-ov-file#credits-and-acknowledgements).
 - `visualisenet.py` - code that allows visualisation of neural network activations. Generates a `.gif` file for an animation of a policy-only game.
 
 ## Libraries/technologies used 
@@ -221,7 +219,7 @@ This Python and Rust Engine uses the following:
 
 ### Rust
 
-- **cozy-chess** - chess move generation library. There is a [simple wrapper](https://github.com/andreaslam/ZanLing-TrueZero/blob/main/src/boardmanager.rs) of this library that TrueZero uses that covers draws, repetitions and serves as an interface between cozy-chess and the rest of the code.
+- **cozy-chess** - chess move generation library. There is a [simple wrapper](https://github.com/andreaslam/TrueZero/blob/main/src/boardmanager.rs) of this library that TrueZero uses that covers draws, repetitions and serves as an interface between cozy-chess and the rest of the code.
 - **flume** - multi-sender, multi-producer channels used to send data between channels for data generation.
 - **tch-rs** - Rust wrapper of libtorch. Used for Neural Network inference.
 - **crossbeam** - enables multithreading data generation.
@@ -239,4 +237,4 @@ Portions/entire files of code from [KZero](https://github.com/KarelPeeters/kZero
 - `src/dataformat.rs`
 - the `lib` folder used for reading KZero's custom data format and training
 
-The [UCI code](https://github.com/andreaslam/ZanLing-TrueZero/blob/main/src/uci.rs) is modified from JW's [monty](https://github.com/jw1912/monty) engine.
+The [UCI code](https://github.com/andreaslam/TrueZero/blob/main/src/uci.rs) is modified from JW's [monty](https://github.com/jw1912/monty) engine.

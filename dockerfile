@@ -35,7 +35,7 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Set up requirements.txt
 
-RUN curl -o requirements-tch-only.txt -L https://github.com/andreaslam/ZanLing-TrueZero/raw/main/requirements-tch-only.txt
+RUN curl -o requirements-tch-only.txt -L https://github.com/andreaslam/TrueZero/raw/main/requirements-tch-only.txt
 
 RUN python3 -m venv .venv
 

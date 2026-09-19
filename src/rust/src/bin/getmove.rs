@@ -56,7 +56,7 @@ fn main() {
             .name("executor".to_string())
             .spawn(move |_| {
                 executor_static(
-                    r"/Users/andreas/Desktop/Code/RemoteFolder/ZanLing-TrueZero/hidden/chess_16x128_gen3634.pt".to_string(),
+                    r"/Users/andreas/Desktop/Code/RemoteFolder/TrueZero/hidden/chess_16x128_gen3634.pt".to_string(),
                     tensor_exe_recv,
                     ctrl_recv,
                     1,
