@@ -5,14 +5,16 @@ use crate::{
     mcts_trainer::{Net, Node, Tree, Wdl},
     mvs::get_contents,
 };
-use cozy_chess::{Color, Move, Piece, Rank, Square};
+use cozy_chess::{Color, Move, Piece, Square};
 use lru::LruCache;
 use tch::{Device, IValue, Kind, Tensor};
 
 pub fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> {
+    // miracle mps fix???
+    let _no_grad = tch::no_grad_guard();
+
     let b = board.reshape([-1, 21, 8, 8]);
     let b = b.to(net.device);
-
     let board = IValue::Tensor(b);
 
     let output = net.net.forward_is(&[board])?;
@@ -42,7 +44,6 @@ pub fn eval_state(board: Tensor, net: &Net) -> anyhow::Result<(Tensor, Tensor)> 
     Ok((board_eval, policy))
 }
 
-// canonical board coordinates are rank-flipped for black
 
 fn canonical_square(square: Square, side: Color) -> Square {
     if side == Color::Black {

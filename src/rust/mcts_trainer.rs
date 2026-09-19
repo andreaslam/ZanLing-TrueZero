@@ -88,7 +88,6 @@ impl Net {
         // let device = Device::Cpu;
         let mut net = tch::CModule::load_on_device(path, device).expect("ERROR");
         net.set_eval();
-
         Self { net, device }
     }
 }

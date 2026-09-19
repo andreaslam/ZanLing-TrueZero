@@ -11,7 +11,6 @@ use std::{
     num::NonZeroUsize,
     panic,
     path::Path,
-    thread as std_thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tzrust::{
@@ -47,11 +46,31 @@ fn net_file_checksum(file_path: &str) -> io::Result<String> {
 }
 
 fn main() {
-    let physical_cores = std_thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(1);
+    tch::set_num_threads(1);
+    tch::set_num_interop_threads(1);
+    let logical_cpus = num_cpus::get();
+    let physical_cpus = num_cpus::get_physical();
+    if logical_cpus > physical_cpus {
+        println!(
+            "We have simultaneous multithreading with about {:.2} \
+              logical cores to 1 physical core.",
+            (logical_cpus as f64) / (physical_cpus as f64)
+        );
+    } else if logical_cpus == physical_cpus {
+        println!(
+            "Either we don't have simultaneous multithreading, or our \
+              system doesn't support getting the number of physical CPUs."
+        );
+    } else {
+        println!(
+            "We have less logical CPUs than physical CPUs, maybe we only have access to \
+              some of the CPUs on our system."
+        );
+    }
+    println!("{physical_cpus}");
     let pool = ThreadPool::builder()
-        .pool_size(physical_cores)
+        .pool_size(physical_cpus)
+        // .pool_size(physical_cpus)
         .create()
         .unwrap();
     env::set_var("RUST_BACKTRACE", "2");
@@ -78,7 +97,7 @@ fn main() {
         .expect("Failed to send data");
     println!("Connected to server!");
 
-    let num_executors = 2;
+    let num_executors = 1;
     // num_executors = max(min(tch::Cuda::device_count() as usize, num_executors), 1);
     let batch_size = 2048;
     let num_generators = num_executors * batch_size * 2;
