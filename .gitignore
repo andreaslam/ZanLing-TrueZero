@@ -431,7 +431,7 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-.textpadtmp
+.texpadtmp/
 *.epd
 hidden
-*.db
+*.sqlite3
