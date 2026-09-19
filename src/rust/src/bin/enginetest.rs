@@ -37,7 +37,7 @@ fn main() {
     let num_games = 1000000;
     let num_threads = 2048;
     let engine_0: String = data_path_str("nets/tz_4.pt"); // new engine
-    let engine_1: String = data_path_str("tz_163.pt"); // old engine
+    let engine_1: String = data_path_str("hidden/tz_163.pt"); // old engine
     let num_executors = 2; // always be 2, 2 players, one each (one for each neural net)
     let (ctrl_sender, ctrl_recv) = flume::bounded::<Message>(1);
     let pool = ThreadPool::builder().pool_size(6).create().unwrap();

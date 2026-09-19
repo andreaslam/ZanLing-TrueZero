@@ -13,7 +13,7 @@ fn main() -> Result<()> {
     // configuration
 
     let network_path =
-        "/Users/andreas/Desktop/Code/RemoteFolder/ZanLing-TrueZero/chess_16x128_gen3634.pt";
+        "/Users/andreas/Desktop/Code/RemoteFolder/ZanLing-TrueZero/hidden/chess_16x128_gen3634.pt";
 
     // construct the starting position
 
