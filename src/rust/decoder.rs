@@ -275,6 +275,10 @@ pub fn process_board_output(
         "Policy probability count does not match legal move count"
     );
 
+    if *selected_node_idx == 0 {
+        tree.root_net_policy = Some(pol_list.clone());
+    }
+
     // store the network evaluation
 
     let moves_left = 0.0_f32.max(moves_left);

@@ -127,24 +127,24 @@ mod tests {
         assert_eq!(board.en_passant(), Some(Square::E4));
     }
 
-#[test]
-fn en_passant_after_black_double_pawn_push() {
-    let mut board = BoardStack::new(Board::default());
+    #[test]
+    fn en_passant_after_black_double_pawn_push() {
+        let mut board = BoardStack::new(Board::default());
 
-    // 1. d2-d4
-    play_uci(&mut board, "d2d4");
+        // 1. d2-d4
+        play_uci(&mut board, "d2d4");
 
-    // 1... h7-h5
-    play_uci(&mut board, "h7h5");
+        // 1... h7-h5
+        play_uci(&mut board, "h7h5");
 
-    // 2. d4-d5
-    play_uci(&mut board, "d4d5");
+        // 2. d4-d5
+        play_uci(&mut board, "d4d5");
 
-    // 2... e7-e5
-    play_uci(&mut board, "e7e5");
+        // 2... e7-e5
+        play_uci(&mut board, "e7e5");
 
-    assert_eq!(board.en_passant(), Some(Square::E5));
-}
+        assert_eq!(board.en_passant(), Some(Square::E5));
+    }
     #[test]
     fn en_passant_d_file() {
         // 1. d2-d4

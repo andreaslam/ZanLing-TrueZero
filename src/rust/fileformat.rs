@@ -428,16 +428,16 @@ mod tests {
     use super::*;
     use cozy_chess::Board;
 
-    // TODO fix test, check kZero's conventions https://github.com/KarelPeeters/kZero
     #[test]
-    fn black_board_data_rotates_both_rank_and_file() {
+    fn black_board_data_flips_rank_only() {
         let board = Board::from_fen("8/k7/8/8/8/8/8/7K b - - 0 1", false).unwrap();
         let (_, bools) = board_data(&BoardStack::new(board));
 
-        let black_king_rotated_index = 15; // a7 -> h2
         let rank_only_reflection_index = 8; // a7 -> a2
-        assert!((0..12).any(|plane| bools[plane * 64 + black_king_rotated_index]));
-        assert!(!(0..12).any(|plane| bools[plane * 64 + rank_only_reflection_index]));
+        let rotated_index = 15; // a7 -> h2
+
+        assert!((0..12).any(|plane| bools[plane * 64 + rank_only_reflection_index]));
+        assert!(!(0..12).any(|plane| bools[plane * 64 + rotated_index]));
     }
 
     #[test]

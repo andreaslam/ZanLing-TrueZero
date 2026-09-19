@@ -46,8 +46,8 @@ fn main() {
     };
     let settings: SearchSettings = SearchSettings {
         fpu: FPUSettings {
-            root_fpu: 0.1,
-            children_fpu: 0.1,
+            root_fpu: 1.0,
+            children_fpu: 0.0,
         },
 
         wdl: EvalMode::Wdl,
@@ -62,8 +62,8 @@ fn main() {
         eps: 0.25,
         search_type: TrainerSearch(None),
         pst: PSTSettings {
-            root_pst: 1.75,
-            children_pst: 1.5,
+            root_pst: 1.0,
+            children_pst: 1.0,
         },
         batch_size: 1,
     };

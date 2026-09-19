@@ -167,7 +167,7 @@ pub async fn get_move(
     let net_evaluation = ZeroEvaluationAbs {
         // network evaluation, NOT search/empirical data
         values: tree.nodes[0].net_evaluation,
-        policy: all_tree_pol,
+        policy: tree.root_net_policy.expect("root network policy missing"),
     };
     let search_data = ZeroEvaluationAbs {
         // search data

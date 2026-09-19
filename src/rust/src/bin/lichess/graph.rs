@@ -723,10 +723,7 @@ pub(super) async fn fetch_online_player_usernames(
 ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
     let response = reqwest::Client::new()
         .get(ONLINE_HUMAN_PAGE_URL)
-        .header(
-            reqwest::header::USER_AGENT,
-            "TrueZero Lichess matchmaking",
-        )
+        .header(reqwest::header::USER_AGENT, "TrueZero Lichess matchmaking")
         .send()
         .await?
         .error_for_status()?;

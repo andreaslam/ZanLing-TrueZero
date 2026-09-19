@@ -98,17 +98,28 @@ impl DataGen {
                 // tau -> 0: pick the most-visited move (already returned as `mv`)
                 mv
             } else {
-                // tau = 1: sample proportional to MCTS visit counts
-                let weighted_index = WeightedIndex::new(&search_data.policy).unwrap();
-                let mut rng = rand::thread_rng();
-                let sampled_idx = weighted_index.sample(&mut rng);
+                // tau = 1: sample proportional to MCTS visit counts.
                 let mut legal_moves: Vec<Move> = Vec::new();
                 bs.board().generate_moves(|moves| {
-                    // Unpack dense move set into move list
                     legal_moves.extend(moves);
                     false
                 });
-                legal_moves[sampled_idx]
+
+                assert_eq!(legal_moves.len(), search_data.policy.len());
+
+                let legal_moves_with_policy: Vec<(Move, f32)> = legal_moves
+                    .into_iter()
+                    .zip(search_data.policy.iter().copied())
+                    .collect();
+
+                let weighted_index =
+                    WeightedIndex::new(legal_moves_with_policy.iter().map(|(_, policy)| *policy))
+                        .unwrap();
+
+                let mut rng = rand::thread_rng();
+                let sampled_idx = weighted_index.sample(&mut rng);
+
+                legal_moves_with_policy[sampled_idx].0
             };
 
             let pos = Position {

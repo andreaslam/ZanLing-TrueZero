@@ -99,6 +99,7 @@ pub struct Tree {
     pub nodes: Vec<Node>, // this is where all the `Nodes` are stored, as opposed to storing them individually in `Node.children`
     pub settings: SearchSettings,
     pub pv: String,
+    pub root_net_policy: Option<Vec<f32>>,
 }
 
 impl Tree {
@@ -113,6 +114,7 @@ impl Tree {
             nodes: container,
             settings,
             pv,
+            root_net_policy: None,
         }
     }
 
@@ -154,7 +156,9 @@ impl Tree {
                     // retrieve non-policy data
                     let ct = self.nodes.len();
                     self.nodes[selected_node].net_evaluation = packet.values;
-
+                    if selected_node == 0 {
+                        self.root_net_policy = Some(packet.policy.clone());
+                    }
                     // retrieve policy data and children
 
                     let contents = get_contents(); // this extracts the mapping for policy nodes according to `mvs.rs`
@@ -182,7 +186,24 @@ impl Tree {
                         .await // if there are no corresponding entries in the cache, request a nn evaluation
                 }
             };
+            if selected_node != 0 {
+                let mut sum = 0.0;
 
+                for child in self.nodes[selected_node].children.clone() {
+                    self.nodes[child].policy = self.nodes[child]
+                        .policy
+                        .powf(self.settings.pst.children_pst);
+                    sum += self.nodes[child].policy;
+                }
+
+                for child in self.nodes[selected_node].children.clone() {
+                    self.nodes[child].policy /= sum;
+                }
+            }
+            debug_assert!(self.nodes[selected_node]
+                .children
+                .clone()
+                .all(|child| self.nodes[child].policy.is_finite()));
             self.nodes[selected_node].move_idx = Some(idx_li);
             let mut legal_moves: Vec<Move>;
             if selected_node == 0 {
@@ -390,17 +411,19 @@ impl Tree {
             curr = children
                 .clone()
                 .max_by(|a, b| {
+                    let parent_moves_left =
+                        curr_node.total_evaluation.moves_left / curr_node.visits as f32;
                     let a_node = &self.nodes[*a];
                     let b_node = &self.nodes[*b];
                     let a_puct = a_node.puct_formula(
                         curr_node.visits,
-                        curr_node.net_evaluation.moves_left,
+                        parent_moves_left,
                         input_b.board().side_to_move(),
                         self.settings,
                     );
                     let b_puct = b_node.puct_formula(
                         curr_node.visits,
-                        curr_node.net_evaluation.moves_left,
+                        parent_moves_left,
                         input_b.board().side_to_move(),
                         self.settings,
                     );
@@ -545,7 +568,8 @@ impl Tree {
                         u = self.nodes[id].get_u_val(self.nodes[*parent].visits, self.settings);
                         puct = self.nodes[id].puct_formula(
                             self.nodes[*parent].visits,
-                            self.nodes[*parent].net_evaluation.moves_left,
+                            self.nodes[*parent].total_evaluation.moves_left
+                                / self.nodes[*parent].visits as f32,
                             !bs_clone.board().side_to_move(),
                             self.settings,
                         );
@@ -883,16 +907,10 @@ pub async fn get_move(
 
     // tree.nodes[0].display_full_tree(&tree);
 
-    let mut all_tree_pol = Vec::new();
-
-    for child in tree.nodes[0].clone().children {
-        all_tree_pol.push(tree.nodes[child].policy);
-    }
-
     let net_evaluation = ZeroEvaluationAbs {
         // network evaluation, NOT search/empirical data
         values: tree.nodes[0].net_evaluation,
-        policy: all_tree_pol,
+        policy: tree.root_net_policy.expect("root network policy missing"),
     };
 
     let search_data = ZeroEvaluationAbs {

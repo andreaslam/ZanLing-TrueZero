@@ -34,17 +34,15 @@ impl BoardStack {
     // e7-e5 -> Some(e5)
 
     pub fn en_passant(&self) -> Option<Square> {
-        let file =
-            self.board.en_passant()?;
+        let file = self.board.en_passant()?;
 
-        let rank =
-            match self.board.side_to_move() {
-                // black just moved e7-e5, so the pawn is on rank 5
-                Color::White => Rank::Fifth,
+        let rank = match self.board.side_to_move() {
+            // black just moved e7-e5, so the pawn is on rank 5
+            Color::White => Rank::Fifth,
 
-                // white just moved e2-e4, so the pawn is on rank 4
-                Color::Black => Rank::Fourth,
-            };
+            // white just moved e2-e4, so the pawn is on rank 4
+            Color::Black => Rank::Fourth,
+        };
 
         Some(Square::new(file, rank))
     }
@@ -57,31 +55,25 @@ impl BoardStack {
             "Cannot play a move after the game has ended"
         );
 
-        self.move_stack
-            .push(self.board.hash());
+        self.move_stack.push(self.board.hash());
 
         self.board.play(mv);
 
-        let is_all_gone =
-            self.board.occupied().len() == 2;
+        let is_all_gone = self.board.occupied().len() == 2;
 
-        let is_sure_draw =
-            self.board.occupied().len() <= 3
-                && (
-                    self.board.pieces(Piece::Bishop).len() == 1
-                    || self.board.pieces(Piece::Knight).len() == 1
-                );
+        let is_sure_draw = self.board.occupied().len() <= 3
+            && (self.board.pieces(Piece::Bishop).len() == 1
+                || self.board.pieces(Piece::Knight).len() == 1);
 
-        self.status =
-            if self.get_reps() == 2
-                || self.board.halfmove_clock() == 100
-                || is_all_gone
-                || is_sure_draw
-            {
-                GameStatus::Drawn
-            } else {
-                self.board.status()
-            };
+        self.status = if self.get_reps() == 2
+            || self.board.halfmove_clock() == 100
+            || is_all_gone
+            || is_sure_draw
+        {
+            GameStatus::Drawn
+        } else {
+            self.board.status()
+        };
     }
 
     pub fn is_terminal(&self) -> bool {
@@ -93,20 +85,13 @@ impl BoardStack {
     }
 
     pub fn status(&self) -> GameStatus {
-        let is_all_gone =
-            self.board.occupied().len() == 2;
+        let is_all_gone = self.board.occupied().len() == 2;
 
-        let is_sure_draw =
-            self.board.occupied().len() <= 3
-                && (
-                    self.board.pieces(Piece::Bishop).len() == 1
-                    || self.board.pieces(Piece::Knight).len() == 1
-                );
+        let is_sure_draw = self.board.occupied().len() <= 3
+            && (self.board.pieces(Piece::Bishop).len() == 1
+                || self.board.pieces(Piece::Knight).len() == 1);
 
-        if self.get_reps() == 2
-            || self.board.halfmove_clock() == 100
-            || is_all_gone
-            || is_sure_draw
+        if self.get_reps() == 2 || self.board.halfmove_clock() == 100 || is_all_gone || is_sure_draw
         {
             GameStatus::Drawn
         } else {
