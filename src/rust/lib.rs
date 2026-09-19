@@ -36,7 +36,7 @@ mod tests {
     use super::*;
 
     use boardmanager::BoardStack;
-    use cozy_chess::{Board, Color, GameStatus};
+    use cozy_chess::{Board, Color, GameStatus, Move, Piece, Square};
     use mcts_trainer::{EvalMode, Node, Tree, TypeRequest};
     use settings::{CPUCTSettings, FPUSettings, PSTSettings, SearchSettings};
 
@@ -93,6 +93,113 @@ mod tests {
         let board = Board::from_fen("8/5K2/5B2/8/4k3/8/8/8 w - - 0 1", false).unwrap();
         let bs = BoardStack::new(board);
         assert_eq!(bs.status(), GameStatus::Drawn);
+    }
+
+    fn play_uci(board: &mut BoardStack, uci: &str) {
+        let from = uci[0..2].parse::<Square>().unwrap();
+        let to = uci[2..4].parse::<Square>().unwrap();
+
+        let promotion = uci.chars().nth(4).map(|c| match c {
+            'q' => Piece::Queen,
+            'r' => Piece::Rook,
+            'b' => Piece::Bishop,
+            'n' => Piece::Knight,
+            _ => panic!("Invalid promotion piece"),
+        });
+
+        board.play(Move {
+            from,
+            to,
+            promotion,
+        });
+    }
+
+    #[test]
+    fn en_passant_white_to_move_returns_black_pawn_square() {
+        // 1. e2-e4
+        //
+        // Black to move.
+        //  e4.
+        let mut board = BoardStack::new(Board::default());
+
+        play_uci(&mut board, "e2e4");
+
+        assert_eq!(board.en_passant(), Some(Square::E4));
+    }
+
+#[test]
+fn en_passant_after_black_double_pawn_push() {
+    let mut board = BoardStack::new(Board::default());
+
+    // 1. d2-d4
+    play_uci(&mut board, "d2d4");
+
+    // 1... h7-h5
+    play_uci(&mut board, "h7h5");
+
+    // 2. d4-d5
+    play_uci(&mut board, "d4d5");
+
+    // 2... e7-e5
+    play_uci(&mut board, "e7e5");
+
+    assert_eq!(board.en_passant(), Some(Square::E5));
+}
+    #[test]
+    fn en_passant_d_file() {
+        // 1. d2-d4
+        //
+        // Black to move.
+        //  d4.
+        let mut board = BoardStack::new(Board::default());
+
+        play_uci(&mut board, "d2d4");
+
+        assert_eq!(board.en_passant(), Some(Square::D4));
+    }
+
+    #[test]
+    fn en_passant_h_file() {
+        // 1. h7-h5
+        //
+        // Need White to make a legal waiting move first.
+        let mut board = BoardStack::new(Board::default());
+
+        play_uci(&mut board, "a2a3");
+        play_uci(&mut board, "h7h5");
+
+        assert_eq!(board.en_passant(), Some(Square::H5));
+    }
+
+    #[test]
+    fn en_passant_disappears_after_non_double_pawn_move() {
+        let mut board = BoardStack::new(Board::default());
+
+        play_uci(&mut board, "e2e4");
+
+        assert_eq!(board.en_passant(), Some(Square::E4));
+
+        // Black makes a normal move.
+        play_uci(&mut board, "a7a6");
+
+        assert_eq!(board.en_passant(), None);
+    }
+
+    #[test]
+    fn en_passant_disappears_after_pawn_moves_again() {
+        let mut board = BoardStack::new(Board::default());
+
+        play_uci(&mut board, "e2e4");
+
+        assert_eq!(board.en_passant(), Some(Square::E4));
+
+        // Black moves.
+        play_uci(&mut board, "a7a6");
+
+        // White moves the pawn again.
+        play_uci(&mut board, "e4e5");
+
+        assert_eq!(board.en_passant(), None);
     }
 
     /// helper function to create dummy SearchSettings

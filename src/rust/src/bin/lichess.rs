@@ -55,7 +55,7 @@ const LRU_CACHE_SIZE: usize = 100_000;
 const MAX_ENGINE_TIME_MS: Option<u128> = Some(10_000);
 const MAX_ENGINE_NODES: u64 = 5_000_000_000;
 const FALLBACK_ENGINE_NODES: u64 = 1600;
-const DEFAULT_MAX_CONCURRENT_GAMES: usize = 1;
+const DEFAULT_MAX_CONCURRENT_GAMES: usize = 4;
 
 const NO_TIME_LIMIT_ENGINE_NODES: u64 = 2_000;
 const NO_TIME_LIMIT_WALL_TIMEOUT_MS: u64 = 60_000;
@@ -176,9 +176,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let batch_size = env_usize("TZ_BATCH_SIZE", 1024).max(1);
     let num_generators = env_usize(
         "TZ_NUM_GENERATORS",
-        num_executors
-            .saturating_mul(batch_size)
-            .saturating_mul(2),
+        num_executors.saturating_mul(batch_size).saturating_mul(2),
     )
     .max(1);
 
@@ -201,17 +199,10 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         net_receivers.push(receiver);
     }
     let (executor_ready_send, executor_ready_recv) = flume::unbounded::<bool>();
-    // A queue smaller than the executor batch size forces handle_requests()
-    // to flush partial batches after its timeout. That produces many small
-    // GPU launches: utilization can look high while aggregate NPS collapses.
-    // Match main.rs by keeping enough pending requests to fill the configured
-    // batches. Pause self-play before starting a live game, so this backlog is
-    // bounded and does not grow while the game is being played.
     let default_queue_capacity = num_generators
         .max(batch_size.saturating_mul(num_executors))
         .max(1);
-    let queue_capacity =
-        env_usize("TZ_TENSOR_QUEUE_CAPACITY", default_queue_capacity).max(1);
+    let queue_capacity = env_usize("TZ_TENSOR_QUEUE_CAPACITY", default_queue_capacity).max(1);
     let (tensor_send, tensor_recv) = flume::bounded::<Packet>(queue_capacity);
     let (collector_send, collector_recv) = flume::bounded::<CollectorMessage>(num_generators);
     let (id_send, id_recv) = flume::bounded::<usize>(1);
@@ -265,16 +256,15 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     .expect("Failed to create game-loop Tokio runtime");
 
                 runtime.block_on(async move {
-                    if let Err(error) =
-                        game_loop(
-                            token,
-                            tensor_send,
-                            collector_send.clone(),
-                            executor_ready_recv,
-                            num_executors,
-                            num_generators,
-                        )
-                        .await
+                    if let Err(error) = game_loop(
+                        token,
+                        tensor_send,
+                        collector_send.clone(),
+                        executor_ready_recv,
+                        num_executors,
+                        num_generators,
+                    )
+                    .await
                     {
                         eprintln!("Game loop error: {error}");
                     }
@@ -448,8 +438,7 @@ fn collector_main(
                 evals_total = evals_total.saturating_add(evals);
                 let elapsed = evals_start_time.elapsed();
                 if elapsed >= Duration::from_secs(1) {
-                    let evals_per_second =
-                        (evals_total as f64 / elapsed.as_secs_f64()) as usize;
+                    let evals_per_second = (evals_total as f64 / elapsed.as_secs_f64()) as usize;
                     send_statistics(&mut stream, Statistics::EvalsPerSecond(evals_per_second))
                         .expect("send executor statistics");
                     evals_start_time = Instant::now();

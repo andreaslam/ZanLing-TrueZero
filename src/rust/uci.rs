@@ -481,9 +481,9 @@ fn handle_go(
     }
     debug_print!("mode: {}", mode);
 
-    let (time, nodes) = time_to_nodes(bs.board().side_to_move(), times, incs, movestogo, max_time);
+    let (_time, nodes) = time_to_nodes(bs.board().side_to_move(), times, incs, movestogo, max_time);
 
-    debug_print!("time left: {:?}", time);
+    debug_print!("time left: {:?}", _time);
 
     let m_settings = MovesLeftSettings {
         moves_left_weight: 0.03,

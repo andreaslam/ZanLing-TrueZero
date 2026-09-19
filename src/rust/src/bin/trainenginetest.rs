@@ -43,7 +43,6 @@ use tzrust::{
     utils::directory_exists,
 };
 
-
 // A paired gated test.
 // Both games use the same opening, with the candidate and benchmark
 // swapping colours. The pair is the unit dispatched to a worker.
@@ -52,7 +51,6 @@ struct GamePair {
     test_id: usize,
     fen: String,
 }
-
 
 // Outcome of one game, reported back to the collector.
 #[derive(Clone, Debug)]
@@ -65,7 +63,6 @@ struct GameOutcome {
     // Some(false) = Black won
     white_won: Option<bool>,
 }
-
 
 const NO_CANCELLED_TEST: usize = usize::MAX;
 
@@ -81,11 +78,9 @@ const SPRT_H1_SCORE: f64 = 0.55;
 const SPRT_ALPHA: f64 = 0.05;
 const SPRT_BETA: f64 = 0.05;
 
-
 fn net_checksum(data: &[u8]) -> String {
     format!("{:x}", Sha256::digest(data))
 }
-
 
 /// Decisive-game SPRT log-likelihood ratio.
 ///
@@ -100,10 +95,8 @@ fn net_checksum(data: &[u8]) -> String {
 ///     + L * ln((1-p1) / (1-p0))
 fn sprt_log_likelihood_ratio(wins: u32, losses: u32) -> f64 {
     wins as f64 * (SPRT_H1_SCORE / SPRT_H0_SCORE).ln()
-        + losses as f64
-            * ((1.0 - SPRT_H1_SCORE) / (1.0 - SPRT_H0_SCORE)).ln()
+        + losses as f64 * ((1.0 - SPRT_H1_SCORE) / (1.0 - SPRT_H0_SCORE)).ln()
 }
-
 
 /// Returns true if the candidate has crossed the lower SPRT boundary.
 ///
@@ -116,18 +109,13 @@ fn should_early_reject(wins: u32, losses: u32) -> bool {
         return false;
     }
 
-    let reject_bound =
-        (SPRT_BETA / (1.0 - SPRT_ALPHA)).ln();
+    let reject_bound = (SPRT_BETA / (1.0 - SPRT_ALPHA)).ln();
 
     sprt_log_likelihood_ratio(wins, losses) <= reject_bound
 }
 
-
 fn main() {
-    let pool = ThreadPool::builder()
-        .pool_size(6)
-        .create()
-        .unwrap();
+    let pool = ThreadPool::builder().pool_size(6).create().unwrap();
 
     env::set_var("RUST_BACKTRACE", "2");
 
@@ -136,7 +124,6 @@ fn main() {
         std::process::exit(1);
     }));
 
-
     let mut stream = loop {
         match TcpStream::connect("127.0.0.1:38475") {
             Ok(s) => break s,
@@ -144,13 +131,11 @@ fn main() {
         }
     };
 
-
     let message = MessageServer {
         purpose: MessageType::Initialise(Entity::GateTesterRunner),
     };
 
-    let serialised =
-        serde_json::to_string(&message).expect("serialisation failed");
+    let serialised = serde_json::to_string(&message).expect("serialisation failed");
 
     let serialised = serialised + "\n";
 
@@ -159,7 +144,6 @@ fn main() {
         .expect("Failed to send data");
 
     println!("Connected to server!");
-
 
     let num_executors = 2;
 
@@ -179,9 +163,7 @@ fn main() {
 
     assert!(num_executors == 2);
 
-
     thread::scope(|s| {
-
         // ---------------------------------------------------------------
         // Per-executor net channels
         // ---------------------------------------------------------------
@@ -197,62 +179,45 @@ fn main() {
             vec_communicate_exe_recv.push(recv);
         }
 
-
         // ---------------------------------------------------------------
         // Per-executor tensor channels
         // ---------------------------------------------------------------
 
-        let (tensor_exe_send_0, tensor_exe_recv_0) =
-            flume::bounded::<Packet>(num_workers);
+        let (tensor_exe_send_0, tensor_exe_recv_0) = flume::bounded::<Packet>(num_workers);
 
-        let (tensor_exe_send_1, tensor_exe_recv_1) =
-            flume::bounded::<Packet>(num_workers);
-
+        let (tensor_exe_send_1, tensor_exe_recv_1) = flume::bounded::<Packet>(num_workers);
 
         // ---------------------------------------------------------------
         // Executor ready signals
         // ---------------------------------------------------------------
 
-        let (exe_send_signal_0, exe_recv_signal_0) =
-            flume::bounded::<bool>(1);
+        let (exe_send_signal_0, exe_recv_signal_0) = flume::bounded::<bool>(1);
 
-        let (exe_send_signal_1, exe_recv_signal_1) =
-            flume::bounded::<bool>(1);
-
+        let (exe_send_signal_1, exe_recv_signal_1) = flume::bounded::<bool>(1);
 
         // ---------------------------------------------------------------
         // Pair dispatch and result collection
         // ---------------------------------------------------------------
 
-        let (job_send, job_recv) =
-            flume::bounded::<GamePair>(num_workers);
+        let (job_send, job_recv) = flume::bounded::<GamePair>(num_workers);
 
-        let (result_send, result_recv) =
-            flume::bounded::<GameOutcome>(num_workers);
+        let (result_send, result_recv) = flume::bounded::<GameOutcome>(num_workers);
 
-        let cancelled_test =
-            Arc::new(AtomicUsize::new(NO_CANCELLED_TEST));
-
+        let cancelled_test = Arc::new(AtomicUsize::new(NO_CANCELLED_TEST));
 
         // ---------------------------------------------------------------
         // Commander
         // ---------------------------------------------------------------
 
-        let commander_stream =
-            stream.try_clone().expect("clone failed");
+        let commander_stream = stream.try_clone().expect("clone failed");
 
-        let commander_exe_senders =
-            vec_communicate_exe_send.clone();
+        let commander_exe_senders = vec_communicate_exe_send.clone();
 
-        let commander_job_send =
-            job_send.clone();
+        let commander_job_send = job_send.clone();
 
-        let commander_ready0 =
-            exe_recv_signal_0.clone();
+        let commander_ready0 = exe_recv_signal_0.clone();
 
-        let commander_ready1 =
-            exe_recv_signal_1.clone();
-
+        let commander_ready1 = exe_recv_signal_1.clone();
 
         s.builder()
             .name("commander".to_string())
@@ -268,17 +233,13 @@ fn main() {
             })
             .unwrap();
 
-
         // ---------------------------------------------------------------
         // Collector
         // ---------------------------------------------------------------
 
-        let collector_stream =
-            stream.try_clone().expect("clone failed");
+        let collector_stream = stream.try_clone().expect("clone failed");
 
-        let collector_cancelled_test =
-            cancelled_test.clone();
-
+        let collector_cancelled_test = cancelled_test.clone();
 
         s.builder()
             .name("collector".to_string())
@@ -292,7 +253,6 @@ fn main() {
             })
             .unwrap();
 
-
         // ---------------------------------------------------------------
         // Pair-playing workers
         // ---------------------------------------------------------------
@@ -302,15 +262,11 @@ fn main() {
 
             let result_send = result_send.clone();
 
-            let engine0 =
-                tensor_exe_send_0.clone();
+            let engine0 = tensor_exe_send_0.clone();
 
-            let engine1 =
-                tensor_exe_send_1.clone();
+            let engine1 = tensor_exe_send_1.clone();
 
-            let worker_cancelled_test =
-                cancelled_test.clone();
-
+            let worker_cancelled_test = cancelled_test.clone();
 
             let fut = async move {
                 worker_main(
@@ -327,20 +283,15 @@ fn main() {
             pool.spawn_ok(fut);
         }
 
-
         // ---------------------------------------------------------------
         // Executors
         // ---------------------------------------------------------------
 
-        let mut recv_iter =
-            vec_communicate_exe_recv.into_iter();
+        let mut recv_iter = vec_communicate_exe_recv.into_iter();
 
-        let communicate_exe_recv_0 =
-            recv_iter.next().unwrap();
+        let communicate_exe_recv_0 = recv_iter.next().unwrap();
 
-        let communicate_exe_recv_1 =
-            recv_iter.next().unwrap();
-
+        let communicate_exe_recv_1 = recv_iter.next().unwrap();
 
         s.builder()
             .name("executor_0".to_string())
@@ -357,7 +308,6 @@ fn main() {
                 )
             })
             .unwrap();
-
 
         s.builder()
             .name("executor_1".to_string())
@@ -378,7 +328,6 @@ fn main() {
     .unwrap();
 }
 
-
 fn read_epd_file(file_path: &str) -> io::Result<Vec<String>> {
     debug_print!("Reading EPD file: {}", file_path);
 
@@ -386,12 +335,10 @@ fn read_epd_file(file_path: &str) -> io::Result<Vec<String>> {
 
     let reader = io::BufReader::new(file);
 
-    let positions: Vec<String> =
-        reader.lines().filter_map(|line| line.ok()).collect();
+    let positions: Vec<String> = reader.lines().filter_map(|line| line.ok()).collect();
 
     Ok(positions)
 }
-
 
 async fn worker_main(
     job_recv: Receiver<GamePair>,
@@ -403,13 +350,11 @@ async fn worker_main(
 ) {
     debug_print!("Initialised worker-{}", id);
 
-
     let m_settings = MovesLeftSettings {
         moves_left_weight: 0.03,
         moves_left_clip: 20.0,
         moves_left_sharpness: 0.5,
     };
-
 
     let settings: SearchSettings = SearchSettings {
         fpu: FPUSettings {
@@ -442,19 +387,12 @@ async fn worker_main(
         batch_size: 1,
     };
 
-
-    let engines = [
-        tensor_exe_send_0.clone(),
-        tensor_exe_send_1.clone(),
-    ];
-
+    let engines = [tensor_exe_send_0.clone(), tensor_exe_send_1.clone()];
 
     while let Ok(pair) = job_recv.recv_async().await {
-
         if cancelled_test.load(Ordering::Acquire) == pair.test_id {
             continue;
         }
-
 
         // ===============================================================
         // Game 1: candidate = White, benchmark = Black
@@ -471,13 +409,8 @@ async fn worker_main(
         )
         .await;
 
-
         if let Some(outcome) = outcome {
-            debug_print!(
-                "worker-{} finished first game of pair: {:?}",
-                id,
-                outcome
-            );
+            debug_print!("worker-{} finished first game of pair: {:?}", id, outcome);
 
             if result_send.send_async(outcome).await.is_err() {
                 return;
@@ -487,7 +420,6 @@ async fn worker_main(
             continue;
         }
 
-
         // ===============================================================
         // Game 2: benchmark = White, candidate = Black
         // ===============================================================
@@ -495,7 +427,6 @@ async fn worker_main(
         if cancelled_test.load(Ordering::Acquire) == pair.test_id {
             continue;
         }
-
 
         let outcome = play_game(
             &pair.fen,
@@ -508,13 +439,8 @@ async fn worker_main(
         )
         .await;
 
-
         if let Some(outcome) = outcome {
-            debug_print!(
-                "worker-{} finished second game of pair: {:?}",
-                id,
-                outcome
-            );
+            debug_print!("worker-{} finished second game of pair: {:?}", id, outcome);
 
             if result_send.send_async(outcome).await.is_err() {
                 return;
@@ -522,7 +448,6 @@ async fn worker_main(
         }
     }
 }
-
 
 /// Play one game belonging to a GamePair.
 ///
@@ -538,18 +463,13 @@ async fn play_game(
     cancelled_test: &Arc<AtomicUsize>,
     id: usize,
 ) -> Option<GameOutcome> {
-
     if cancelled_test.load(Ordering::Acquire) == test_id {
         return None;
     }
 
+    let board = Board::from_fen(fen, false).unwrap();
 
-    let board =
-        Board::from_fen(fen, false).unwrap();
-
-    let mut bs =
-        BoardStack::new(board);
-
+    let mut bs = BoardStack::new(board);
 
     // engine0 moves first when candidate is White.
     //
@@ -560,76 +480,36 @@ async fn play_game(
     // engine0_white = false:
     //   White -> engine 1
     //   Black -> engine 0
-    let mut mover: usize =
-        if engine0_white { 0 } else { 1 };
-
+    let mut mover: usize = if engine0_white { 0 } else { 1 };
 
     let mut plies: usize = 0;
 
-
     let cache_0: LruCache<CacheEntryKey, ZeroEvaluationAbs> =
-        LruCache::new(
-            NonZeroUsize::new(
-                settings.max_nodes.unwrap() as usize
-            )
-            .unwrap(),
-        );
-
+        LruCache::new(NonZeroUsize::new(settings.max_nodes.unwrap() as usize).unwrap());
 
     let cache_1: LruCache<CacheEntryKey, ZeroEvaluationAbs> =
-        LruCache::new(
-            NonZeroUsize::new(
-                settings.max_nodes.unwrap() as usize
-            )
-            .unwrap(),
-        );
+        LruCache::new(NonZeroUsize::new(settings.max_nodes.unwrap() as usize).unwrap());
 
-
-    let mut caches =
-        [cache_0, cache_1];
-
+    let mut caches = [cache_0, cache_1];
 
     while bs.status() == GameStatus::Ongoing {
-
         if cancelled_test.load(Ordering::Acquire) == test_id {
-            debug_print!(
-                "worker-{} cancelled test {} during search",
-                id,
-                test_id
-            );
+            debug_print!("worker-{} cancelled test {} during search", id, test_id);
 
             return None;
         }
 
+        let engine = &engines[mover];
 
-        let engine =
-            &engines[mover];
+        let cache = &mut caches[mover];
 
-        let cache =
-            &mut caches[mover];
-
-
-        let (mv, _, _, _, _) =
-            get_move(
-                bs.clone(),
-                engine.clone(),
-                settings,
-                None,
-                cache,
-            )
-            .await;
-
+        let (mv, _, _, _, _) = get_move(bs.clone(), engine.clone(), settings, None, cache).await;
 
         if cancelled_test.load(Ordering::Acquire) == test_id {
-            debug_print!(
-                "worker-{} cancelled test {} after search",
-                id,
-                test_id
-            );
+            debug_print!("worker-{} cancelled test {} after search", id, test_id);
 
             return None;
         }
-
 
         bs.play(mv);
 
@@ -638,11 +518,9 @@ async fn play_game(
         plies += 1;
     }
 
-
     if bs.status() == GameStatus::Ongoing {
         return None;
     }
-
 
     // At a terminal position, the side to move has either been
     // checkmated or stalemated.
@@ -651,17 +529,13 @@ async fn play_game(
     //
     // If plies is even, White made the last move.
     // If plies is odd, Black made the last move.
-    let white_won: Option<bool> =
-        match bs.status() {
-            GameStatus::Drawn => None,
+    let white_won: Option<bool> = match bs.status() {
+        GameStatus::Drawn => None,
 
-            GameStatus::Won =>
-                Some(plies % 2 == 0),
+        GameStatus::Won => Some(plies % 2 == 0),
 
-            GameStatus::Ongoing =>
-                panic!("Game is still ongoing!"),
-        };
-
+        GameStatus::Ongoing => panic!("Game is still ongoing!"),
+    };
 
     Some(GameOutcome {
         test_id,
@@ -669,7 +543,6 @@ async fn play_game(
         white_won,
     })
 }
-
 
 fn collector_main(
     receiver: &Receiver<GameOutcome>,
@@ -681,37 +554,24 @@ fn collector_main(
     //
     // Each pair contains two games, so the fixed-count test contains
     // exactly 2 * num_game_pairs games.
-    let games_per_test =
-        num_game_pairs * 2;
-
+    let games_per_test = num_game_pairs * 2;
 
     // (wins, losses, draws)
     //
     // All three are retained for reporting.
     // Only wins and losses enter the SPRT.
-    let mut results =
-        (0u32, 0u32, 0u32);
+    let mut results = (0u32, 0u32, 0u32);
 
+    let mut counter = 0usize;
 
-    let mut counter =
-        0usize;
+    let mut active_test_id: Option<usize> = None;
 
-
-    let mut active_test_id:
-        Option<usize> = None;
-
-
-    let mut completed_tests:
-        HashSet<usize> = HashSet::new();
-
+    let mut completed_tests: HashSet<usize> = HashSet::new();
 
     debug_print!("Collector main started");
 
-
     loop {
-        let msg =
-            receiver.recv().unwrap();
-
+        let msg = receiver.recv().unwrap();
 
         if completed_tests.contains(&msg.test_id) {
             println!(
@@ -722,40 +582,28 @@ fn collector_main(
             continue;
         }
 
-
         match active_test_id {
-
             Some(test_id) if test_id != msg.test_id => {
                 println!(
                     "[sprt] Ignoring out-of-order result for test {} while test {} is active",
-                    msg.test_id,
-                    test_id
+                    msg.test_id, test_id
                 );
 
                 continue;
             }
 
-
             None => {
-                active_test_id =
-                    Some(msg.test_id);
+                active_test_id = Some(msg.test_id);
 
-                results =
-                    (0, 0, 0);
+                results = (0, 0, 0);
 
-                counter =
-                    0;
+                counter = 0;
 
-                println!(
-                    "[sprt] Collecting results for test {}",
-                    msg.test_id
-                );
+                println!("[sprt] Collecting results for test {}", msg.test_id);
             }
-
 
             _ => {}
         }
-
 
         // ---------------------------------------------------------------
         // Convert the result to the candidate's perspective.
@@ -764,16 +612,12 @@ fn collector_main(
         // ---------------------------------------------------------------
 
         match msg.white_won {
-
             None => {
                 results.2 += 1;
             }
 
-
             Some(white_won) => {
-                let engine0_won =
-                    white_won == msg.engine0_white;
-
+                let engine0_won = white_won == msg.engine0_white;
 
                 if engine0_won {
                     results.0 += 1;
@@ -783,23 +627,16 @@ fn collector_main(
             }
         }
 
-
         counter += 1;
 
-
         if counter % 50 == 0 {
-            let decisive =
-                results.0 + results.1;
+            let decisive = results.0 + results.1;
 
-
-            let decisive_win_rate =
-                if decisive > 0 {
-                    results.0 as f64
-                        / decisive as f64
-                } else {
-                    0.0
-                };
-
+            let decisive_win_rate = if decisive > 0 {
+                results.0 as f64 / decisive as f64
+            } else {
+                0.0
+            };
 
             println!(
                 "[sprt] progress {}/{} games  W:{} L:{} D:{} decisive:{} decisive-WR:{:.3}",
@@ -813,19 +650,13 @@ fn collector_main(
             );
         }
 
-
         // ---------------------------------------------------------------
         // Sequential rejection.
         //
         // Only decisive games contribute.
         // ---------------------------------------------------------------
 
-        let early_reject =
-            should_early_reject(
-                results.0,
-                results.1,
-            );
-
+        let early_reject = should_early_reject(results.0, results.1);
 
         // ---------------------------------------------------------------
         // Fixed-count completion.
@@ -836,27 +667,15 @@ fn collector_main(
         // ---------------------------------------------------------------
 
         if early_reject || counter >= games_per_test {
+            let decisive = results.0 + results.1;
 
-            let decisive =
-                results.0 + results.1;
+            let decisive_win_rate = if decisive > 0 {
+                results.0 as f64 / decisive as f64
+            } else {
+                0.0
+            };
 
-
-            let decisive_win_rate =
-                if decisive > 0 {
-                    results.0 as f64
-                        / decisive as f64
-                } else {
-                    0.0
-                };
-
-
-            let elo =
-                elo_wld(
-                    results.0,
-                    results.1,
-                    results.2,
-                );
-
+            let elo = elo_wld(results.0, results.1, results.2);
 
             // No draw-as-half-point calculation here.
             //
@@ -865,28 +684,16 @@ fn collector_main(
             //   W / (W + L) > 0.55
             //
             // Draws are ignored for this criterion.
-            let accept_new_net =
-                !early_reject
-                    && decisive > 0
-                    && decisive_win_rate > SPRT_H1_SCORE;
+            let accept_new_net = !early_reject && decisive > 0 && decisive_win_rate > SPRT_H1_SCORE;
 
+            let res = GateTesterResult {
+                elo,
+                accept_new_net,
+            };
 
-            let res =
-                GateTesterResult {
-                    elo,
-                    accept_new_net,
-                };
-
-
-            if let Some(test_id) =
-                active_test_id
-            {
-                cancelled_test.store(
-                    test_id,
-                    Ordering::Release,
-                );
+            if let Some(test_id) = active_test_id {
+                cancelled_test.store(test_id, Ordering::Release);
             }
-
 
             println!(
                 "[sprt] Test complete: W:{} L:{} D:{} decisive:{} decisive-WR:{:.3} elo:{:?} accept:{} reason:{}",
@@ -904,46 +711,30 @@ fn collector_main(
                 }
             );
 
+            let message = MessageServer {
+                purpose: MessageType::TestResult(res),
+            };
 
-            let message =
-                MessageServer {
-                    purpose:
-                        MessageType::TestResult(res),
-                };
-
-
-            let mut serialised =
-                serde_json::to_string(&message)
-                    .expect("serialisation failed");
+            let mut serialised = serde_json::to_string(&message).expect("serialisation failed");
 
             serialised += "\n";
 
-
-            server_handle
-                .write_all(serialised.as_bytes())
-                .unwrap();
-
+            server_handle.write_all(serialised.as_bytes()).unwrap();
 
             // -----------------------------------------------------------
             // Reset for next candidate.
             // -----------------------------------------------------------
 
-            results =
-                (0, 0, 0);
+            results = (0, 0, 0);
 
-            counter =
-                0;
+            counter = 0;
 
-
-            if let Some(test_id) =
-                active_test_id.take()
-            {
+            if let Some(test_id) = active_test_id.take() {
                 completed_tests.insert(test_id);
             }
         }
     }
 }
-
 
 fn commander_main(
     vec_exe_sender: Vec<Sender<String>>,
@@ -953,140 +744,79 @@ fn commander_main(
     job_send: Sender<GamePair>,
     num_game_pairs: usize,
 ) {
-    let mut is_initialised =
-        false;
+    let mut is_initialised = false;
 
+    let mut cloned_handle = server_handle.try_clone().unwrap();
 
-    let mut cloned_handle =
-        server_handle.try_clone().unwrap();
+    let mut reader = BufReader::new(server_handle.try_clone().unwrap());
 
+    let mut net_path_counter = 0usize;
 
-    let mut reader =
-        BufReader::new(
-            server_handle.try_clone().unwrap()
-        );
-
-
-    let mut net_path_counter =
-        0usize;
-
-
-    let generator_id:
-        usize = 0;
-
+    let generator_id: usize = 0;
 
     // H0 = current benchmark net.
     // H1 = candidate net under test.
-    let mut h0_path =
-        String::new();
+    let mut h0_path = String::new();
 
-    let mut h1_path =
-        String::new();
+    let mut h1_path = String::new();
 
-    let mut h0_checksum =
-        String::new();
+    let mut h0_checksum = String::new();
 
-    let mut h1_checksum =
-        String::new();
-
+    let mut h1_checksum = String::new();
 
     // Benchmark net has been loaded into both executors.
-    let mut h0_loaded =
-        false;
+    let mut h0_loaded = false;
 
+    let mut last_h0_file = String::new();
 
-    let mut last_h0_file =
-        String::new();
-
-
-    let mut net_save_timestamp =
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards")
-            .as_nanos();
-
+    let mut net_save_timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_nanos();
 
     // Candidate has been loaded but jobs have not yet been dispatched.
-    let mut pending_jobs =
-        false;
+    let mut pending_jobs = false;
 
+    let mut active_test = false;
 
-    let mut active_test =
-        false;
-
-
-    let mut next_test_id =
-        0usize;
-
+    let mut next_test_id = 0usize;
 
     loop {
-
-        if !directory_exists(
-            &data_path_str("nets")
-        ) {
-            fs::create_dir(
-                data_path("nets")
-            )
-            .unwrap();
+        if !directory_exists(&data_path_str("nets")) {
+            fs::create_dir(data_path("nets")).unwrap();
         }
 
+        let mut recv_msg = String::new();
 
-        let mut recv_msg =
-            String::new();
-
-
-        if reader
-            .read_line(&mut recv_msg)
-            .is_err()
-        {
+        if reader.read_line(&mut recv_msg).is_err() {
             return;
         }
 
+        let message = match serde_json::from_str::<MessageServer>(&recv_msg) {
+            Ok(message) => message,
 
-        let message =
-            match serde_json::from_str::<MessageServer>(
-                &recv_msg
-            ) {
-                Ok(message) =>
-                    message,
-
-                Err(_) => {
-                    recv_msg.clear();
-                    continue;
-                }
-            };
-
+            Err(_) => {
+                recv_msg.clear();
+                continue;
+            }
+        };
 
         if is_initialised {
-
             match message.purpose {
-
                 // =======================================================
                 // New candidate network
                 // =======================================================
-
                 MessageType::NewNetworkData(data) => {
+                    let checksum = net_checksum(&data);
 
-                    let checksum =
-                        net_checksum(&data);
-
-
-                    if checksum == h0_checksum
-                        || checksum == h1_checksum
-                    {
-                        println!(
-                            "[sprt] Ignoring duplicate net {}",
-                            checksum
-                        );
+                    if checksum == h0_checksum || checksum == h1_checksum {
+                        println!("[sprt] Ignoring duplicate net {}", checksum);
 
                         recv_msg.clear();
                         continue;
                     }
 
-
-                    if active_test
-                        || pending_jobs
-                    {
+                    if active_test || pending_jobs {
                         println!(
                             "[sprt][Warning] Ignoring candidate {} while test {} is still active",
                             checksum,
@@ -1097,170 +827,89 @@ fn commander_main(
                         continue;
                     }
 
+                    let new_path = data_path_str(&format!(
+                        "nets/tz_sprt_temp_net_{}_{}_{}.pt",
+                        generator_id, net_path_counter, net_save_timestamp
+                    ));
 
-                    let new_path =
-                        data_path_str(
-                            &format!(
-                                "nets/tz_sprt_temp_net_{}_{}_{}.pt",
-                                generator_id,
-                                net_path_counter,
-                                net_save_timestamp
-                            )
-                        );
+                    let mut file = File::create(new_path.clone()).expect("Unable to create data");
 
+                    file.write_all(&data).expect("Unable to write data");
 
-                    let mut file =
-                        File::create(
-                            new_path.clone()
-                        )
-                        .expect(
-                            "Unable to create data"
-                        );
-
-
-                    file.write_all(&data)
-                        .expect(
-                            "Unable to write data"
-                        );
-
-
-                    net_save_timestamp =
-                        SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .expect("Time went backwards")
-                            .as_nanos();
-
+                    net_save_timestamp = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Time went backwards")
+                        .as_nanos();
 
                     net_path_counter += 1;
-
 
                     // ===================================================
                     // Bootstrap H0.
                     // ===================================================
 
                     if !h0_loaded {
+                        h0_path = new_path;
 
-                        h0_path =
-                            new_path;
+                        h0_checksum = checksum;
 
-                        h0_checksum =
-                            checksum;
-
-
-                        println!(
-                            "[sprt] H0 (benchmark) set to {} ({})",
-                            h0_path,
-                            h0_checksum
-                        );
-
+                        println!("[sprt] H0 (benchmark) set to {} ({})", h0_path, h0_checksum);
 
                         // Bootstrap both engines with the same net.
-                        vec_exe_sender[0]
-                            .send(h0_path.clone())
-                            .unwrap();
+                        vec_exe_sender[0].send(h0_path.clone()).unwrap();
 
-                        vec_exe_sender[1]
-                            .send(h0_path.clone())
-                            .unwrap();
+                        vec_exe_sender[1].send(h0_path.clone()).unwrap();
 
-
-                        h0_loaded =
-                            true;
-
+                        h0_loaded = true;
 
                         // Consume bootstrap ready signals.
                         ready0.recv().unwrap();
                         ready1.recv().unwrap();
-
                     } else {
-
                         // ===============================================
                         // Candidate H1.
                         // ===============================================
 
-                        h1_path =
-                            new_path;
+                        h1_path = new_path;
 
-                        h1_checksum =
-                            checksum;
-
+                        h1_checksum = checksum;
 
                         println!(
                             "[sprt] H1 (candidate) set to {} ({})  (benchmark H0 = {} / {})",
-                            h1_path,
-                            h1_checksum,
-                            h0_path,
-                            h0_checksum
+                            h1_path, h1_checksum, h0_path, h0_checksum
                         );
 
-
                         // Drain any stale candidate-ready signal.
-                        let _ =
-                            ready0.try_recv();
+                        let _ = ready0.try_recv();
 
+                        vec_exe_sender[0].send(h1_path.clone()).unwrap();
 
-                        vec_exe_sender[0]
-                            .send(h1_path.clone())
-                            .unwrap();
-
-
-                        pending_jobs =
-                            true;
+                        pending_jobs = true;
                     }
                 }
-
 
                 // =======================================================
                 // Test result
                 // =======================================================
-
                 MessageType::TestResult(result) => {
-
                     if result.accept_new_net {
+                        println!("[sprt] Candidate ACCEPTED, promoting H1 -> H0 benchmark");
 
-                        println!(
-                            "[sprt] Candidate ACCEPTED, promoting H1 -> H0 benchmark"
-                        );
+                        let old_h0 = std::mem::replace(&mut h0_path, h1_path.clone());
 
-
-                        let old_h0 =
-                            std::mem::replace(
-                                &mut h0_path,
-                                h1_path.clone()
-                            );
-
-
-                        h0_checksum =
-                            h1_checksum.clone();
-
+                        h0_checksum = h1_checksum.clone();
 
                         if !old_h0.is_empty() {
-                            last_h0_file =
-                                old_h0;
+                            last_h0_file = old_h0;
                         }
-
 
                         // Load the accepted candidate as the new
                         // benchmark into engine_1.
-                        vec_exe_sender[1]
-                            .send(h0_path.clone())
-                            .unwrap();
-
+                        vec_exe_sender[1].send(h0_path.clone()).unwrap();
 
                         ready1.recv().unwrap();
 
-
-                        if !last_h0_file.is_empty()
-                            && Path::new(
-                                &last_h0_file
-                            )
-                            .is_file()
-                        {
-
-                            match fs::remove_file(
-                                last_h0_file.clone()
-                            ) {
-
+                        if !last_h0_file.is_empty() && Path::new(&last_h0_file).is_file() {
+                            match fs::remove_file(last_h0_file.clone()) {
                                 Ok(_) => {
                                     println!(
                                         "[sprt] Deleted superseded benchmark {}",
@@ -1268,121 +917,64 @@ fn commander_main(
                                     );
                                 }
 
-
                                 Err(e) => {
-                                    eprintln!(
-                                        "[sprt] Error deleting {}: {}",
-                                        last_h0_file,
-                                        e
-                                    );
+                                    eprintln!("[sprt] Error deleting {}: {}", last_h0_file, e);
                                 }
                             }
 
-
                             last_h0_file.clear();
                         }
-
                     } else {
+                        println!("[sprt] Candidate REJECTED, keeping H0 = {}", h0_path);
 
-                        println!(
-                            "[sprt] Candidate REJECTED, keeping H0 = {}",
-                            h0_path
-                        );
-
-
-                        if !h1_path.is_empty()
-                            && Path::new(
-                                &h1_path
-                            )
-                            .is_file()
-                        {
-
-                            match fs::remove_file(
-                                h1_path.clone()
-                            ) {
-
+                        if !h1_path.is_empty() && Path::new(&h1_path).is_file() {
+                            match fs::remove_file(h1_path.clone()) {
                                 Ok(_) => {
-                                    println!(
-                                        "[sprt] Deleted rejected candidate {}",
-                                        h1_path
-                                    );
+                                    println!("[sprt] Deleted rejected candidate {}", h1_path);
                                 }
 
-
                                 Err(e) => {
-                                    eprintln!(
-                                        "[sprt] Error deleting {}: {}",
-                                        h1_path,
-                                        e
-                                    );
+                                    eprintln!("[sprt] Error deleting {}: {}", h1_path, e);
                                 }
                             }
                         }
                     }
 
-
                     h1_path.clear();
                     h1_checksum.clear();
 
-                    active_test =
-                        false;
+                    active_test = false;
                 }
-
 
                 _ => {}
             }
-
-        } else if let MessageType::IdentityConfirmation(
-            (entity, _)
-        ) = message.purpose {
-
+        } else if let MessageType::IdentityConfirmation((entity, _)) = message.purpose {
             match entity {
-
                 Entity::GateTesterRunner => {
-                    is_initialised =
-                        true;
+                    is_initialised = true;
                 }
 
                 _ => {
-                    println!(
-                        "[Warning] Wrong entity, got {:?}",
-                        entity
-                    );
+                    println!("[Warning] Wrong entity, got {:?}", entity);
                 }
             }
         }
-
 
         // ===============================================================
         // Request initial H0 if necessary.
         // ===============================================================
 
         if !h0_loaded {
+            let message = MessageServer {
+                purpose: MessageType::RequestingNet(),
+            };
 
-            let message =
-                MessageServer {
-                    purpose:
-                        MessageType::RequestingNet(),
-                };
-
-
-            let mut serialised =
-                serde_json::to_string(&message)
-                    .expect(
-                        "serialisation failed"
-                    );
-
+            let mut serialised = serde_json::to_string(&message).expect("serialisation failed");
 
             serialised += "\n";
 
-
-            cloned_handle
-                .write_all(
-                    serialised.as_bytes()
-                )
-                .unwrap();
+            cloned_handle.write_all(serialised.as_bytes()).unwrap();
         }
-
 
         // ===============================================================
         // Dispatch the test as PAIRS.
@@ -1397,23 +989,14 @@ fn commander_main(
         // from the exact same opening.
         // ===============================================================
 
-        if pending_jobs
-            && !h1_path.is_empty()
-        {
-
+        if pending_jobs && !h1_path.is_empty() {
             // Wait for candidate engine to acknowledge its new net.
             ready0.recv().unwrap();
 
-
             // Drain any stale benchmark-ready signal.
-            let _ =
-                ready1.try_recv();
+            let _ = ready1.try_recv();
 
-
-            let total_pairs_dispatched =
-                num_game_pairs
-                    * OVERDISPATCH_MULTIPLIER;
-
+            let total_pairs_dispatched = num_game_pairs * OVERDISPATCH_MULTIPLIER;
 
             println!(
                 "[sprt] Both engines ready. Dispatching test {}: {} counted game pairs, {} queued game pairs ({} queued games)",
@@ -1423,30 +1006,13 @@ fn commander_main(
                 total_pairs_dispatched * 2
             );
 
-
             let openings =
-                read_epd_file(
-                    &data_path_str(
-                        "hidden/8moves_v3.epd"
-                    )
-                )
-                .expect(
-                    "EPD file missing"
-                );
+                read_epd_file(&data_path_str("hidden/8moves_v3.epd")).expect("EPD file missing");
 
-
-            let mut rng =
-                rand::thread_rng();
-
+            let mut rng = rand::thread_rng();
 
             for _ in 0..total_pairs_dispatched {
-
-                let fen =
-                    openings
-                        .choose(&mut rng)
-                        .unwrap()
-                        .to_string();
-
+                let fen = openings.choose(&mut rng).unwrap().to_string();
 
                 // -------------------------------------------------------
                 // ONE queue item = ONE paired test.
@@ -1457,23 +1023,18 @@ fn commander_main(
 
                 job_send
                     .send(GamePair {
-                        test_id:
-                            next_test_id,
+                        test_id: next_test_id,
                         fen,
                     })
                     .unwrap();
             }
 
+            pending_jobs = false;
 
-            pending_jobs =
-                false;
-
-            active_test =
-                true;
+            active_test = true;
 
             next_test_id += 1;
         }
-
 
         recv_msg.clear();
     }

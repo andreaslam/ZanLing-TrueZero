@@ -31,7 +31,7 @@ pub async fn get_move(
     }
     match settings.max_nodes {
         Some(max_nodes) => {
-            let min_visits_for_policy = 2;
+            let min_visits_for_policy = 1;
             let target_visits = (max_nodes as u32).max(min_visits_for_policy);
             while tree.nodes[0].visits < target_visits {
                 debug_print!("step {}", tree.nodes[0].visits);
@@ -169,7 +169,6 @@ pub async fn get_move(
         values: tree.nodes[0].net_evaluation,
         policy: all_tree_pol,
     };
-
     let search_data = ZeroEvaluationAbs {
         // search data
         values: tree.nodes[0].total_evaluation,

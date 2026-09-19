@@ -192,16 +192,16 @@ impl Tree {
                     false
                 });
                 // add policy softmax temperature and Dirichlet noise
-                let mut sum = 0.0;
-                for child in self.nodes[0].children.clone() {
-                    self.nodes[child].policy =
-                        self.nodes[child].policy.powf(self.settings.pst.root_pst);
-                    sum += self.nodes[child].policy;
-                }
-                for child in self.nodes[0].children.clone() {
-                    self.nodes[child].policy /= sum;
-                }
                 if let TypeRequest::TrainerSearch(_) = self.settings.search_type {
+                    let mut sum = 0.0;
+                    for child in self.nodes[0].children.clone() {
+                        self.nodes[child].policy =
+                            self.nodes[child].policy.powf(self.settings.pst.root_pst);
+                        sum += self.nodes[child].policy;
+                    }
+                    for child in self.nodes[0].children.clone() {
+                        self.nodes[child].policy /= sum;
+                    }
                     let mut std_rng = StdRng::from_entropy();
                     let distr = StableDirichlet::new(self.settings.alpha, legal_moves.len())
                         .expect("wrong params");

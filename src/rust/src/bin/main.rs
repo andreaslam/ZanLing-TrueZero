@@ -11,6 +11,7 @@ use std::{
     num::NonZeroUsize,
     panic,
     path::Path,
+    thread as std_thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tzrust::{
@@ -46,7 +47,13 @@ fn net_file_checksum(file_path: &str) -> io::Result<String> {
 }
 
 fn main() {
-    let pool = ThreadPool::builder().pool_size(6).create().unwrap();
+    let physical_cores = std_thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+    let pool = ThreadPool::builder()
+        .pool_size(physical_cores)
+        .create()
+        .unwrap();
     env::set_var("RUST_BACKTRACE", "2");
 
     panic::set_hook(Box::new(|panic_info| {
@@ -73,7 +80,7 @@ fn main() {
 
     let num_executors = 2;
     // num_executors = max(min(tch::Cuda::device_count() as usize, num_executors), 1);
-    let batch_size = 1024;
+    let batch_size = 2048;
     let num_generators = num_executors * batch_size * 2;
 
     let (game_sender, game_receiver) = flume::bounded::<CollectorMessage>(num_generators);
@@ -402,8 +409,7 @@ fn commander_main(
                     println!("[Datagen] new net data {}", checksum);
                     net_path = data_path_str(&format!(
                         "nets/{}{}_{}_{}.pt",
-                        TEMP_NETWORK_PREFIX,
-                        generator_id, net_path_counter, net_save_timestamp
+                        TEMP_NETWORK_PREFIX, generator_id, net_path_counter, net_save_timestamp
                     ));
                     let mut file = File::create(net_path.clone()).expect("Unable to create file");
                     file.write_all(&data).expect("Unable to write data");

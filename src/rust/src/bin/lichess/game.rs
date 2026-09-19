@@ -849,10 +849,7 @@ pub(super) async fn get_engine_move(
                 "ENGINE HARD TIMEOUT: search did not return within \
                      {} ms (+{} ms grace; node budget={}, active games={}); \
                      using legal fallback",
-                wall_timeout_ms,
-                ENGINE_TIMEOUT_GRACE_MS,
-                nodes,
-                active_games_count
+                wall_timeout_ms, ENGINE_TIMEOUT_GRACE_MS, nodes, active_games_count
             );
 
             let fallback = first_legal_move(fen)?;

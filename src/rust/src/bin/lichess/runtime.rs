@@ -58,16 +58,10 @@ pub(super) async fn game_loop(
     )?));
 
     let active_games = Arc::new(AtomicUsize::new(0));
-    let max_concurrent_games = env_usize(
-        "TZ_MAX_CONCURRENT_GAMES",
-        DEFAULT_MAX_CONCURRENT_GAMES,
-    )
-    .max(1);
+    let max_concurrent_games =
+        env_usize("TZ_MAX_CONCURRENT_GAMES", DEFAULT_MAX_CONCURRENT_GAMES).max(1);
     let game_slots = Arc::new(Semaphore::new(max_concurrent_games));
-    println!(
-        "Lichess concurrent game limit: {}",
-        max_concurrent_games
-    );
+    println!("Lichess concurrent game limit: {}", max_concurrent_games);
 
     spawn_selfplay_generators(
         &tensor_exe_send,
@@ -192,7 +186,6 @@ fn spawn_selfplay_generators(
         let collector = collector_send.clone();
         let generator_pause_receiver = pause_receiver.clone();
         tokio::spawn(async move {
-
             let datagen = DataGen { iterations: 1 };
             let settings = SearchSettings {
                 fpu: FPUSettings {
@@ -382,7 +375,8 @@ pub(super) async fn event_loop(
                             game_api_lock,
                             game_permit,
                         )
-                        .await {
+                        .await
+                        {
                             Ok(Some(opponent)) => {
                                 let db = game_graph_db.lock().await;
                                 match graph_remove_player(&db, &opponent) {
@@ -490,9 +484,7 @@ pub(super) async fn matchmaking_loop(
                 true
             }
             Ok(false) => {
-                println!(
-                    "Player graph is full; skipping discovery and leaving graph unchanged."
-                );
+                println!("Player graph is full; skipping discovery and leaving graph unchanged.");
                 false
             }
             Err(error) => {
@@ -523,7 +515,6 @@ pub(super) async fn matchmaking_loop(
 
         let _ = discovery_sender.send(false);
     }
-
 }
 
 async fn wait_for_no_active_games(active_games: &AtomicUsize, workload: &str) {

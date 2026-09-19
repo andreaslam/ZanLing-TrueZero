@@ -428,6 +428,7 @@ mod tests {
     use super::*;
     use cozy_chess::Board;
 
+    // TODO fix test, check kZero's conventions https://github.com/KarelPeeters/kZero
     #[test]
     fn black_board_data_rotates_both_rank_and_file() {
         let board = Board::from_fen("8/k7/8/8/8/8/8/7K b - - 0 1", false).unwrap();
