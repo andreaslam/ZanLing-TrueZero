@@ -9,7 +9,6 @@
 /UHO_2024/
 .DS_Store
 *.npz
-*.txt
 *.csv
 *.pyc
 
