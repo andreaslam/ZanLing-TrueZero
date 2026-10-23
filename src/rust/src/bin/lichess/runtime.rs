@@ -7,7 +7,6 @@ pub(super) async fn game_loop(
     collector_send: Sender<CollectorMessage>,
     executor_ready_recv: Receiver<bool>,
     num_executors: usize,
-    num_generators: usize,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("Waiting for the training server to provide and load the first network...");
     for _ in 0..num_executors {
@@ -16,9 +15,7 @@ pub(super) async fn game_loop(
             .await
             .map_err(|error| format!("Executor did not load the first network: {error}"))?;
     }
-    println!("Initial network loaded; starting self-play and Lichess services.");
-
-    let (pause_sender, pause_receiver) = watch::channel(false);
+    println!("Initial network loaded; starting Lichess services.");
     let (discovery_sender, discovery_receiver) = watch::channel(true);
 
     let client = Arc::new(
@@ -63,13 +60,6 @@ pub(super) async fn game_loop(
     let game_slots = Arc::new(Semaphore::new(max_concurrent_games));
     println!("Lichess concurrent game limit: {}", max_concurrent_games);
 
-    spawn_selfplay_generators(
-        &tensor_exe_send,
-        &collector_send,
-        num_generators,
-        pause_receiver,
-    );
-
     let event_client = Arc::clone(&client);
 
     let event_tensor_send = tensor_exe_send.clone();
@@ -88,7 +78,6 @@ pub(super) async fn game_loop(
             event_api_lock,
             event_active_games,
             game_slots,
-            pause_sender,
             event_graph_db,
             event_discovery_sender,
         )
@@ -175,70 +164,6 @@ pub(super) async fn game_loop(
     }
 }
 
-fn spawn_selfplay_generators(
-    tensor_exe_send: &Sender<Packet>,
-    collector_send: &Sender<CollectorMessage>,
-    num_generators: usize,
-    pause_receiver: watch::Receiver<bool>,
-) {
-    for id in 0..num_generators {
-        let tensor_send = tensor_exe_send.clone();
-        let collector = collector_send.clone();
-        let generator_pause_receiver = pause_receiver.clone();
-        tokio::spawn(async move {
-            let datagen = DataGen { iterations: 1 };
-            let settings = SearchSettings {
-                fpu: FPUSettings {
-                    root_fpu: 1.0,
-                    children_fpu: 0.5,
-                },
-                wdl: EvalMode::Wdl,
-                moves_left: Some(MovesLeftSettings {
-                    moves_left_weight: 0.05,
-                    moves_left_clip: 20.0,
-                    moves_left_sharpness: 0.5,
-                }),
-                c_puct: CPUCTSettings {
-                    root_c_puct: 2.0,
-                    children_c_puct: 2.0,
-                },
-                max_nodes: Some(1600),
-                alpha: 0.03,
-                eps: 0.25,
-                search_type: TrainerSearch(None),
-                pst: PSTSettings {
-                    root_pst: 1.5,
-                    children_pst: 1.5,
-                },
-                batch_size: 1,
-            };
-            let mut cache = LruCache::new(NonZeroUsize::new(1600).unwrap());
-
-            loop {
-                let sim = datagen
-                    .play_game(
-                        &tensor_send,
-                        &collector,
-                        &settings,
-                        id,
-                        &mut cache,
-                        None,
-                        Some(generator_pause_receiver.clone()),
-                    )
-                    .await;
-                if collector
-                    .send_async(CollectorMessage::FinishedGame(sim))
-                    .await
-                    .is_err()
-                {
-                    eprintln!("Self-play generator {id} stopped: collector disconnected.");
-                    break;
-                }
-            }
-        });
-    }
-}
-
 pub(super) async fn event_loop(
     client: Arc<LichessClient>,
     tensor_exe_send: Sender<Packet>,
@@ -246,7 +171,6 @@ pub(super) async fn event_loop(
     api_request_lock: Arc<Mutex<()>>,
     active_games: Arc<AtomicUsize>,
     game_slots: Arc<Semaphore>,
-    pause_sender: watch::Sender<bool>,
     graph_db: Arc<Mutex<Connection>>,
     discovery_sender: watch::Sender<bool>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -359,11 +283,8 @@ pub(super) async fn event_loop(
 
                     let game_api_lock = Arc::clone(&api_request_lock);
                     let game_collector_send = collector_send.clone();
-                    let game_pause_sender = pause_sender.clone();
                     let game_graph_db = Arc::clone(&graph_db);
                     let game_discovery_sender = discovery_sender.clone();
-                    let _ = game_pause_sender.send(true);
-
                     tokio::spawn(async move {
                         match run_game_owned(
                             game_client,
@@ -397,10 +318,6 @@ pub(super) async fn event_loop(
                             }
                             Ok(None) => {}
                             Err(error) => eprintln!("Game {} error: {}", game_id, error),
-                        }
-
-                        if game_active_games.load(Ordering::Acquire) == 0 {
-                            let _ = game_pause_sender.send(false);
                         }
 
                         println!("Game {} finished.", game_id);

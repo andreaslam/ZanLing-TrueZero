@@ -91,13 +91,12 @@ cd src/rust
 cargo run --bin server --release
 ```
 
-### Lichess bot plus self-play
+### Lichess bot
 
 `lichess` uses the same RustDataGen server connection, neural-network byte
 stream, batched `executor_main`, and `BinaryOutput` collector as `main`.
-It also runs autonomous self-play beside Lichess games, so both sources feed
-the same training batches. Start `server` and `client.py` as above, export
-`LICHESS_API_KEY`, then run:
+It only plays and records Lichess games. Start `server` and `client.py` as
+above, export `LICHESS_API_KEY`, then run:
 
 ```
 cd src/rust
@@ -106,25 +105,19 @@ cargo run --bin lichess --release
 
 The client waits for the executor to load the first network supplied by the
 training server before it logs into Lichess, indexes the player graph, issues
-challenges, or starts self-play. After that barrier, self-play and Lichess
-game handling run concurrently; later networks are loaded by the same
-executor while both data sources continue operating.
+challenges, or starts playing games. After that barrier, Lichess game handling
+continues while later networks are loaded by the same executor pool.
 
-Executor and generator counts can be overridden without changing the binary (available for Lichess binary only for now):
+Executor and queue settings can be overridden without changing the binary
+(available for the Lichess binary only for now):
 
 ```powershell
 $env:TZ_NUM_EXECUTORS = "2"
 $env:TZ_BATCH_SIZE = "1024"
-$env:TZ_NUM_GENERATORS = "4"
 $env:TZ_TENSOR_QUEUE_CAPACITY = "4096"
 ```
 
-By default, the Lichess client uses two executors, a batch size of 1024, and
-twice `executors * batch_size` generators, matching the regular data
-generation client. Self-play and Lichess searches use the full executor pool.
-The shared inference queue defaults to the generator count so executors can
-form full inference batches; setting `TZ_TENSOR_QUEUE_CAPACITY` lower reduces
-latency for live games but can cause undersized GPU batches and lower NPS.
+By default, the Lichess client uses two executors and a batch size of 1024.
 
 The bot never uses a hard-coded network path: it writes the network bytes
 received from the server under the project `nets/` directory. Lichess

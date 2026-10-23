@@ -32,7 +32,7 @@ use tzrust::{
     mcts::get_move,
     mcts_trainer::{EvalMode, TypeRequest::TrainerSearch},
     message_types::{DataFileType, Entity, MessageServer, MessageType, Statistics},
-    selfplay::{CollectorMessage, DataGen},
+    selfplay::CollectorMessage,
     settings::{CPUCTSettings, FPUSettings, MovesLeftSettings, PSTSettings, SearchSettings},
     uci::{time_to_nodes, UCIMsg},
 };
@@ -60,8 +60,8 @@ const DEFAULT_MAX_CONCURRENT_GAMES: usize = 4;
 const NO_TIME_LIMIT_ENGINE_NODES: u64 = 2_000;
 const NO_TIME_LIMIT_WALL_TIMEOUT_MS: u64 = 60_000;
 const ENGINE_WALL_TIMEOUT_MS: u64 = 10_000;
-// Inference can be delayed while self-play batches are being flushed. Give a
-// search enough time to finish instead of converting a healthy search into a
+// Inference can be delayed while batches are being flushed. Give a search
+// enough time to finish instead of converting a healthy search into a
 // first-legal-move fallback.
 const ENGINE_TIMEOUT_GRACE_MS: u64 = 5_000;
 const MIN_SEARCH_TIME_MS: u64 = 25;
@@ -171,14 +171,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let token = env::var("LICHESS_API_KEY").expect("LICHESS_API_KEY must be set");
     let num_executors = env_usize("TZ_NUM_EXECUTORS", 2).max(1);
-    // Keep the Lichess self-play workload comparable to main.rs unless the
-    // operator explicitly overrides it.
     let batch_size = env_usize("TZ_BATCH_SIZE", 1024).max(1);
-    let num_generators = env_usize(
-        "TZ_NUM_GENERATORS",
-        num_executors.saturating_mul(batch_size).saturating_mul(2),
-    )
-    .max(1);
 
     let mut stream = loop {
         match std::net::TcpStream::connect("127.0.0.1:38475") {
@@ -199,12 +192,12 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         net_receivers.push(receiver);
     }
     let (executor_ready_send, executor_ready_recv) = flume::unbounded::<bool>();
-    let default_queue_capacity = num_generators
-        .max(batch_size.saturating_mul(num_executors))
-        .max(1);
+    let default_queue_capacity = batch_size.saturating_mul(num_executors).max(1);
     let queue_capacity = env_usize("TZ_TENSOR_QUEUE_CAPACITY", default_queue_capacity).max(1);
     let (tensor_send, tensor_recv) = flume::bounded::<Packet>(queue_capacity);
-    let (collector_send, collector_recv) = flume::bounded::<CollectorMessage>(num_generators);
+    let collector_capacity =
+        env_usize("TZ_MAX_CONCURRENT_GAMES", DEFAULT_MAX_CONCURRENT_GAMES).max(1);
+    let (collector_send, collector_recv) = flume::bounded::<CollectorMessage>(collector_capacity);
     let (id_send, id_recv) = flume::bounded::<usize>(1);
     let command_stream = stream.try_clone()?;
     let collect_stream = stream.try_clone()?;
@@ -262,7 +255,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         collector_send.clone(),
                         executor_ready_recv,
                         num_executors,
-                        num_generators,
                     )
                     .await
                     {
@@ -429,7 +421,7 @@ fn collector_main(
                 if elapsed >= Duration::from_secs(1) {
                     let nps = (nps_total as f64 / elapsed.as_secs_f64()) as usize;
                     send_statistics(&mut stream, Statistics::NodesPerSecond(nps))
-                        .expect("send self-play statistics");
+                        .expect("send executor statistics");
                     nps_start_time = Instant::now();
                     nps_total = 0;
                 }
